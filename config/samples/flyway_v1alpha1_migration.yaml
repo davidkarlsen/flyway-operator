@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    app.kubernetes.io/name: migration
+    app.kubernetes.io/instance: migration-sample
+    app.kubernetes.io/part-of: flyway-operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: flyway-operator
+  name: migration-pw
+  namespace: test
+stringData:
+  password: "test"
+---
+apiVersion: flyway.davidkarlsen.com/v1alpha1
+kind: Migration
+metadata:
+  labels:
+    app.kubernetes.io/name: migration
+    app.kubernetes.io/instance: migration-sample
+    app.kubernetes.io/part-of: flyway-operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: flyway-operator
+  name: migration-sample
+  namespace: test
+spec:
+  database:
+    username: db2inst1
+    credentials:
+      name: migration-pw
+      key: password
+    jdbcUrl: "jdbc:db2://localhost:50000/devdb"
+  migrationSource:
+    imageRef: "ghcr.io/davidkarlsen/testmigration:latest"
+    path: "/sql"

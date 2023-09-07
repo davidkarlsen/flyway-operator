@@ -1,0 +1,27 @@
+# permissions for end users to view migrations.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: migration-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: flyway-operator
+    app.kubernetes.io/part-of: flyway-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: migration-viewer-role
+rules:
+- apiGroups:
+  - flyway.davidkarlsen.com
+  resources:
+  - migrations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - flyway.davidkarlsen.com
+  resources:
+  - migrations/status
+  verbs:
+  - get
