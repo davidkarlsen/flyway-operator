@@ -1,0 +1,52 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+  name: flyway-operator.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: Migration is the Schema for the migrations API
+      displayName: Migration
+      kind: Migration
+      name: migrations.flyway.davidkarlsen.com
+      version: v1alpha1
+  description: Run Flyway through declarative API.
+  displayName: Flyway Operator
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - schema
+  - versioning
+  - database
+  - flyway
+  - migration
+  links:
+  - name: Flyway Operator
+    url: https://flyway-operator.domain
+  maintainers:
+  - email: david@davidkarlsen.com
+    name: davidkarlsen
+  maturity: alpha
+  provider:
+    name: David J. M. Karlsen
+    url: https://github.com/davidkarlsen/
+  version: 0.0.0
