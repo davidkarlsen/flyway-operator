@@ -1,0 +1,19 @@
+name: build
+
+on:
+  pull_request:
+    branches:
+      - "*"
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout
+        with:
+          fetch-depth: 0
+      - run: |
+          make docker-buildx docker-push
