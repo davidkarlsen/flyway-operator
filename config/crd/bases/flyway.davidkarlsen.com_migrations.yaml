@@ -36,10 +36,11 @@ spec:
             description: MigrationSpec defines the desired state of Migration
             properties:
               database:
-                description: Database defines the database-settings
+                description: settings for database connection
                 properties:
                   credentials:
-                    description: reference to password for connecting to database
+                    description: reference to a secret containing the password for
+                      connecting to database
                     properties:
                       key:
                         description: The key of the secret to select from.  Must be
@@ -59,6 +60,7 @@ spec:
                     x-kubernetes-map-type: atomic
                   jdbcUrl:
                     description: the jdbcUrl to connect to database
+                    pattern: ^jdbc:.*
                     type: string
                   username:
                     description: username for connecting to database
@@ -69,7 +71,7 @@ spec:
                 - username
                 type: object
               migrationSource:
-                description: MigrationSource defines the source for the flyway-migrations.
+                description: settings defining the SQL migrations
                 properties:
                   imageRef:
                     description: Reference to the image holding the SQLs to migrate

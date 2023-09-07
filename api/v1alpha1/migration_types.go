@@ -52,7 +52,12 @@ type Migration struct {
 
 // MigrationSpec defines the desired state of Migration
 type MigrationSpec struct {
-	Database  Database        `json:"database"`
+	// settings for database connection
+	// +kubebuilder:validation:Required
+	Database Database `json:"database"`
+
+	// settings defining the SQL migrations
+	// +kubebuilder:validation:Required
 	Migration MigrationSource `json:"migrationSource"`
 }
 
@@ -61,11 +66,12 @@ type Database struct {
 	// username for connecting to database
 	// +kubebuilder:validation:Required
 	Username string `json:"username"`
-	// reference to password for connecting to database
+	// reference to a secret containing the password for connecting to database
 	// +kubebuilder:validation:Required
 	Credentials v1.SecretKeySelector `json:"credentials"`
 	// the jdbcUrl to connect to database
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^jdbc:.*`
 	JdbcUrl string `json:"jdbcUrl"`
 }
 
