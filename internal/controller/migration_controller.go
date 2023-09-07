@@ -37,6 +37,12 @@ import (
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 )
 
+const (
+	sqlVolumeName         = "sql"
+	defaultFlywayImage    = "ghcr.io/davidkarlsen/flyway-db2:9.22"
+	env_name_flyway_image = "FLYWAY_IMAGE"
+)
+
 // MigrationReconciler reconciles a Migration object
 type MigrationReconciler struct {
 	util.ReconcilerBase
@@ -96,15 +102,17 @@ func (r *MigrationReconciler) submitMigrationJob(ctx context.Context, migration 
 		}
 		if existingJob.Status.Failed > 0 || existingJob.Status.Succeeded > 0 {
 			logger.Info("Deleting old completed or failed job", "job", existingJob)
-			_ = crud.DeleteResourceIfExists(ctx, existingJob)
+			//_ = crud.DeleteResourceIfExists(ctx, existingJob)x
+			opt := metav1.DeletePropagationForeground
+			err = r.Client.Delete(ctx, existingJob, &client.DeleteOptions{PropagationPolicy: &opt})
+			if err != nil {
+				return err
+			}
 		}
 	}
 
 	return crud.CreateResourceIfNotExists(ctx, migration, migration.Namespace, &job)
 }
-
-const sqlVolumeName = "sql"
-const defaultFlywayImage = "ghcr.io/davidkarlsen/flyway-db2:9.22"
 
 func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flywayv1alpha1.Migration) batchv1.Job {
 	const targetPath = "/mnt/target/"
@@ -141,7 +149,7 @@ func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flyw
 					Containers: []v12.Container{
 						{
 							Name:            "flyway",
-							Image:           env.GetDefault("FLYWAY_IMAGE", defaultFlywayImage),
+							Image:           env.GetDefault(env_name_flyway_image, defaultFlywayImage),
 							ImagePullPolicy: v12.PullAlways,
 							Args:            []string{"info", "migrate", "info"},
 							Env: []v12.EnvVar{
