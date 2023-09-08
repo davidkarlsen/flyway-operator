@@ -29,7 +29,7 @@ spec:
     credentials:
       name: migration-pw
       key: password
-    jdbcUrl: "jdbc:db2://localhost:50000/devdb"
+    jdbcUrl: "jdbc:db2://somehost:50000/devdb"
   migrationSource:
     imageRef: "ghcr.io/davidkarlsen/testmigration:latest"
-    path: "/sql"
+    # path: "/sql"

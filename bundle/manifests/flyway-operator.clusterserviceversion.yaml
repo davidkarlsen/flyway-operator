@@ -16,26 +16,25 @@ metadata:
               "app.kubernetes.io/part-of": "flyway-operator"
             },
             "name": "migration-sample",
-            "namespace": "ftm-dev"
+            "namespace": "test"
           },
           "spec": {
             "database": {
               "credentials": {
-                "key": "DB_PASSWORD",
-                "name": "db2u-password"
+                "key": "password",
+                "name": "migration-pw"
               },
-              "jdbcUrl": "jdbc:db2://db2u-ftm-hadr-svc:50000/FTMDB",
+              "jdbcUrl": "jdbc:db2://somehost:50000/devdb",
               "username": "db2inst1"
             },
             "migrationSource": {
-              "imageRef": "ghcr.io/davidkarlsen/testmigration:latest",
-              "path": "/sql"
+              "imageRef": "ghcr.io/davidkarlsen/testmigration:latest"
             }
           }
         }
       ]
     capabilities: Basic Install
-    createdAt: "2023-09-07T18:58:51Z"
+    createdAt: "2023-09-08T11:22:46Z"
     operators.operatorframework.io/builder: operator-sdk-v1.31.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4-alpha
   name: flyway-operator.v0.0.1
@@ -185,7 +184,7 @@ spec:
                 - --leader-elect
                 command:
                 - /manager
-                image: ghcr.io/davidkarlsen/flyway-operator:latest
+                image: ghcr.io/davidkarlsen/flyway-operator:0.0.1
                 livenessProbe:
                   httpGet:
                     path: /healthz
