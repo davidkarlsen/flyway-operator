@@ -35,4 +35,4 @@ jobs:
 
       - name: build and push
         run: |
-          make docker-buildx IMG=ghcr.io/${{ github.repository }}:${{ env.VERSION }}
+          make docker-buildx bundle bundle-build bundle-push IMG=ghcr.io/${{ github.repository }}:${{ env.VERSION }}
