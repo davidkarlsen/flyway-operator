@@ -235,5 +235,6 @@ func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flyw
 func (r *MigrationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&flywayv1alpha1.Migration{}).
+		Owns(&batchv1.Job{}).
 		Complete(r)
 }
