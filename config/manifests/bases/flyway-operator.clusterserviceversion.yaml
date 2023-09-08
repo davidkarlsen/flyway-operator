@@ -41,7 +41,7 @@ spec:
   - migration
   links:
   - name: Flyway Operator
-    url: https://flyway-operator.domain
+    url: https://github.com/davidkarlsen/flyway-operator
   maintainers:
   - email: david@davidkarlsen.com
     name: davidkarlsen
