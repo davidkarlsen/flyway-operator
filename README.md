@@ -1,8 +1,19 @@
 # flyway-operator
-// TODO(user): Add simple overview of use/purpose
+[Kubernetes-operator](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/) to apply [Flyway migrations](https://flywaydb.org/).
+
 
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+The operator will spawn [Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/job/) using the
+[flyway-docker image](https://hub.docker.com/r/flyway/flyway).
+
+See `config/samples` for example CRs.
+
+It still an early project and I want to further develop some day-2 elements:
+* extract logs from run, and attach to `Status` field of CR
+* extract facts about migrated version and attach to `Status` field
+* support more advanced migrations, using
+  * placeholders
+  * java-migrations
 
 ## Getting Started
 You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
@@ -42,7 +53,9 @@ make undeploy
 ```
 
 ## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
+* Create issues - add as much info, such as logs, versions and CR-definitions to the issue
+* Create PRs including tests
+  * Make sure you run `make manifests fmt vet` prior to opening the PR
 
 ### How it works
 This project aims to follow the Kubernetes [Operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/).
