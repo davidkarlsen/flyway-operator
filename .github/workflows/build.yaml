@@ -26,5 +26,7 @@ jobs:
           registry: ghcr.io
           username: ${{github.actor}}
           password: ${{secrets.GITHUB_TOKEN}}
-      - run: |
+
+      - name: build and push
+        run: |
           make docker-buildx docker-push
