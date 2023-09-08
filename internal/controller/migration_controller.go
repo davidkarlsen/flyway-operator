@@ -71,6 +71,7 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if util.IsBeingDeleted(migration) {
 		logger.Info("Migration deleted, returning")
+		r.GetRecorder().Event(migration, v12.EventTypeWarning, "Deleting", fmt.Sprintf("Migration deleted: %s", req.NamespacedName))
 		return r.ManageSuccess(ctx, migration)
 	}
 
@@ -103,6 +104,7 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if existingJob.Status.Succeeded > 0 {
 		logger.Info("Job succeeded - removing") //TODO - should match hash
+		r.GetRecorder().Event(migration, v12.EventTypeNormal, "Succeeded", fmt.Sprintf("Migration Succeeded: %s", req.NamespacedName))
 
 		err := r.deleteExistingJob(ctx, existingJob)
 		if err != nil {
