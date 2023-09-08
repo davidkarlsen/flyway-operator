@@ -25,6 +25,7 @@ jobs:
       - name: createVersion
         run: |
           echo "VERSION=$(git describe --tag --always)" >> $GITHUB_ENV
+          echo "CLEAN_VERSION=$(git describe --tag --always | sed s/^v//)" >> $GITHUB_ENV
 
       - name: 'Login to GitHub Container Registry'
         uses: docker/login-action@v2.2.0
@@ -35,4 +36,4 @@ jobs:
 
       - name: build and push
         run: |
-          make docker-buildx bundle bundle-build bundle-push IMG=ghcr.io/${{ github.repository }}:${{ env.VERSION }}
+          make docker-buildx bundle bundle-build bundle-push IMG=ghcr.io/${{ github.repository }}:${{ env.CLEAN_VERSION }}
