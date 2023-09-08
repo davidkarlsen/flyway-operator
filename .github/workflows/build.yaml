@@ -33,4 +33,4 @@ jobs:
 
       - name: build and push
         run: |
-          make docker-buildx docker-push IMG=ghcr.io/${{ github.actor }}/${{ github.repository }}:${{ vars.VERSION }}
+          make docker-buildx IMG=ghcr.io/${{ github.actor }}/${{ github.repository }}:${{ vars.VERSION }}
