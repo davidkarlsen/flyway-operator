@@ -28,7 +28,7 @@ jobs:
           echo "CLEAN_VERSION=$(git describe --tag --always | sed s/^v//)" >> $GITHUB_ENV
 
       - name: golangci-lint
-        uses: reviewdog/action-golangci-lint@v3
+        uses: reviewdog/action-golangci-lint@v2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
