@@ -42,12 +42,12 @@ jobs:
 
       - name: build and push
         run: |
-          make docker-buildx VERSION=${{ env.VERSION }}
+          make docker-buildx VERSION=${{ env.VERSION }} IMG=${{ env.IMG }}
 
       - name: bundle
         run: |
-          make bundle bundle-build bundle-push VERSION=${{ env.VERSION }}
+          make bundle bundle-build bundle-push VERSION=${{ env.VERSION }} IMG=${{ env.IMG }}
 
       - name: catalog
         run: |
-          make catalog-build catalog-push VERSION=${{ env.VERSION }}
+          make catalog-build catalog-push VERSION=${{ env.VERSION }} IMG=${{ env.IMG }}

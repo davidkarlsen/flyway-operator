@@ -33,9 +33,9 @@ metadata:
           }
         }
       ]
-    categories: "Database,Developer Tools"
     capabilities: Basic Install
-    createdAt: "2023-09-08T12:18:14Z"
+    categories: Database,Developer Tools
+    createdAt: "2023-09-08T12:47:51Z"
     operators.operatorframework.io/builder: operator-sdk-v1.31.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4-alpha
   name: flyway-operator.v0.0.1
