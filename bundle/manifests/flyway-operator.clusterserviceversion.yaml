@@ -33,6 +33,7 @@ metadata:
           }
         }
       ]
+    categories: "Database,Developer Tools"
     capabilities: Basic Install
     createdAt: "2023-09-08T12:18:14Z"
     operators.operatorframework.io/builder: operator-sdk-v1.31.0
