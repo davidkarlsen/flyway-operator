@@ -26,7 +26,6 @@ jobs:
         run: |
           echo "GIT_VERSION=$(git describe --tag --always)" >> $GITHUB_ENV
           echo "VERSION=$(git describe --tag --always | sed s/^v//)" >> $GITHUB_ENV
-          echo "IMG=ghcr.io/${{ github.repository }}:${{ env.VERSION }}" >> $GITHUB_ENV
 
       - name: golangci-lint
         uses: reviewdog/action-golangci-lint@v2
@@ -42,12 +41,12 @@ jobs:
 
       - name: build and push
         run: |
-          make docker-buildx VERSION=${{ env.VERSION }} IMG=${{ env.IMG }}
+          make docker-buildx VERSION=${{ env.VERSION }}
 
       - name: bundle
         run: |
-          make bundle bundle-build bundle-push VERSION=${{ env.VERSION }} IMG=${{ env.IMG }}
+          make bundle bundle-build bundle-push VERSION=${{ env.VERSION }}
 
       - name: catalog
         run: |
-          make catalog-build catalog-push VERSION=${{ env.VERSION }} IMG=${{ env.IMG }}
+          make catalog-build catalog-push VERSION=${{ env.VERSION }}
