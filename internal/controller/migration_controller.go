@@ -129,7 +129,7 @@ func (r *MigrationReconciler) getExistingJob(ctx context.Context, migration *fly
 func (r *MigrationReconciler) submitMigrationJob(ctx context.Context, migration *flywayv1alpha1.Migration) error {
 	job := r.createJobSpec(ctx, migration)
 	logger := log.FromContext(ctx)
-	logger.Info("Generated job", "job", fmt.Sprintf("%+v", job))
+	logger.V(1).Info("Generated job", "job", fmt.Sprintf("%+v", job))
 
 	return crud.CreateResourceIfNotExists(ctx, migration, migration.Namespace, &job)
 }
