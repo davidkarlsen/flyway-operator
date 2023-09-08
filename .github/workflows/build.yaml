@@ -12,7 +12,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      checks: write
+      contents: write
       packages: write
       statuses: write
     steps:
