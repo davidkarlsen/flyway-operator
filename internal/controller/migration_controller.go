@@ -20,26 +20,26 @@ import (
 	"context"
 	"fmt"
 	"github.com/caitlinelfring/go-env-default"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"time"
-
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	"github.com/redhat-cop/operator-utils/pkg/util"
 	"github.com/redhat-cop/operator-utils/pkg/util/crud"
 	batchv1 "k8s.io/api/batch/v1"
 	v12 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"time"
 )
 
 const (
-	sqlVolumeName         = "sql"
-	defaultFlywayImage    = "ghcr.io/davidkarlsen/flyway-db2:9.22"
-	env_name_flyway_image = "FLYWAY_IMAGE"
+	sqlVolumeName             = "sql"
+	defaultFlywayImage        = "ghcr.io/davidkarlsen/flyway-db2:9.22"
+	envNameFlywayImage        = "FLYWAY_IMAGE"
+	podTemplateHashAnnotation = "pod-template-hash"
 )
 
 // MigrationReconciler reconciles a Migration object
@@ -76,41 +76,42 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	existingJob, err := r.getExistingJob(ctx, migration)
+	newJob := r.createJobSpec(ctx, migration)
 	if err != nil {
 		return r.ManageError(ctx, migration, err)
 	}
 
 	if existingJob == nil { // no existing job - so submit one now
-		err := r.submitMigrationJob(ctx, migration)
-		if err != nil {
-			return r.ManageError(ctx, migration, err)
-		}
-		return r.ManageSuccess(ctx, migration) //TODO: Should requeue
-	}
-
-	if !r.isJobFinished(existingJob) {
-		logger.Info("Job still running, returning for reconcile", "job", existingJob)
-		return r.ManageSuccessWithRequeue(ctx, migration, 3*time.Second)
-	}
-
-	if existingJob.Status.Failed > 0 {
-		err := r.deleteExistingJob(ctx, existingJob)
-		if err != nil {
-			return r.ManageError(ctx, migration, err)
-		}
-		//TODO: should save onto status field of migration
-		return r.ManageError(ctx, migration, fmt.Errorf("existing job failed - reattempting reconcilation"))
-	}
-
-	if existingJob.Status.Succeeded > 0 {
-		logger.Info("Job succeeded - removing") //TODO - should match hash
-		r.GetRecorder().Event(migration, v12.EventTypeNormal, "Succeeded", fmt.Sprintf("Migration Succeeded: %s", req.NamespacedName))
-
-		err := r.deleteExistingJob(ctx, existingJob)
+		err := r.submitMigrationJob(ctx, migration, existingJob)
 		if err != nil {
 			return r.ManageError(ctx, migration, err)
 		}
 		return r.ManageSuccess(ctx, migration)
+	} else {
+		if !isJobFinished(existingJob) {
+			logger.Info("Job still running, returning for reconcile", "job", existingJob)
+			return r.ManageSuccessWithRequeue(ctx, migration, 3*time.Second)
+		}
+		if existingJob.Status.Succeeded > 0 {
+			logger.Info("Job succeeded")
+			r.GetRecorder().Event(migration, v12.EventTypeNormal, "Succeeded", fmt.Sprintf("Migration Succeeded: %s", req.NamespacedName))
+			err := r.submitMigrationJob(ctx, migration, existingJob)
+			if err != nil {
+				return r.ManageError(ctx, migration, err)
+			}
+
+			return r.ManageSuccess(ctx, migration)
+		}
+
+		if existingJob.Status.Failed > 0 {
+			err := r.submitMigrationJob(ctx, migration, existingJob)
+			if err != nil {
+				return r.ManageError(ctx, migration, err)
+			}
+			//TODO: should save onto status field of migration
+			return r.ManageError(ctx, migration, fmt.Errorf("existing job failed - reattempting reconcilation"))
+		}
+
 	}
 
 	logger.Info("BUG - should not happen")
@@ -128,12 +129,21 @@ func (r *MigrationReconciler) getExistingJob(ctx context.Context, migration *fly
 	return existingJob, err
 }
 
-func (r *MigrationReconciler) submitMigrationJob(ctx context.Context, migration *flywayv1alpha1.Migration) error {
+func (r *MigrationReconciler) submitMigrationJob(ctx context.Context, migration *flywayv1alpha1.Migration, existingJob *batchv1.Job) error {
 	job := r.createJobSpec(ctx, migration)
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Generated job", "job", fmt.Sprintf("%+v", job))
 
-	return crud.CreateResourceIfNotExists(ctx, migration, migration.Namespace, &job)
+	if jobsAreEqual(existingJob, job) {
+		logger.Info("Job already succeeded and unchanged - no need to run")
+		return nil
+	} else {
+		err := r.deleteExistingJob(ctx, existingJob)
+		if err != nil {
+			return err
+		}
+	}
+
+	return crud.CreateResourceIfNotExists(ctx, migration, migration.Namespace, job)
 }
 
 func (r *MigrationReconciler) deleteExistingJob(ctx context.Context, existingJob *batchv1.Job) error {
@@ -142,33 +152,21 @@ func (r *MigrationReconciler) deleteExistingJob(ctx context.Context, existingJob
 	return r.Client.Delete(ctx, existingJob, &client.DeleteOptions{PropagationPolicy: &opt})
 }
 
-// from https://github.com/kubernetes/kubernetes/blob/v1.28.1/pkg/controller/job/utils.go
-// IsJobFinished checks whether the given Job has finished execution.
-// It does not discriminate between successful and failed terminations.
-func (r *MigrationReconciler) isJobFinished(j *batchv1.Job) bool {
-	for _, c := range j.Status.Conditions {
-		if (c.Type == batchv1.JobComplete || c.Type == batchv1.JobFailed) && c.Status == v12.ConditionTrue {
-			return true
-		}
-	}
-	return false
-}
-
-func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flywayv1alpha1.Migration) batchv1.Job {
+func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flywayv1alpha1.Migration) *batchv1.Job {
 	const targetPath = "/mnt/target/"
 
-	return batchv1.Job{
+	job := &batchv1.Job{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Job",
 			APIVersion: batchv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      migration.Name,
-			Namespace: migration.Namespace,
+			Name:        migration.Name,
+			Namespace:   migration.Namespace,
+			Annotations: make(map[string]string),
 		},
 		Spec: batchv1.JobSpec{
-			TTLSecondsAfterFinished: pointer.Int32(60 * 60),
-			BackoffLimit:            pointer.Int32(2),
+			BackoffLimit: pointer.Int32(2),
 			Template: v12.PodTemplateSpec{
 				Spec: v12.PodSpec{
 					InitContainers: []v12.Container{
@@ -189,7 +187,7 @@ func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flyw
 					Containers: []v12.Container{
 						{
 							Name:            "flyway",
-							Image:           env.GetDefault(env_name_flyway_image, defaultFlywayImage),
+							Image:           env.GetDefault(envNameFlywayImage, defaultFlywayImage),
 							ImagePullPolicy: v12.PullAlways,
 							Args:            []string{"info", "migrate", "info"},
 							Env: []v12.EnvVar{
@@ -229,6 +227,10 @@ func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flyw
 			},
 		},
 	}
+
+	addPodSpecHash(job)
+	
+	return job
 }
 
 // SetupWithManager sets up the controller with the Manager.
