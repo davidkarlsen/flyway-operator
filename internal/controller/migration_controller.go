@@ -32,6 +32,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"time"
 )
 
@@ -76,46 +77,39 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	existingJob, err := r.getExistingJob(ctx, migration)
-	newJob := r.createJobSpec(ctx, migration)
 	if err != nil {
 		return r.ManageError(ctx, migration, err)
 	}
 
+	newJob := r.createJobSpec(ctx, migration)
+
 	if existingJob == nil { // no existing job - so submit one now
-		err := r.submitMigrationJob(ctx, migration, existingJob)
-		if err != nil {
-			return r.ManageError(ctx, migration, err)
-		}
-		return r.ManageSuccess(ctx, migration)
+		return r.submitMigrationJob(ctx, migration, newJob)
 	} else {
 		if !isJobFinished(existingJob) {
 			logger.Info("Job still running, returning for reconcile", "job", existingJob)
 			return r.ManageSuccessWithRequeue(ctx, migration, 3*time.Second)
 		}
+
+		jobsAreEqual := jobsAreEqual(existingJob, newJob)
+
+		if existingJob.Status.Failed > 0 || !jobsAreEqual {
+			return r.submitMigrationJob(ctx, migration, newJob)
+		}
+
 		if existingJob.Status.Succeeded > 0 {
-			logger.Info("Job succeeded")
-			r.GetRecorder().Event(migration, v12.EventTypeNormal, "Succeeded", fmt.Sprintf("Migration Succeeded: %s", req.NamespacedName))
-			err := r.submitMigrationJob(ctx, migration, existingJob)
-			if err != nil {
-				return r.ManageError(ctx, migration, err)
+			if jobsAreEqual {
+				logger.Info("Migration succeeded")
+				r.GetRecorder().Event(migration, v12.EventTypeNormal, "Succeeded", fmt.Sprintf("Migration Succeeded: %s", req.NamespacedName))
+				return r.ManageSuccess(ctx, migration)
+			} else { // migration has changed - submit new job
+				return r.submitMigrationJob(ctx, migration, newJob)
 			}
-
-			return r.ManageSuccess(ctx, migration)
 		}
-
-		if existingJob.Status.Failed > 0 {
-			err := r.submitMigrationJob(ctx, migration, existingJob)
-			if err != nil {
-				return r.ManageError(ctx, migration, err)
-			}
-			//TODO: should save onto status field of migration
-			return r.ManageError(ctx, migration, fmt.Errorf("existing job failed - reattempting reconcilation"))
-		}
-
 	}
 
-	logger.Info("BUG - should not happen")
-	return r.ManageSuccess(ctx, migration)
+	err = fmt.Errorf("this is a bug and not not happen")
+	return r.ManageError(ctx, migration, err)
 }
 
 func (r *MigrationReconciler) getExistingJob(ctx context.Context, migration *flywayv1alpha1.Migration) (*batchv1.Job, error) {
@@ -129,21 +123,18 @@ func (r *MigrationReconciler) getExistingJob(ctx context.Context, migration *fly
 	return existingJob, err
 }
 
-func (r *MigrationReconciler) submitMigrationJob(ctx context.Context, migration *flywayv1alpha1.Migration, existingJob *batchv1.Job) error {
-	job := r.createJobSpec(ctx, migration)
-	logger := log.FromContext(ctx)
-
-	if jobsAreEqual(existingJob, job) {
-		logger.Info("Job already succeeded and unchanged - no need to run")
-		return nil
-	} else {
-		err := r.deleteExistingJob(ctx, existingJob)
-		if err != nil {
-			return err
-		}
+func (r *MigrationReconciler) submitMigrationJob(ctx context.Context, migration *flywayv1alpha1.Migration, job *batchv1.Job) (reconcile.Result, error) {
+	err := crud.DeleteResourceIfExists(ctx, job)
+	if err != nil {
+		return r.ManageError(ctx, migration, err)
 	}
 
-	return crud.CreateResourceIfNotExists(ctx, migration, migration.Namespace, job)
+	err = crud.CreateResourceIfNotExists(ctx, migration, migration.Namespace, job)
+	if err != nil {
+		return r.ManageError(ctx, migration, err)
+	}
+
+	return r.ManageSuccess(ctx, migration)
 }
 
 func (r *MigrationReconciler) deleteExistingJob(ctx context.Context, existingJob *batchv1.Job) error {
@@ -229,7 +220,7 @@ func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flyw
 	}
 
 	addPodSpecHash(job)
-	
+
 	return job
 }
 
