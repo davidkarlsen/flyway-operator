@@ -162,10 +162,10 @@ func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flyw
 					InitContainers: []corev1.Container{
 						{
 							Name:            "copy-sql",
-							Image:           migration.Spec.Migration.ImageRef,
+							Image:           migration.Spec.MigrationSource.ImageRef,
 							ImagePullPolicy: corev1.PullAlways,
 							Command:         []string{"sh", "-c"},
-							Args:            []string{fmt.Sprintf("cd %s && cp -rp * %s", migration.Spec.Migration.SqlPath, targetPath)},
+							Args:            []string{fmt.Sprintf("cd %s && cp -rp * %s", migration.Spec.MigrationSource.SqlPath, targetPath)},
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      sqlVolumeName,

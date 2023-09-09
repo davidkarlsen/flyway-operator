@@ -58,7 +58,7 @@ type MigrationSpec struct {
 
 	// settings defining the SQL migrations
 	// +kubebuilder:validation:Required
-	Migration MigrationSource `json:"migrationSource"`
+	MigrationSource MigrationSource `json:"migrationSource"`
 }
 
 // Database defines the database-settings
