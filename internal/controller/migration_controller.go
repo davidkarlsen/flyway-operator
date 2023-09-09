@@ -129,8 +129,12 @@ func (r *MigrationReconciler) getExistingJob(ctx context.Context, migration *fly
 
 func (r *MigrationReconciler) submitMigrationJob(ctx context.Context, migration *flywayv1alpha1.Migration, job *batchv1.Job) (reconcile.Result, error) {
 	logger := log.FromContext(ctx)
-	err := crud.DeleteResourceIfExists(ctx, job)
-	if err != nil {
+	//err := crud.DeleteResourceIfExists(ctx, job)
+	opts := metav1.DeletePropagationBackground
+	err := r.GetClient().Delete(ctx, job, &client.DeleteOptions{
+		PropagationPolicy: &opts,
+	})
+	if err != nil && !apierrors.IsNotFound(err) {
 		return r.ManageError(ctx, migration, err)
 	}
 
