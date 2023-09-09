@@ -123,11 +123,13 @@ func (r *MigrationReconciler) getExistingJob(ctx context.Context, migration *fly
 }
 
 func (r *MigrationReconciler) submitMigrationJob(ctx context.Context, migration *flywayv1alpha1.Migration, job *batchv1.Job) (reconcile.Result, error) {
+	logger := log.FromContext(ctx)
 	err := crud.DeleteResourceIfExists(ctx, job)
 	if err != nil {
 		return r.ManageError(ctx, migration, err)
 	}
 
+	logger.Info("Creating job", "job", job)
 	err = crud.CreateResourceIfNotExists(ctx, migration, migration.Namespace, job)
 	if err != nil {
 		return r.ManageError(ctx, migration, err)
