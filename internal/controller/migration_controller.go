@@ -138,12 +138,6 @@ func (r *MigrationReconciler) submitMigrationJob(ctx context.Context, migration 
 	return r.ManageSuccess(ctx, migration)
 }
 
-func (r *MigrationReconciler) deleteExistingJob(ctx context.Context, existingJob *batchv1.Job) error {
-	//_ = crud.DeleteResourceIfExists(ctx, existingJob)x
-	opt := metav1.DeletePropagationForeground
-	return r.Client.Delete(ctx, existingJob, &client.DeleteOptions{PropagationPolicy: &opt})
-}
-
 func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flywayv1alpha1.Migration) *batchv1.Job {
 	const targetPath = "/mnt/target/"
 
