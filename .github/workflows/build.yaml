@@ -45,11 +45,19 @@ jobs:
           make docker-buildx VERSION=${{ env.VERSION }}
 
       - name: bundle
-        if: contains(fromJson('["refs/heads/main", "refs/tags"]'), github.event.action)
+        if:
+          contains('
+          refs/heads/main
+          refs/tags/v
+          ', github.ref)
         run: |
           make bundle bundle-build bundle-push VERSION=${{ env.VERSION }}
 
       - name: catalog
-        if: contains(fromJson('["refs/heads/main", "refs/tags"]'), github.event.action)
+        if:
+          contains('
+          refs/heads/main
+          refs/tags/v
+          ', github.ref)
         run: |
           make catalog-build catalog-push VERSION=${{ env.VERSION }}
