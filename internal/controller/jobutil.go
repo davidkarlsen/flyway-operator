@@ -1,13 +1,13 @@
 package controller
 
 import (
-	hashutil "github.com/openyurtio/openyurt/pkg/controller/yurtstaticset/util"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	eq "k8s.io/apimachinery/pkg/api/equality"
 )
 
 func jobsAreEqual(first *batchv1.Job, second *batchv1.Job) bool {
-	return first != nil && second != nil && first.Annotations[podTemplateHashAnnotation] == second.Annotations[podTemplateHashAnnotation]
+	return first != nil && second != nil && eq.Semantic.DeepEqual(first, second)
 }
 
 // from https://github.com/kubernetes/kubernetes/blob/v1.28.1/pkg/controller/job/utils.go
@@ -20,13 +20,6 @@ func isJobFinished(j *batchv1.Job) bool {
 		}
 	}
 	return false
-}
-
-func addPodSpecHash(job *batchv1.Job) *batchv1.Job {
-	hash := hashutil.ComputeHash(&job.Spec.Template)
-	job.Annotations[podTemplateHashAnnotation] = hash
-
-	return job
 }
 
 func hasFailed(job *batchv1.Job) bool {

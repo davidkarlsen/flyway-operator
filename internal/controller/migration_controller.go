@@ -37,10 +37,9 @@ import (
 )
 
 const (
-	sqlVolumeName             = "sql"
-	defaultFlywayImage        = "ghcr.io/davidkarlsen/flyway-db2:9.22"
-	envNameFlywayImage        = "FLYWAY_IMAGE"
-	podTemplateHashAnnotation = "pod-template-hash"
+	sqlVolumeName      = "sql"
+	defaultFlywayImage = "ghcr.io/davidkarlsen/flyway-db2:9.22"
+	envNameFlywayImage = "FLYWAY_IMAGE"
 )
 
 // MigrationReconciler reconciles a Migration object
