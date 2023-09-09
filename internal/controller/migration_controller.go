@@ -217,9 +217,7 @@ func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flyw
 			},
 		},
 	}
-
-	addPodSpecHash(job)
-
+	
 	return job
 }
 
