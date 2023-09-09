@@ -31,7 +31,7 @@ func TestGithubactionRunnerController(t *testing.T) {
 				Credentials: corev1.SecretKeySelector{},
 				JdbcUrl:     "jdbc://db2:somehost:50000/somedb",
 			},
-			Migration: flywayv1alpha1.MigrationSource{
+			MigrationSource: flywayv1alpha1.MigrationSource{
 				ImageRef: "somereg.io/someimage:sometag",
 			},
 		},
