@@ -75,6 +75,11 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.ManageSuccess(ctx, migration)
 	}
 
+	valid, err := r.IsValid(migration)
+	if !valid || err != nil {
+		return r.ManageError(ctx, migration, err)
+	}
+
 	existingJob, err := r.getExistingJob(ctx, migration)
 	if err != nil {
 		return r.ManageError(ctx, migration, err)
@@ -107,7 +112,7 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
-	err = fmt.Errorf("this is a bug and not not happen")
+	err = fmt.Errorf("this is a bug and should not happen")
 	return r.ManageError(ctx, migration, err)
 }
 
