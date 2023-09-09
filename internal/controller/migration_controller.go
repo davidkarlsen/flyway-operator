@@ -24,7 +24,7 @@ import (
 	"github.com/redhat-cop/operator-utils/pkg/util"
 	"github.com/redhat-cop/operator-utils/pkg/util/crud"
 	batchv1 "k8s.io/api/batch/v1"
-	v12 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -72,7 +72,7 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if util.IsBeingDeleted(migration) {
 		logger.Info("Migration deleted, returning")
-		r.GetRecorder().Event(migration, v12.EventTypeWarning, "Deleting", fmt.Sprintf("Migration deleted: %s", req.NamespacedName))
+		r.GetRecorder().Event(migration, corev1.EventTypeWarning, "Deleting", fmt.Sprintf("Migration deleted: %s", req.NamespacedName))
 		return r.ManageSuccess(ctx, migration)
 	}
 
@@ -93,14 +93,14 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 		jobsAreEqual := jobsAreEqual(existingJob, newJob)
 
-		if existingJob.Status.Failed > 0 || !jobsAreEqual {
+		if hasFailed(existingJob) || !jobsAreEqual {
 			return r.submitMigrationJob(ctx, migration, newJob)
 		}
 
-		if existingJob.Status.Succeeded > 0 {
+		if hasSucceeded(existingJob) {
 			if jobsAreEqual {
 				logger.Info("Migration succeeded")
-				r.GetRecorder().Event(migration, v12.EventTypeNormal, "Succeeded", fmt.Sprintf("Migration Succeeded: %s", req.NamespacedName))
+				r.GetRecorder().Event(migration, corev1.EventTypeNormal, "Succeeded", fmt.Sprintf("Migration Succeeded: %s", req.NamespacedName))
 				return r.ManageSuccess(ctx, migration)
 			} else { // migration has changed - submit new job
 				return r.submitMigrationJob(ctx, migration, newJob)
@@ -158,16 +158,16 @@ func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flyw
 		},
 		Spec: batchv1.JobSpec{
 			BackoffLimit: pointer.Int32(2),
-			Template: v12.PodTemplateSpec{
-				Spec: v12.PodSpec{
-					InitContainers: []v12.Container{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					InitContainers: []corev1.Container{
 						{
 							Name:            "copy-sql",
 							Image:           migration.Spec.Migration.ImageRef,
-							ImagePullPolicy: v12.PullAlways,
+							ImagePullPolicy: corev1.PullAlways,
 							Command:         []string{"sh", "-c"},
 							Args:            []string{fmt.Sprintf("cd %s && cp -rp * %s", migration.Spec.Migration.SqlPath, targetPath)},
-							VolumeMounts: []v12.VolumeMount{
+							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      sqlVolumeName,
 									MountPath: targetPath,
@@ -175,20 +175,20 @@ func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flyw
 							},
 						},
 					},
-					Containers: []v12.Container{
+					Containers: []corev1.Container{
 						{
 							Name:            "flyway",
 							Image:           env.GetDefault(envNameFlywayImage, defaultFlywayImage),
-							ImagePullPolicy: v12.PullAlways,
+							ImagePullPolicy: corev1.PullAlways,
 							Args:            []string{"info", "migrate", "info"},
-							Env: []v12.EnvVar{
+							Env: []corev1.EnvVar{
 								{
 									Name:  "FLYWAY_USER",
 									Value: migration.Spec.Database.Username,
 								},
 								{
 									Name: "FLYWAY_PASSWORD",
-									ValueFrom: &v12.EnvVarSource{
+									ValueFrom: &corev1.EnvVarSource{
 										SecretKeyRef: &(migration.Spec.Database).Credentials,
 									},
 								},
@@ -197,7 +197,7 @@ func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flyw
 									Value: migration.Spec.Database.JdbcUrl,
 								},
 							},
-							VolumeMounts: []v12.VolumeMount{
+							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      sqlVolumeName,
 									MountPath: "/flyway/sql",
@@ -205,15 +205,15 @@ func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flyw
 							},
 						},
 					},
-					Volumes: []v12.Volume{
+					Volumes: []corev1.Volume{
 						{
 							Name: sqlVolumeName,
-							VolumeSource: v12.VolumeSource{
-								EmptyDir: &v12.EmptyDirVolumeSource{},
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{},
 							},
 						},
 					},
-					RestartPolicy: v12.RestartPolicyNever,
+					RestartPolicy: corev1.RestartPolicyNever,
 				},
 			},
 		},
