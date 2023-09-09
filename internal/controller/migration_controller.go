@@ -153,9 +153,13 @@ func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flyw
 			APIVersion: batchv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        migration.Name,
-			Namespace:   migration.Namespace,
-			Annotations: make(map[string]string),
+			Name:      migration.Name,
+			Namespace: migration.Namespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by": "flyway-operator",
+				"app.kubernetes.io/name":       "flyway",
+				"app.kubernetes.io/instance":   migration.Name,
+			},
 		},
 		Spec: batchv1.JobSpec{
 			BackoffLimit: pointer.Int32(2),
