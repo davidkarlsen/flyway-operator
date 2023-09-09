@@ -8,7 +8,7 @@ import (
 
 func jobsAreEqual(first *batchv1.Job, second *batchv1.Job) bool {
 	return first != nil && second != nil &&
-		eq.Semantic.DeepEqual(first.Spec.Template.Spec, second.Spec.Template.Spec)
+		eq.Semantic.DeepEqual(first.Spec.Template.Spec.InitContainers, second.Spec.Template.Spec.InitContainers)
 }
 
 // from https://github.com/kubernetes/kubernetes/blob/v1.28.1/pkg/controller/job/utils.go
