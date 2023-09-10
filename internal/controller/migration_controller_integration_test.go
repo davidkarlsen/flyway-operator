@@ -3,22 +3,23 @@ package controller
 import (
 	"context"
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
-	"github.com/onsi/ginkgo/v2"
-	"github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
 
-var _ = ginkgo.Describe("Migration controller", func() {
+var _ = Describe("Migration controller", func() {
 
 	const (
 		namespace = "default"
 		name      = "test"
 	)
 
-	ginkgo.Context("When creating a migration", func() {
-		ginkgo.It("Should create a job", func() {
+	Context("When creating a migration", func() {
+		It("Should create a job", func() {
 			ginkgo.By("By creating a new migration")
 			ctx := context.Background()
 			migration := &flywayv1alpha1.Migration{
@@ -46,11 +47,11 @@ var _ = ginkgo.Describe("Migration controller", func() {
 
 			createdMigration := &flywayv1alpha1.Migration{}
 
-			gomega.Expect(k8sClient.Create(ctx, migration)).Should(gomega.Succeed())
-			gomega.Eventually(func() bool {
+			Expect(k8sClient.Create(ctx, migration)).Should(Succeed())
+			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{Namespace: migration.Namespace, Name: migration.Name}, createdMigration)
 				return err == nil
-			}).Should(gomega.BeTrue())
+			}).Should(BeTrue())
 		})
 	})
 })
