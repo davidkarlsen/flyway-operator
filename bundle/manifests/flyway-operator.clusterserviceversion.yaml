@@ -35,10 +35,10 @@ metadata:
       ]
     capabilities: Basic Install
     categories: Database,Developer Tools
-    createdAt: "2023-09-09T16:22:08Z"
+    createdAt: "2023-09-10T21:49:07Z"
     operators.operatorframework.io/builder: operator-sdk-v1.31.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4-alpha
-  name: flyway-operator.v0.0.6
+  name: flyway-operator.v0.0.9
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -185,7 +185,7 @@ spec:
                 - --leader-elect
                 command:
                 - /manager
-                image: ghcr.io/davidkarlsen/flyway-operator:0.0.6
+                image: ghcr.io/davidkarlsen/flyway-operator:0.0.9
                 livenessProbe:
                   httpGet:
                     path: /healthz
@@ -275,4 +275,4 @@ spec:
   provider:
     name: David J. M. Karlsen
     url: https://github.com/davidkarlsen/
-  version: 0.0.6
+  version: 0.0.9
