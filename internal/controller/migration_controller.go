@@ -61,6 +61,7 @@ type MigrationReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
 func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	// nolint:staticcheck // SA1029 ignore this!
 	ctx = context.WithValue(ctx, clientContextKey, r.GetClient())
 	logger := log.FromContext(ctx).WithValues("migration", req.NamespacedName)
 
