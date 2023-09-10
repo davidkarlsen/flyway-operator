@@ -2,6 +2,15 @@
 [Kubernetes-operator](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/) to apply [Flyway migrations](https://flywaydb.org/).
 
 
+## Badges
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/davidkarlsen/flyway-operator)
+[![Go Report Card](https://goreportcard.com/badge/github.com/davidkarlsen/flyway-operator)](https://goreportcard.com/report/github.com/davidkarlsen/flyway-operator)
+![build](https://github.com/davidkarlsen/flyway-operator/workflows/build/badge.svg?branch=main)
+[![codecov](https://codecov.io/gh/davidkarlsen/flyway-operator/branch/main/graph/badge.svg)](https://codecov.io/gh/davidkarlsen/flyway-operator)
+![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/davidkarlsen/flyway-operator?sort=semver)
+[![Stargazers over time](https://starchart.cc/davidkarlsen/flyway-operator.svg)](https://starchart.cc/davidkarlsen/flyway-operator)
+
+
 ## Description
 The operator will spawn [Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/job/) using the
 [flyway-docker image](https://hub.docker.com/r/flyway/flyway).
