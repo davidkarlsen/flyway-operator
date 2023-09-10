@@ -46,6 +46,7 @@ type Migration struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
+	// +kubebuilder:validation:Required
 	Spec   MigrationSpec   `json:"spec,omitempty"`
 	Status MigrationStatus `json:"status,omitempty"`
 }
@@ -66,9 +67,11 @@ type Database struct {
 	// username for connecting to database
 	// +kubebuilder:validation:Required
 	Username string `json:"username"`
+
 	// reference to a secret containing the password for connecting to database
 	// +kubebuilder:validation:Required
 	Credentials v1.SecretKeySelector `json:"credentials"`
+
 	// the jdbcUrl to connect to database
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Pattern=`^jdbc:.*`
@@ -87,6 +90,10 @@ type MigrationSource struct {
 	// Reference to the image holding the SQLs to migrate
 	// +kubebuilder:validation:Required
 	ImageRef string `json:"imageRef"`
+
+	// Optional. Image-pull secret to pull the migration source
+	// +kubebuilder:validation:Optional
+	ImagePullSecrets []v1.LocalObjectReference `json:"ImagePullSecret"`
 
 	// Path within the image to the SQLs for flyway
 	// +kubebuilder:default="/sql"

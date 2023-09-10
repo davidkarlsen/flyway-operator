@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/caitlinelfring/go-env-default"
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
@@ -113,6 +114,16 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	err = fmt.Errorf("this is a bug and should not happen")
 	return r.ManageError(ctx, migration, err)
+}
+
+// IsValid does validation of the CR
+func (r *MigrationReconciler) IsValid(obj metav1.Object) (bool, error) {
+	_, ok := obj.(*flywayv1alpha1.Migration)
+	if !ok {
+		return false, errors.New("failed cast")
+	}
+
+	return ok, nil
 }
 
 func (r *MigrationReconciler) getExistingJob(ctx context.Context, migration *flywayv1alpha1.Migration) (*batchv1.Job, error) {
@@ -220,7 +231,8 @@ func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flyw
 							},
 						},
 					},
-					RestartPolicy: corev1.RestartPolicyNever,
+					ImagePullSecrets: migration.Spec.MigrationSource.ImagePullSecrets,
+					RestartPolicy:    corev1.RestartPolicyNever,
 				},
 			},
 		},
