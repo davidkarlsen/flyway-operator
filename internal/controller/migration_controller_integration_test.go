@@ -61,9 +61,7 @@ var _ = Describe("Migration controller", func() {
 
 				job := &batchv1.Job{}
 				err = k8sClient.Get(ctx, objectKey, job)
-
-				// TODO: fix
-				// g.Expect(err).To(BeNil())
+				g.Expect(err).To(BeNil())
 
 			}, timeout, interval).Should(Succeed())
 		})
