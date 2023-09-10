@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"fmt"
+	"github.com/samber/lo"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -98,6 +100,19 @@ type MigrationSource struct {
 	// Path within the image to the SQLs for flyway
 	// +kubebuilder:default="/sql"
 	SqlPath string `json:"path"`
+
+	// Flyway placeholders, see: https://documentation.red-gate.com/fd/placeholders-configuration-184127475.html
+	// These will be injected as env-vars with the required prefix.
+	Placeholders map[string]string `json:"placeholders"`
+}
+
+func (r *MigrationSource) GetPlaceholdersAsEnvVars() []v1.EnvVar {
+	return lo.MapToSlice(r.Placeholders, func(key string, value string) v1.EnvVar {
+		return v1.EnvVar{
+			Name:  fmt.Sprintf("FLYWAY_PLACEHOLDERS_%s", key),
+			Value: value,
+		}
+	})
 }
 
 //+kubebuilder:object:root=true

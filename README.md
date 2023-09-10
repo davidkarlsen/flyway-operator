@@ -12,7 +12,6 @@ It still an early project and I want to further develop some day-2 elements:
 * extract logs from run, and attach to `Status` field of CR
 * extract facts about migrated version and attach to `Status` field
 * support more advanced migrations, using
-  * placeholders
   * java-migrations
 
 ## Getting Started
