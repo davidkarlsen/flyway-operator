@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/caitlinelfring/go-env-default"
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	"github.com/redhat-cop/operator-utils/pkg/util"
 	"github.com/redhat-cop/operator-utils/pkg/util/crud"
@@ -29,7 +28,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -88,7 +86,7 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.ManageError(ctx, migration, err)
 	}
 
-	newJob := r.createJobSpec(ctx, migration)
+	newJob := createJobSpec(migration)
 
 	if existingJob == nil { // no existing job - so submit one now
 		return r.submitMigrationJob(ctx, migration, newJob)
@@ -158,92 +156,6 @@ func (r *MigrationReconciler) submitMigrationJob(ctx context.Context, migration 
 	}
 
 	return r.ManageSuccess(ctx, migration)
-}
-
-func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flywayv1alpha1.Migration) *batchv1.Job {
-	const targetPath = "/mnt/target/"
-	envVars := []corev1.EnvVar{
-		{
-			Name:  "FLYWAY_USER",
-			Value: migration.Spec.Database.Username,
-		},
-		{
-			Name: "FLYWAY_PASSWORD",
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &(migration.Spec.Database).Credentials,
-			},
-		},
-		{
-			Name:  "FLYWAY_URL",
-			Value: migration.Spec.Database.JdbcUrl,
-		},
-	}
-	envVars = append(envVars, migration.Spec.MigrationSource.GetPlaceholdersAsEnvVars()...)
-
-	job := &batchv1.Job{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Job",
-			APIVersion: batchv1.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      migration.Name,
-			Namespace: migration.Namespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "flyway-operator",
-				"app.kubernetes.io/name":       "flyway",
-				"app.kubernetes.io/instance":   migration.Name,
-			},
-		},
-		Spec: batchv1.JobSpec{
-			BackoffLimit: pointer.Int32(2),
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					InitContainers: []corev1.Container{
-						{
-							Name:            "copy-sql",
-							Image:           migration.Spec.MigrationSource.ImageRef,
-							ImagePullPolicy: corev1.PullAlways,
-							Command:         []string{"sh", "-c"},
-							Args:            []string{fmt.Sprintf("cd %s && cp -rp * %s", migration.Spec.MigrationSource.SqlPath, targetPath)},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      sqlVolumeName,
-									MountPath: targetPath,
-								},
-							},
-						},
-					},
-					Containers: []corev1.Container{
-						{
-							Name:            "flyway",
-							Image:           env.GetDefault(envNameFlywayImage, defaultFlywayImage),
-							ImagePullPolicy: corev1.PullAlways,
-							Args:            []string{"info", "migrate", "info"},
-							Env:             envVars,
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      sqlVolumeName,
-									MountPath: "/flyway/sql",
-								},
-							},
-						},
-					},
-					Volumes: []corev1.Volume{
-						{
-							Name: sqlVolumeName,
-							VolumeSource: corev1.VolumeSource{
-								EmptyDir: &corev1.EmptyDirVolumeSource{},
-							},
-						},
-					},
-					ImagePullSecrets: migration.Spec.MigrationSource.ImagePullSecrets,
-					RestartPolicy:    corev1.RestartPolicyNever,
-				},
-			},
-		},
-	}
-
-	return job
 }
 
 // SetupWithManager sets up the controller with the Manager.

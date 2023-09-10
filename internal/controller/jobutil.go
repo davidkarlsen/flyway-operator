@@ -1,9 +1,14 @@
 package controller
 
 import (
+	"fmt"
+	"github.com/caitlinelfring/go-env-default"
+	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	eq "k8s.io/apimachinery/pkg/api/equality"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
 )
 
 func jobsAreEqual(first *batchv1.Job, second *batchv1.Job) bool {
@@ -29,4 +34,90 @@ func hasFailed(job *batchv1.Job) bool {
 
 func hasSucceeded(job *batchv1.Job) bool {
 	return job.Status.Succeeded > 0
+}
+
+func createJobSpec(migration *flywayv1alpha1.Migration) *batchv1.Job {
+	const targetPath = "/mnt/target/"
+	envVars := []corev1.EnvVar{
+		{
+			Name:  "FLYWAY_USER",
+			Value: migration.Spec.Database.Username,
+		},
+		{
+			Name: "FLYWAY_PASSWORD",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &(migration.Spec.Database).Credentials,
+			},
+		},
+		{
+			Name:  "FLYWAY_URL",
+			Value: migration.Spec.Database.JdbcUrl,
+		},
+	}
+	envVars = append(envVars, migration.Spec.MigrationSource.GetPlaceholdersAsEnvVars()...)
+
+	job := &batchv1.Job{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Job",
+			APIVersion: batchv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      migration.Name,
+			Namespace: migration.Namespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by": "flyway-operator",
+				"app.kubernetes.io/name":       "flyway",
+				"app.kubernetes.io/instance":   migration.Name,
+			},
+		},
+		Spec: batchv1.JobSpec{
+			BackoffLimit: pointer.Int32(2),
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					InitContainers: []corev1.Container{
+						{
+							Name:            "copy-sql",
+							Image:           migration.Spec.MigrationSource.ImageRef,
+							ImagePullPolicy: corev1.PullAlways,
+							Command:         []string{"sh", "-c"},
+							Args:            []string{fmt.Sprintf("cd %s && cp -rp * %s", migration.Spec.MigrationSource.SqlPath, targetPath)},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      sqlVolumeName,
+									MountPath: targetPath,
+								},
+							},
+						},
+					},
+					Containers: []corev1.Container{
+						{
+							Name:            "flyway",
+							Image:           env.GetDefault(envNameFlywayImage, defaultFlywayImage),
+							ImagePullPolicy: corev1.PullAlways,
+							Args:            []string{"info", "migrate", "info"},
+							Env:             envVars,
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      sqlVolumeName,
+									MountPath: "/flyway/sql",
+								},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name: sqlVolumeName,
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{},
+							},
+						},
+					},
+					ImagePullSecrets: migration.Spec.MigrationSource.ImagePullSecrets,
+					RestartPolicy:    corev1.RestartPolicyNever,
+				},
+			},
+		},
+	}
+
+	return job
 }
