@@ -3,12 +3,12 @@ package controller
 import (
 	"context"
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
-	"github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"time"
 )
 
 var _ = Describe("Migration controller", func() {
@@ -16,11 +16,14 @@ var _ = Describe("Migration controller", func() {
 	const (
 		namespace = "default"
 		name      = "test"
+
+		timeout  = time.Second * 10
+		interval = time.Millisecond * 250
 	)
 
 	Context("When creating a migration", func() {
 		It("Should create a job", func() {
-			ginkgo.By("By creating a new migration")
+			By("By creating a new migration")
 			ctx := context.Background()
 			migration := &flywayv1alpha1.Migration{
 				TypeMeta: metav1.TypeMeta{
@@ -45,13 +48,25 @@ var _ = Describe("Migration controller", func() {
 				},
 			}
 
-			createdMigration := &flywayv1alpha1.Migration{}
-
 			Expect(k8sClient.Create(ctx, migration)).Should(Succeed())
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, types.NamespacedName{Namespace: migration.Namespace, Name: migration.Name}, createdMigration)
-				return err == nil
-			}).Should(BeTrue())
+				createdMigration := &flywayv1alpha1.Migration{}
+				objectKey := types.NamespacedName{Namespace: migration.Namespace, Name: migration.Name}
+				err := k8sClient.Get(ctx, objectKey, createdMigration)
+				if err != nil {
+					return false
+				}
+				/*
+					job := &batchv1.Job{}
+					err = k8sClient.Get(ctx, objectKey, job)
+					if err != nil {
+						return false
+					}
+
+					//TODO: asserts
+				*/
+				return true
+			}, timeout, interval).Should(BeTrue())
 		})
 	})
 })
