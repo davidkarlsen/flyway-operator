@@ -48,7 +48,7 @@ var _ = ginkgo.Describe("Migration controller", func() {
 
 			gomega.Expect(k8sClient.Create(ctx, migration)).Should(gomega.Succeed())
 			gomega.Eventually(func() bool {
-				err := k8sClient.Get(ctx, types.NamespacedName{migration.Namespace, migration.Name}, createdMigration)
+				err := k8sClient.Get(ctx, types.NamespacedName{Namespace: migration.Namespace, Name: migration.Name}, createdMigration)
 				return err == nil
 			}).Should(gomega.BeTrue())
 		})

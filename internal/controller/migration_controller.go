@@ -40,6 +40,8 @@ const (
 	sqlVolumeName      = "sql"
 	defaultFlywayImage = "ghcr.io/davidkarlsen/flyway-db2:9.22"
 	envNameFlywayImage = "FLYWAY_IMAGE"
+
+	clientContextKey = "client"
 )
 
 // MigrationReconciler reconciles a Migration object
@@ -59,7 +61,7 @@ type MigrationReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
 func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	ctx = context.WithValue(ctx, "client", r.GetClient())
+	ctx = context.WithValue(ctx, clientContextKey, r.GetClient())
 	logger := log.FromContext(ctx).WithValues("migration", req.NamespacedName)
 
 	migration := &flywayv1alpha1.Migration{}
