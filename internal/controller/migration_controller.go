@@ -33,7 +33,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"time"
 )
 
 const (
@@ -92,7 +91,7 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	} else {
 		if !isJobFinished(existingJob) {
 			logger.Info("Job still running, returning for reconcile", "job", existingJob)
-			return r.ManageSuccessWithRequeue(ctx, migration, 3*time.Second)
+			return r.ManageSuccess(ctx, migration)
 		}
 
 		jobsAreEqual := jobsAreEqual(existingJob, newJob)
