@@ -28,6 +28,11 @@ jobs:
           echo "GIT_VERSION=$(git describe --tag --always)" >> $GITHUB_ENV
           echo "VERSION=$(git describe --tag --always | sed s/^v//)" >> $GITHUB_ENV
 
+      - name: setup go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: 'go.mod'
+
       - name: golangci-lint
         uses: reviewdog/action-golangci-lint@v2
         with:
