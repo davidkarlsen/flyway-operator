@@ -103,6 +103,7 @@ type MigrationSource struct {
 
 	// Flyway placeholders, see: https://documentation.red-gate.com/fd/placeholders-configuration-184127475.html
 	// These will be injected as env-vars with the required prefix.
+	// +kubebuilder:validation:Optional
 	Placeholders map[string]string `json:"placeholders"`
 }
 
