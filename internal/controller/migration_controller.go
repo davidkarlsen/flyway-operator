@@ -162,6 +162,23 @@ func (r *MigrationReconciler) submitMigrationJob(ctx context.Context, migration 
 
 func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flywayv1alpha1.Migration) *batchv1.Job {
 	const targetPath = "/mnt/target/"
+	envVars := []corev1.EnvVar{
+		{
+			Name:  "FLYWAY_USER",
+			Value: migration.Spec.Database.Username,
+		},
+		{
+			Name: "FLYWAY_PASSWORD",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &(migration.Spec.Database).Credentials,
+			},
+		},
+		{
+			Name:  "FLYWAY_URL",
+			Value: migration.Spec.Database.JdbcUrl,
+		},
+	}
+	envVars = append(envVars, migration.Spec.MigrationSource.GetPlaceholdersAsEnvVars()...)
 
 	job := &batchv1.Job{
 		TypeMeta: metav1.TypeMeta{
@@ -202,22 +219,7 @@ func (r *MigrationReconciler) createJobSpec(ctx context.Context, migration *flyw
 							Image:           env.GetDefault(envNameFlywayImage, defaultFlywayImage),
 							ImagePullPolicy: corev1.PullAlways,
 							Args:            []string{"info", "migrate", "info"},
-							Env: []corev1.EnvVar{
-								{
-									Name:  "FLYWAY_USER",
-									Value: migration.Spec.Database.Username,
-								},
-								{
-									Name: "FLYWAY_PASSWORD",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &(migration.Spec.Database).Credentials,
-									},
-								},
-								{
-									Name:  "FLYWAY_URL",
-									Value: migration.Spec.Database.JdbcUrl,
-								},
-							},
+							Env:             envVars,
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      sqlVolumeName,
