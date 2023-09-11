@@ -17,11 +17,7 @@ The operator will spawn [Jobs](https://kubernetes.io/docs/concepts/workloads/con
 
 See `config/samples` for example CRs.
 
-It still an early project and I want to further develop some day-2 elements:
-* extract logs from run, and attach to `Status` field of CR
-* extract facts about migrated version and attach to `Status` field
-* support more advanced migrations, using
-  * java-migrations
+It is still an early project and I want to further develop some day-2 elements as described in the [backlog](https://github.com/davidkarlsen/flyway-operator/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement).
 
 ## Getting Started
 You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
