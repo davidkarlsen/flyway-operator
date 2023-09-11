@@ -94,7 +94,7 @@ func createJobSpec(migration *flywayv1alpha1.Migration) *batchv1.Job {
 							Name:            "flyway",
 							Image:           env.GetDefault(envNameFlywayImage, defaultFlywayImage),
 							ImagePullPolicy: corev1.PullAlways,
-							Args:            []string{"info", "migrate", "info"},
+							Args:            []string{"info", "migrate", "info", "-outputType=json"},
 							Env:             envVars,
 							VolumeMounts: []corev1.VolumeMount{
 								{
