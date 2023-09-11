@@ -53,6 +53,10 @@ func createJobSpec(migration *flywayv1alpha1.Migration) *batchv1.Job {
 			Name:  "FLYWAY_URL",
 			Value: migration.Spec.Database.JdbcUrl,
 		},
+		{
+			Name:  "FLYWAY_ENCODING",
+			Value: migration.Spec.MigrationSource.Encoding,
+		},
 	}
 	envVars = append(envVars, migration.Spec.MigrationSource.GetPlaceholdersAsEnvVars()...)
 

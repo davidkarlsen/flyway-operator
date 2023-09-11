@@ -101,6 +101,10 @@ type MigrationSource struct {
 	// +kubebuilder:default="/sql"
 	SqlPath string `json:"path"`
 
+	// The encoding of the SQL-files.
+	// +kubebuilder:default="UTF-8"
+	Encoding string `json:"encoding"`
+
 	// Flyway placeholders, see: https://documentation.red-gate.com/fd/placeholders-configuration-184127475.html
 	// These will be injected as env-vars with the required prefix.
 	// +kubebuilder:validation:Optional
