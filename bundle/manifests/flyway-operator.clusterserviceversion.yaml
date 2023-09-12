@@ -41,7 +41,6 @@ metadata:
   name: flyway-operator.v0.0.9
   namespace: placeholder
 spec:
-  replaces: flyway-operator.v0.0.9
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
