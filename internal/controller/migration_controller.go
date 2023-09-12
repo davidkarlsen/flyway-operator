@@ -104,7 +104,8 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if hasSucceeded(existingJob) {
 			if jobsAreEqual {
 				logger.Info("Migration succeeded")
-				r.GetRecorder().Event(migration, corev1.EventTypeNormal, "Succeeded", fmt.Sprintf("Migration Succeeded: %s", req.NamespacedName))
+				r.GetRecorder().Event(migration, corev1.EventTypeNormal, "Succeeded",
+					fmt.Sprintf("Migration Succeeded: %s, source: %s", req.NamespacedName, migration.Spec.MigrationSource.ImageRef))
 				return r.ManageSuccess(ctx, migration)
 			} else { // migration has changed - submit new job
 				return r.submitMigrationJob(ctx, migration, newJob)
