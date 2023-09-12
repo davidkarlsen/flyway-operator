@@ -47,7 +47,7 @@ spec:
   - email: david@davidkarlsen.com
     name: davidkarlsen
   maturity: alpha
-  minKubeVersion: v1.20
+  minKubeVersion: 1.20.0
   provider:
     name: David J. M. Karlsen
     url: https://github.com/davidkarlsen/
