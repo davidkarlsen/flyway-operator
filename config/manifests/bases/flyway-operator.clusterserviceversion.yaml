@@ -9,7 +9,6 @@ metadata:
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
-  minKubeVersion: v1.20
   customresourcedefinitions:
     owned:
     - description: Migration is the Schema for the migrations API
@@ -48,6 +47,7 @@ spec:
   - email: david@davidkarlsen.com
     name: davidkarlsen
   maturity: alpha
+  minKubeVersion: v1.20
   provider:
     name: David J. M. Karlsen
     url: https://github.com/davidkarlsen/
