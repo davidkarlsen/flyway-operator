@@ -64,6 +64,9 @@ jobs:
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
         run: |
           make catalog-build catalog-push VERSION=${{ env.VERSION }}
+          # re-tag as alpha, so that we can stick to a single channel
+          docker tag ghcr.io/davidkarlsen/flyway-operator-catalog:${{ env.VERSION }} ghcr.io/davidkarlsen/flyway-operator-catalog:alpha
+          docker push ghcr.io/davidkarlsen/flyway-operator-catalog:alpha
 
       - name: createRelease
         if: startsWith(github.ref, 'refs/tags/v')
