@@ -65,9 +65,10 @@ jobs:
         run: |
           export CATALOG_BASE_IMG=ghcr.io/davidkarlsen/flyway-operator-catalog:alpha
           make catalog-build catalog-push VERSION=${{ env.VERSION }} CATALOG_BASE_IMG=${CATALOG_BASE_IMG}
+
           # re-tag as alpha, so that we can stick to a single channel
-          docker pull ghcr.io/davidkarlsen/flyway-operator-catalog:${{ env.VERSION }}
-          docker tag ghcr.io/davidkarlsen/flyway-operator-catalog:${{ env.VERSION }} ${CATALOG_BASE_IMG}
+          echo re-tagging
+          docker tag ghcr.io/davidkarlsen/flyway-operator-catalog:${{ env.GIT_VERSION }} ${CATALOG_BASE_IMG}
           docker push ${CATALOG_BASE_IMG}
 
       - name: createRelease
