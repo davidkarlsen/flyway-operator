@@ -1,6 +1,7 @@
 module github.com/davidkarlsen/flyway-operator
 
-go 1.21
+// https://github.com/golang/go/issues/62278
+go 1.21.0
 
 require (
 	github.com/caitlinelfring/go-env-default v1.1.0
