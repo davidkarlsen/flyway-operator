@@ -2,12 +2,18 @@ package controller
 
 import (
 	"fmt"
+	"github.com/caitlinelfring/go-env-default"
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	eq "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
+)
+
+const (
+	defaultFlywayImage = "docker.io/flyway/flyway:9"
+	envNameFlywayImage = "FLYWAY_IMAGE"
 )
 
 func jobsAreEqual(first *batchv1.Job, second *batchv1.Job) bool {
@@ -33,6 +39,14 @@ func hasFailed(job *batchv1.Job) bool {
 
 func hasSucceeded(job *batchv1.Job) bool {
 	return job.Status.Succeeded > 0
+}
+
+func getFlywayImage(migration *flywayv1alpha1.Migration) string {
+	if len(migration.Spec.MigrationSource.FlywayImage) > 0 {
+		return migration.Spec.MigrationSource.FlywayImage
+	} else {
+		return env.GetDefault(envNameFlywayImage, defaultFlywayImage)
+	}
 }
 
 func createJobSpec(migration *flywayv1alpha1.Migration) *batchv1.Job {
@@ -95,7 +109,7 @@ func createJobSpec(migration *flywayv1alpha1.Migration) *batchv1.Job {
 					Containers: []corev1.Container{
 						{
 							Name:            "flyway",
-							Image:           migration.Spec.MigrationSource.FlywayImage,
+							Image:           getFlywayImage(migration),
 							ImagePullPolicy: corev1.PullAlways,
 							Args:            []string{"info", "migrate", "info", "-outputType=json"},
 							Env:             envVars,
