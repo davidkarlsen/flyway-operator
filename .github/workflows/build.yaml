@@ -3,12 +3,16 @@ name: build
 on:
   pull_request:
     branches:
-      - "*"
+    - "*"
+    paths-ignore:
+    - config/helm-chart/**
   push:
     branches:
-      - main
+    - main
     tags:
-      - "v*"
+    - "v*"
+    paths-ignore:
+    - config/helm-chart/**
 
 jobs:
   build:

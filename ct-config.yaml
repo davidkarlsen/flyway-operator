@@ -1,0 +1,7 @@
+remote: origin
+target-branch: main
+chart-dirs:
+- config/helm-chart
+chart-repos:
+- bitnami=https://charts.bitnami.com/bitnami
+- bitnami-pre2022=https://raw.githubusercontent.com/bitnami/charts/eb5f9a9513d987b519f0ecd732e7031241c50328/bitnami
