@@ -92,6 +92,7 @@ type MigrationSource struct {
 
 	// Reference to the flyway image to use.
 	// +kubebuilder:default="docker.io/flyway/flyway:9"
+	// +kubebuilder:validation:Optional
 	FlywayImage string `json:"flywayImage"`
 
 	// Reference to the image holding the SQLs to migrate
