@@ -35,10 +35,8 @@ import (
 )
 
 const (
-	sqlVolumeName      = "sql"
-	defaultFlywayImage = "ghcr.io/davidkarlsen/flyway-db2:9.22"
-	envNameFlywayImage = "FLYWAY_IMAGE"
-	clientContextKey   = "client"
+	sqlVolumeName    = "sql"
+	clientContextKey = "client"
 )
 
 // MigrationReconciler reconciles a Migration object
