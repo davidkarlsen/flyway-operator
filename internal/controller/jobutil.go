@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/caitlinelfring/go-env-default"
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
+	"github.com/samber/lo"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	eq "k8s.io/apimachinery/pkg/api/equality"
@@ -42,11 +43,8 @@ func hasSucceeded(job *batchv1.Job) bool {
 }
 
 func getFlywayImage(migration *flywayv1alpha1.Migration) string {
-	if len(migration.Spec.MigrationSource.FlywayImage) > 0 {
-		return migration.Spec.MigrationSource.FlywayImage
-	} else {
-		return env.GetDefault(envNameFlywayImage, defaultFlywayImage)
-	}
+	image, _ := lo.Coalesce(migration.Spec.MigrationSource.FlywayImage, env.GetDefault(envNameFlywayImage, defaultFlywayImage))
+	return image
 }
 
 func createJobSpec(migration *flywayv1alpha1.Migration) *batchv1.Job {
