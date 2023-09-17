@@ -91,7 +91,6 @@ spec:
                     description: The encoding of the SQL-files.
                     type: string
                   flywayImage:
-                    default: docker.io/flyway/flyway:9
                     description: Reference to the flyway image to use.
                     type: string
                   imageRef:
