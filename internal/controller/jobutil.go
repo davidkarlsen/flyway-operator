@@ -2,7 +2,6 @@ package controller
 
 import (
 	"fmt"
-	"github.com/caitlinelfring/go-env-default"
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -96,7 +95,7 @@ func createJobSpec(migration *flywayv1alpha1.Migration) *batchv1.Job {
 					Containers: []corev1.Container{
 						{
 							Name:            "flyway",
-							Image:           env.GetDefault(envNameFlywayImage, defaultFlywayImage),
+							Image:           migration.Spec.MigrationSource.FlywayImage,
 							ImagePullPolicy: corev1.PullAlways,
 							Args:            []string{"info", "migrate", "info", "-outputType=json"},
 							Env:             envVars,

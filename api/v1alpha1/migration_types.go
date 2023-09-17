@@ -89,6 +89,11 @@ func (r *Migration) GetCredentials() v1.SecretReference {
 
 // MigrationSource defines the source for the flyway-migrations.
 type MigrationSource struct {
+
+	// Reference to the flyway image to use.
+	// +kubebuilder:default="docker.io/flyway/flyway:9"
+	FlywayImage string `json:"flywayImage"`
+
 	// Reference to the image holding the SQLs to migrate
 	// +kubebuilder:validation:Required
 	ImageRef string `json:"imageRef"`
