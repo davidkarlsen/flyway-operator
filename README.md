@@ -56,11 +56,6 @@ UnDeploy the controller from the cluster:
 make undeploy
 ```
 
-## Contributing
-* Create issues - add as much info, such as logs, versions and CR-definitions to the issue
-* Create PRs including tests
-  * Make sure you run `make manifests fmt vet` prior to opening the PR
-
 ### How it works
 This project aims to follow the Kubernetes [Operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/).
 
