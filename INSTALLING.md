@@ -1,7 +1,7 @@
 # Installing
 
 There are various ways to install the operator, outlined below.
-
+After the operator is installed check out [how to use it](USING.md).
 
 
 ## From OLM
