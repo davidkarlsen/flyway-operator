@@ -29,8 +29,9 @@ jobs:
           fetch-depth: 0
       - name: createVersion
         run: |
-          echo "GIT_VERSION=$(git describe --tag --always)" >> $GITHUB_ENV
-          echo "VERSION=$(git describe --tag --always | sed s/^v//)" >> $GITHUB_ENV
+          GIT_VERSION=$(git describe --tag --always --match "v*")
+          echo "GIT_VERSION=${GIT_VERSION}" >> $GITHUB_ENV
+          echo "VERSION=$(echo ${GIT_VERSION} | sed s/^v//)" >> $GITHUB_ENV
 
       - name: setup go
         uses: actions/setup-go@v4
