@@ -5,7 +5,7 @@ go 1.21.1
 
 require (
 	github.com/caitlinelfring/go-env-default v1.1.0
-	github.com/gophercloud/gophercloud v1.6.0
+	github.com/gophercloud/gophercloud v1.7.0
 	github.com/onsi/ginkgo/v2 v2.12.1
 	github.com/onsi/gomega v1.27.10
 	github.com/redhat-cop/operator-utils v1.3.7
