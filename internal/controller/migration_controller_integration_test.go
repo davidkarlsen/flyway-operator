@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/pointer"
 	"time"
 )
 
@@ -45,6 +46,10 @@ var _ = Describe("Migration controller", func() {
 							Key: "someKey",
 						},
 						JdbcUrl: "jdbc:db2://somehost:50000/SOME_DB",
+					},
+					FlywayConfiguration: flywayv1alpha1.FlywayConfiguration{
+						Commands:      []string{"info"},
+						DefaultSchema: pointer.String("someSchema"),
 					},
 					MigrationSource: flywayv1alpha1.MigrationSource{
 						ImageRef: "ghcr.io/davidkarlsen/testmigration:latest",

@@ -72,12 +72,16 @@ spec:
               flywayConfiguration:
                 description: settings for flyway
                 properties:
+                  DefaultSchema:
+                    description: The default flyway schema to use. See https://documentation.red-gate.com/fd/default-schema-184127496.html
+                    type: string
                   commandLines:
                     default:
                     - info
                     - migrate
                     - info
-                    description: The flyway actions to apply
+                    description: The flyway actions to apply, like "info", "migrate"
+                      See https://documentation.red-gate.com/fd/commands-184127446.html
                     items:
                       type: string
                     type: array
