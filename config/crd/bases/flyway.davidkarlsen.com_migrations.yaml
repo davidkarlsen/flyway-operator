@@ -75,7 +75,7 @@ spec:
                   DefaultSchema:
                     description: The default flyway schema to use. See https://documentation.red-gate.com/fd/default-schema-184127496.html
                     type: string
-                  commandLines:
+                  commands:
                     default:
                     - info
                     - migrate
@@ -89,7 +89,7 @@ spec:
                     description: Reference to the flyway image to use.
                     type: string
                 required:
-                - commandLines
+                - commands
                 type: object
               migrationSource:
                 description: settings defining the SQL migrations

@@ -98,7 +98,7 @@ type FlywayConfiguration struct {
 	// The flyway actions to apply, like "info", "migrate"
 	// See https://documentation.red-gate.com/fd/commands-184127446.html
 	// +kubebuilder:default={"info", "migrate", "info"}
-	Commands []string `json:"commandLines"`
+	Commands []string `json:"commands"`
 
 	// The default flyway schema to use.
 	// See https://documentation.red-gate.com/fd/default-schema-184127496.html
