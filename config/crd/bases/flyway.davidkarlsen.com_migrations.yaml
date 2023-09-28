@@ -69,6 +69,24 @@ spec:
                 - jdbcUrl
                 - username
                 type: object
+              flywayConfiguration:
+                description: settings for flyway
+                properties:
+                  commandLines:
+                    default:
+                    - info
+                    - migrate
+                    - info
+                    description: The flyway actions to apply
+                    items:
+                      type: string
+                    type: array
+                  flywayImage:
+                    description: Reference to the flyway image to use.
+                    type: string
+                required:
+                - commandLines
+                type: object
               migrationSource:
                 description: settings defining the SQL migrations
                 properties:
@@ -90,9 +108,6 @@ spec:
                     default: UTF-8
                     description: The encoding of the SQL-files.
                     type: string
-                  flywayImage:
-                    description: Reference to the flyway image to use.
-                    type: string
                   imageRef:
                     description: Reference to the image holding the SQLs to migrate
                     type: string
@@ -113,6 +128,7 @@ spec:
                 type: object
             required:
             - database
+            - flywayConfiguration
             - migrationSource
             type: object
           status:

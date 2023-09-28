@@ -59,6 +59,9 @@ type MigrationSpec struct {
 	// +kubebuilder:validation:Required
 	Database Database `json:"database"`
 
+	// settings for flyway
+	FlywayConfiguration FlywayConfiguration `json:"flywayConfiguration"`
+
 	// settings defining the SQL migrations
 	// +kubebuilder:validation:Required
 	MigrationSource MigrationSource `json:"migrationSource"`
@@ -87,12 +90,18 @@ func (r *Migration) GetCredentials() v1.SecretReference {
 	}
 }
 
-// MigrationSource defines the source for the flyway-migrations.
-type MigrationSource struct {
-
+type FlywayConfiguration struct {
 	// Reference to the flyway image to use.
 	// +kubebuilder:validation:Optional
 	FlywayImage string `json:"flywayImage"`
+
+	// The flyway actions to apply, like "info", "migrate"
+	// +kubebuilder:default={"info", "migrate", "info"}
+	CommandLines []string `json:"commandLines"`
+}
+
+// MigrationSource defines the source for the flyway-migrations.
+type MigrationSource struct {
 
 	// Reference to the image holding the SQLs to migrate
 	// +kubebuilder:validation:Required

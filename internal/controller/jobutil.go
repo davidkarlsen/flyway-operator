@@ -43,8 +43,15 @@ func hasSucceeded(job *batchv1.Job) bool {
 }
 
 func getFlywayImage(migration *flywayv1alpha1.Migration) string {
-	image, _ := lo.Coalesce(migration.Spec.MigrationSource.FlywayImage, env.GetDefault(envNameFlywayImage, defaultFlywayImage))
+	image, _ := lo.Coalesce(migration.Spec.FlywayConfiguration.FlywayImage, env.GetDefault(envNameFlywayImage, defaultFlywayImage))
 	return image
+}
+
+func getFlywayArgs(migration *flywayv1alpha1.Migration) []string {
+	args := migration.Spec.FlywayConfiguration.CommandLines
+	args = append(args, "-outputType=json")
+
+	return args
 }
 
 func createJobSpec(migration *flywayv1alpha1.Migration) *batchv1.Job {
@@ -109,7 +116,7 @@ func createJobSpec(migration *flywayv1alpha1.Migration) *batchv1.Job {
 							Name:            "flyway",
 							Image:           getFlywayImage(migration),
 							ImagePullPolicy: corev1.PullAlways,
-							Args:            []string{"info", "migrate", "info", "-outputType=json"},
+							Args:            getFlywayArgs(migration),
 							Env:             envVars,
 							VolumeMounts: []corev1.VolumeMount{
 								{
