@@ -48,7 +48,7 @@ func getFlywayImage(migration *flywayv1alpha1.Migration) string {
 }
 
 func getFlywayArgs(migration *flywayv1alpha1.Migration) []string {
-	args := migration.Spec.FlywayConfiguration.CommandLines
+	args := migration.Spec.FlywayConfiguration.Commands
 	args = append(args, "-outputType=json")
 
 	return args
@@ -75,6 +75,13 @@ func createJobSpec(migration *flywayv1alpha1.Migration) *batchv1.Job {
 			Name:  "FLYWAY_ENCODING",
 			Value: migration.Spec.MigrationSource.Encoding,
 		},
+	}
+
+	if migration.Spec.FlywayConfiguration.DefaultSchema != nil {
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "FLYWAY_DEFAULT_SCHEMA",
+			Value: *migration.Spec.FlywayConfiguration.DefaultSchema,
+		})
 	}
 	envVars = append(envVars, migration.Spec.MigrationSource.GetPlaceholdersAsEnvVars()...)
 
