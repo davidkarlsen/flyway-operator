@@ -10,7 +10,7 @@ require (
 	github.com/redhat-cop/operator-utils v1.3.7
 	github.com/samber/lo v1.38.1
 	k8s.io/api v0.28.2
-	k8s.io/apimachinery v0.28.2
+	k8s.io/apimachinery v0.28.3
 	k8s.io/client-go v0.28.2
 	k8s.io/utils v0.0.0-20230406110748-d93618cff8a2
 	sigs.k8s.io/controller-runtime v0.15.2
