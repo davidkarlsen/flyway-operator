@@ -72,6 +72,9 @@ spec:
               flywayConfiguration:
                 description: settings for flyway
                 properties:
+                  baselineOnMigrate:
+                    description: Base-line on migrate. See https://documentation.red-gate.com/fd/baseline-on-migrate-224919695.html
+                    type: boolean
                   commands:
                     default:
                     - info

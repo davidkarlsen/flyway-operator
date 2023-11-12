@@ -2,6 +2,8 @@ package controller
 
 import (
 	"fmt"
+	"strconv"
+
 	"github.com/caitlinelfring/go-env-default"
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	"github.com/samber/lo"
@@ -75,6 +77,13 @@ func createJobSpec(migration *flywayv1alpha1.Migration) *batchv1.Job {
 			Name:  "FLYWAY_ENCODING",
 			Value: migration.Spec.MigrationSource.Encoding,
 		},
+	}
+
+	if migration.Spec.FlywayConfiguration.BaselineOnMigrate != nil {
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "FLYWAY_BASELINE_ON_MIGRATE",
+			Value: strconv.FormatBool(*migration.Spec.FlywayConfiguration.BaselineOnMigrate),
+		})
 	}
 
 	if migration.Spec.FlywayConfiguration.DefaultSchema != nil {
