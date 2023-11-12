@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	"fmt"
+
 	"github.com/samber/lo"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -103,7 +104,7 @@ type FlywayConfiguration struct {
 	// The default flyway schema to use.
 	// See https://documentation.red-gate.com/fd/default-schema-184127496.html
 	// +kubebuilder:validation:Optional
-	DefaultSchema *string `json:"DefaultSchema"`
+	DefaultSchema *string `json:"defaultSchema"`
 }
 
 // MigrationSource defines the source for the flyway-migrations.
