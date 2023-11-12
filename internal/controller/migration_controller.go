@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	"github.com/redhat-cop/operator-utils/pkg/util"
 	"github.com/redhat-cop/operator-utils/pkg/util/crud"
@@ -76,6 +77,11 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	valid, err := r.IsValid(migration)
 	if !valid || err != nil {
 		return r.ManageError(ctx, migration, err)
+	}
+
+	if migration.IsPaused() {
+		logger.Info("Migration is paused - not creating flyway migration job.")
+		return r.ManageSuccess(ctx, migration)
 	}
 
 	existingJob, err := r.getExistingJob(ctx, migration)
