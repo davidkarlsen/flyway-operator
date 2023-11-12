@@ -18,10 +18,16 @@ package v1alpha1
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/samber/lo"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+const (
+	prefix = "flyway-operator.davidkarlsen.com"
+	paused = prefix + "/" + "paused"
 )
 
 // MigrationStatus defines the observed state of Migration
@@ -39,6 +45,13 @@ func (m *Migration) GetConditions() []metav1.Condition {
 
 func (m *Migration) SetConditions(conditions []metav1.Condition) {
 	m.Status.Conditions = conditions
+}
+
+func (m *Migration) IsPaused() bool {
+	filtered := lo.PickBy(m.Annotations, func(key, value string) bool {
+		return key == paused && value == strconv.FormatBool(true)
+	})
+	return len(filtered) > 0
 }
 
 //+kubebuilder:object:root=true
