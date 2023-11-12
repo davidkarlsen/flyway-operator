@@ -72,9 +72,6 @@ spec:
               flywayConfiguration:
                 description: settings for flyway
                 properties:
-                  DefaultSchema:
-                    description: The default flyway schema to use. See https://documentation.red-gate.com/fd/default-schema-184127496.html
-                    type: string
                   commands:
                     default:
                     - info
@@ -85,6 +82,9 @@ spec:
                     items:
                       type: string
                     type: array
+                  defaultSchema:
+                    description: The default flyway schema to use. See https://documentation.red-gate.com/fd/default-schema-184127496.html
+                    type: string
                   flywayImage:
                     description: Reference to the flyway image to use.
                     type: string
