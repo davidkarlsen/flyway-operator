@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"testing"
+
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	"github.com/gophercloud/gophercloud/testhelper"
 	"github.com/redhat-cop/operator-utils/pkg/util"
@@ -11,9 +13,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"testing"
 )
 
 func TestGithubactionRunnerController(t *testing.T) {
@@ -26,6 +28,10 @@ func TestGithubactionRunnerController(t *testing.T) {
 			Namespace: namespace,
 		},
 		Spec: flywayv1alpha1.MigrationSpec{
+			FlywayConfiguration: flywayv1alpha1.FlywayConfiguration{
+				BaselineOnMigrate: pointer.Bool(true),
+				DefaultSchema:     pointer.String("someSchema"),
+			},
 			Database: flywayv1alpha1.Database{
 				Username:    "someUser",
 				Credentials: corev1.SecretKeySelector{},
