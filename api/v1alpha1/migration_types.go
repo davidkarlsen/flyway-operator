@@ -105,6 +105,11 @@ type FlywayConfiguration struct {
 	// See https://documentation.red-gate.com/fd/default-schema-184127496.html
 	// +kubebuilder:validation:Optional
 	DefaultSchema *string `json:"defaultSchema"`
+
+	// Base-line on migrate.
+	// See https://documentation.red-gate.com/fd/baseline-on-migrate-224919695.html
+	// +kubebuilder:validation:Optional
+	BaselineOnMigrate *bool `json:"baselineOnMigrate"`
 }
 
 // MigrationSource defines the source for the flyway-migrations.
