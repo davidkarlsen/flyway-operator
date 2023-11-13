@@ -123,6 +123,10 @@ type FlywayConfiguration struct {
 	// See https://documentation.red-gate.com/fd/baseline-on-migrate-224919695.html
 	// +kubebuilder:validation:Optional
 	BaselineOnMigrate *bool `json:"baselineOnMigrate"`
+
+	// Arbitrary entries to set as env-vars to Flyway migration job.
+	// +kubebuilder:validation:Optional
+	EnvVars []v1.EnvVar `json:"envVars"`
 }
 
 // MigrationSource defines the source for the flyway-migrations.
