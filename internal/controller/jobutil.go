@@ -92,6 +92,7 @@ func createJobSpec(migration *flywayv1alpha1.Migration) *batchv1.Job {
 			Value: *migration.Spec.FlywayConfiguration.DefaultSchema,
 		})
 	}
+	envVars = append(envVars, migration.Spec.FlywayConfiguration.EnvVars...)
 	envVars = append(envVars, migration.Spec.MigrationSource.GetPlaceholdersAsEnvVars()...)
 
 	job := &batchv1.Job{
