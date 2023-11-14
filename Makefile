@@ -266,7 +266,7 @@ CATALOG_IMG ?= $(IMAGE_TAG_BASE)-catalog:v$(VERSION)
 catalog-build: opm
 	yq -e '.Stable.Bundles += {"Image": "$(BUNDLE_IMG)" }' -i ./catalog-template.yaml
 	git commit -m"Bump catalog material" catalog-template.yaml
-	git push
+	git push origin HEAD:main
 	rm -rf catalog
 	mkdir catalog
 	opm alpha render-template semver -o yaml < catalog-template.yaml > catalog/catalog.yaml
