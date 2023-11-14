@@ -27,6 +27,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: fregante/setup-git-user@v2.0.1
       - name: createVersion
         run: |
           GIT_VERSION=$(git describe --tag --always --match "v*")
@@ -66,13 +67,13 @@ jobs:
           make bundle bundle-build bundle-push VERSION=${{ env.VERSION }}
 
       - name: catalog
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          export CATALOG_BASE_IMG=ghcr.io/davidkarlsen/flyway-operator-catalog:alpha
-          make catalog-build catalog-push VERSION=${{ env.VERSION }} CATALOG_BASE_IMG=${CATALOG_BASE_IMG}
+          make catalog-build catalog-push VERSION=${{ env.VERSION }}
 
           # re-tag as alpha, so that we can stick to a single channel
           echo re-tagging
+          export CATALOG_BASE_IMG=ghcr.io/davidkarlsen/flyway-operator-catalog:alpha
           docker tag ghcr.io/davidkarlsen/flyway-operator-catalog:${{ env.GIT_VERSION }} ${CATALOG_BASE_IMG}
           docker push ${CATALOG_BASE_IMG}
 

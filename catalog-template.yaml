@@ -1,0 +1,27 @@
+Schema: olm.semver
+GenerateMajorChannels: true
+GenerateMinorChannels: true
+Stable:
+  Bundles:
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.0.3
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.0.4
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.0.5
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.0.6
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.0.7
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.0.8
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.0.9
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.1.0
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.1.1
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.1.2
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.1.3
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.1.5
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.1.6
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.1.7
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.1.8
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.1.9
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.1.10
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.1.11
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.1.12
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.1.13
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.1.14
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.1.15
