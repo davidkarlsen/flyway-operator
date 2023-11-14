@@ -256,24 +256,32 @@ OPM = $(shell which opm)
 endif
 endif
 
+
+update-catalog-template:
+	yq -e '.Stable.Bundles += {"Image": "$(BUNDLE_IMG)" }' -i ./catalog-template.yaml
+	git commit -m"Bump catalog material" catalog-template.yaml
+	git push origin HEAD:main
+
 # The image tag given to the resulting catalog image (e.g. make catalog-build CATALOG_IMG=example.com/operator-catalog:v0.2.0).
 CATALOG_IMG ?= $(IMAGE_TAG_BASE)-catalog:v$(VERSION)
+CATALOG_VERSIONLESS = ghcr.io/davidkarlsen/flyway-operator-catalog:alpha
 
 # Build a catalog image by adding bundle images to an empty catalog using the operator package manager tool, 'opm'.
 # This recipe invokes 'opm' in 'semver' bundle add mode. For more information on add modes, see:
 # https://github.com/operator-framework/community-operators/blob/7f1438c/docs/packaging-operator.md#updating-your-existing-operator
 .PHONY: catalog-build
 catalog-build: opm
-	yq -e '.Stable.Bundles += {"Image": "$(BUNDLE_IMG)" }' -i ./catalog-template.yaml
-	git commit -m"Bump catalog material" catalog-template.yaml
-	git push origin HEAD:main
 	rm -rf catalog
 	mkdir catalog
-	opm alpha render-template semver -o yaml < catalog-template.yaml > catalog/catalog.yaml
-	opm validate catalog
+	$(OPM) alpha render-template semver -o yaml < catalog-template.yaml > catalog/catalog.yaml
+	$(OPM) validate catalog
 	docker build --platform=linux/amd64 -f Dockerfile.catalog -t $(CATALOG_IMG) .
 
 # Push the catalog image.
 .PHONY: catalog-push
 catalog-push: ## Push a catalog image.
 	$(MAKE) docker-push IMG=$(CATALOG_IMG)
+
+catalog-retag:
+	docker tag $(CATALOG_IMG) $(CATALOG_VERSIONLESS)
+	docker push $(CATALOG_VERSIONLESS)

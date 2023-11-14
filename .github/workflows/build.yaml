@@ -69,13 +69,11 @@ jobs:
       - name: catalog
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          make catalog-build catalog-push VERSION=${{ env.VERSION }}
+          make update-catalog-template catalog-build catalog-push VERSION=${{ env.VERSION }}
 
           # re-tag as alpha, so that we can stick to a single channel
           echo re-tagging
-          export CATALOG_BASE_IMG=ghcr.io/davidkarlsen/flyway-operator-catalog:alpha
-          docker tag ghcr.io/davidkarlsen/flyway-operator-catalog:${{ env.GIT_VERSION }} ${CATALOG_BASE_IMG}
-          docker push ${CATALOG_BASE_IMG}
+          make catalog-retag VERSION=${{ env.VERSION }}
 
       - name: createRelease
         if: startsWith(github.ref, 'refs/tags/v')
