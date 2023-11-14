@@ -9,10 +9,10 @@ namespace: flyway-operator-system
 namePrefix: flyway-operator-
 
 # Labels to add to all resources and selectors.
-#labels:
-#- includeSelectors: true
-#  pairs:
-#    someName: someValue
+labels:
+- includeSelectors: true
+  pairs:
+    app.kubernetes.io/part-of: flyway-operator
 
 resources:
 - ../crd
