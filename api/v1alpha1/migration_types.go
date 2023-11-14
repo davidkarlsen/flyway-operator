@@ -26,8 +26,9 @@ import (
 )
 
 const (
-	prefix = "flyway-operator.davidkarlsen.com"
-	paused = prefix + "/" + "paused"
+	Prefix     = "flyway-operator.davidkarlsen.com"
+	Generation = Prefix + "/" + "generation"
+	paused     = Prefix + "/" + "paused"
 )
 
 // MigrationStatus defines the observed state of Migration
@@ -52,6 +53,10 @@ func (m *Migration) IsPaused() bool {
 		return key == paused && value == strconv.FormatBool(true)
 	})
 	return len(filtered) > 0
+}
+
+func (m *Migration) GenerationAsString() string {
+	return strconv.Itoa(int(m.Generation))
 }
 
 //+kubebuilder:object:root=true
@@ -123,6 +128,10 @@ type FlywayConfiguration struct {
 	// See https://documentation.red-gate.com/fd/baseline-on-migrate-224919695.html
 	// +kubebuilder:validation:Optional
 	BaselineOnMigrate *bool `json:"baselineOnMigrate"`
+
+	// Arbitrary entries to set as env-vars to Flyway migration job.
+	// +kubebuilder:validation:Optional
+	EnvVars []v1.EnvVar `json:"envVars"`
 }
 
 // MigrationSource defines the source for the flyway-migrations.
