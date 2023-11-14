@@ -9,7 +9,6 @@ import (
 	"github.com/samber/lo"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	eq "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
 )
@@ -19,9 +18,8 @@ const (
 	envNameFlywayImage = "FLYWAY_IMAGE"
 )
 
-func jobsAreEqual(first *batchv1.Job, second *batchv1.Job) bool {
-	return first != nil && second != nil &&
-		eq.Semantic.DeepEqual(first.Spec.Template.Spec.InitContainers[0].Image, second.Spec.Template.Spec.InitContainers[0].Image)
+func jobIsCurrent(job *batchv1.Job, migration *flywayv1alpha1.Migration) bool {
+	return job.Annotations[flywayv1alpha1.Generation] == migration.GenerationAsString()
 }
 
 // from https://github.com/kubernetes/kubernetes/blob/v1.28.1/pkg/controller/job/utils.go
@@ -107,6 +105,9 @@ func createJobSpec(migration *flywayv1alpha1.Migration) *batchv1.Job {
 				"app.kubernetes.io/managed-by": "flyway-operator",
 				"app.kubernetes.io/name":       "flyway",
 				"app.kubernetes.io/instance":   migration.Name,
+			},
+			Annotations: map[string]string{
+				flywayv1alpha1.Generation: migration.GenerationAsString(),
 			},
 		},
 		Spec: batchv1.JobSpec{

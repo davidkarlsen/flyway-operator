@@ -99,14 +99,14 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return r.ManageSuccess(ctx, migration)
 		}
 
-		jobsAreEqual := jobsAreEqual(existingJob, newJob)
+		jobIsCurrent := jobIsCurrent(existingJob, migration)
 
-		if hasFailed(existingJob) || !jobsAreEqual {
+		if hasFailed(existingJob) || !jobIsCurrent {
 			return r.submitMigrationJob(ctx, migration, newJob)
 		}
 
 		if hasSucceeded(existingJob) {
-			if jobsAreEqual {
+			if jobIsCurrent {
 				logger.Info("Migration succeeded")
 				r.GetRecorder().Event(migration, corev1.EventTypeNormal, "Succeeded",
 					fmt.Sprintf("Migration Succeeded: %s, source: %s", req.NamespacedName, migration.Spec.MigrationSource.ImageRef))
