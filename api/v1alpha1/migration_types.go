@@ -26,8 +26,9 @@ import (
 )
 
 const (
-	prefix = "flyway-operator.davidkarlsen.com"
-	paused = prefix + "/" + "paused"
+	Prefix     = "flyway-operator.davidkarlsen.com"
+	Generation = Prefix + "/" + "generation"
+	paused     = Prefix + "/" + "paused"
 )
 
 // MigrationStatus defines the observed state of Migration
@@ -52,6 +53,10 @@ func (m *Migration) IsPaused() bool {
 		return key == paused && value == strconv.FormatBool(true)
 	})
 	return len(filtered) > 0
+}
+
+func (m *Migration) GenerationAsString() string {
+	return strconv.Itoa(int(m.Generation))
 }
 
 //+kubebuilder:object:root=true
