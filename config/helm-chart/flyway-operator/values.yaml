@@ -8,7 +8,7 @@ image:
   registry: ghcr.io
   repository: davidkarlsen/flyway-operator
   pullPolicy: IfNotPresent
-  tag: 0.1.6
+  tag: 0.2.2
 
 imagePullSecrets: []
 nameOverride: ""
