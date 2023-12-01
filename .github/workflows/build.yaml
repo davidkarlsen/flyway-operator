@@ -43,6 +43,7 @@ jobs:
         uses: reviewdog/action-golangci-lint@v2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          args: --timeout=10m
 
       - name: run tests
         run: |
