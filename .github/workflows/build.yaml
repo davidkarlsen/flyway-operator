@@ -35,7 +35,7 @@ jobs:
           echo "VERSION=$(echo ${GIT_VERSION} | sed s/^v//)" >> $GITHUB_ENV
 
       - name: setup go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
 
