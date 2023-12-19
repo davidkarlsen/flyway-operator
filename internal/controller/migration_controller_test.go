@@ -13,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -29,8 +29,8 @@ func TestGithubactionRunnerController(t *testing.T) {
 		},
 		Spec: flywayv1alpha1.MigrationSpec{
 			FlywayConfiguration: flywayv1alpha1.FlywayConfiguration{
-				BaselineOnMigrate: pointer.Bool(true),
-				DefaultSchema:     pointer.String("someSchema"),
+				BaselineOnMigrate: ptr.To(true),
+				DefaultSchema:     ptr.To("someSchema"),
 			},
 			Database: flywayv1alpha1.Database{
 				Username:    "someUser",

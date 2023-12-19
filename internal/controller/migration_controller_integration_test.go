@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"time"
+
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -9,8 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/pointer"
-	"time"
+	"k8s.io/utils/ptr"
 )
 
 var _ = Describe("Migration controller", func() {
@@ -49,7 +50,7 @@ var _ = Describe("Migration controller", func() {
 					},
 					FlywayConfiguration: flywayv1alpha1.FlywayConfiguration{
 						Commands:      []string{"info"},
-						DefaultSchema: pointer.String("someSchema"),
+						DefaultSchema: ptr.To("someSchema"),
 					},
 					MigrationSource: flywayv1alpha1.MigrationSource{
 						ImageRef: "ghcr.io/davidkarlsen/testmigration:latest",
