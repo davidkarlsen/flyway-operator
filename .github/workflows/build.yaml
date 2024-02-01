@@ -48,7 +48,7 @@ jobs:
         run: |
           make test
 
-      - uses: codecov/codecov-action@v3
+      - uses: codecov/codecov-action@v4
 
       - name: 'Login to GitHub Container Registry'
         uses: docker/login-action@v3.0.0
