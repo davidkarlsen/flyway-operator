@@ -3,8 +3,8 @@ name: flyway-operator
 description: Flyway Operator - an operator to do declarative database schema migration.
 type: application
 icon: https://pbs.twimg.com/profile_images/1339525060999192576/9ltj0fpE_400x400.png
-version: 0.2.0
-appVersion: 0.2.2
+version: 0.2.5
+appVersion: 0.2.5
 maintainers:
 - name: davidkarlsen
   email: david@davidkarlsen.com
