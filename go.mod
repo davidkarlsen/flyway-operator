@@ -4,7 +4,7 @@ go 1.22
 
 require (
 	github.com/caitlinelfring/go-env-default v1.1.0
-	github.com/gophercloud/gophercloud v1.10.0
+	github.com/gophercloud/gophercloud v1.11.0
 	github.com/onsi/ginkgo/v2 v2.16.0
 	github.com/onsi/gomega v1.31.1
 	github.com/redhat-cop/operator-utils v1.3.8
