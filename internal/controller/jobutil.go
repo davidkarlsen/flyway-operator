@@ -26,12 +26,9 @@ func jobIsCurrent(job *batchv1.Job, migration *flywayv1alpha1.Migration) bool {
 // IsJobFinished checks whether the given Job has finished execution.
 // It does not discriminate between successful and failed terminations.
 func isJobFinished(j *batchv1.Job) bool {
-	for _, c := range j.Status.Conditions {
-		if (c.Type == batchv1.JobComplete || c.Type == batchv1.JobFailed) && c.Status == corev1.ConditionTrue {
-			return true
-		}
-	}
-	return false
+	return lo.ContainsBy(j.Status.Conditions, func(condition batchv1.JobCondition) bool {
+		return (condition.Type == batchv1.JobComplete || condition.Type == batchv1.JobFailed) && condition.Status == corev1.ConditionTrue
+	})
 }
 
 func hasFailed(job *batchv1.Job) bool {
