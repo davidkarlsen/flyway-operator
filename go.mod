@@ -1,6 +1,6 @@
 module github.com/davidkarlsen/flyway-operator
 
-go 1.23.1
+go 1.23.2
 
 require (
 	github.com/caitlinelfring/go-env-default v1.1.0
