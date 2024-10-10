@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.13.0
+    controller-gen.kubebuilder.io/version: v0.16.1
   name: migrations.flyway.davidkarlsen.com
 spec:
   group: flyway.davidkarlsen.com
@@ -20,14 +20,19 @@ spec:
         description: Migration is the Schema for the migrations API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -46,8 +51,13 @@ spec:
                           a valid secret key.
                         type: string
                       name:
-                        description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                          TODO: Add other useful fields. apiVersion, kind, uid?'
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                         type: string
                       optional:
                         description: Specify whether the Secret or its key must be
@@ -73,20 +83,25 @@ spec:
                 description: settings for flyway
                 properties:
                   baselineOnMigrate:
-                    description: Base-line on migrate. See https://documentation.red-gate.com/fd/baseline-on-migrate-224919695.html
+                    description: |-
+                      Base-line on migrate.
+                      See https://documentation.red-gate.com/fd/baseline-on-migrate-224919695.html
                     type: boolean
                   commands:
                     default:
                     - info
                     - migrate
                     - info
-                    description: The flyway actions to apply, like "info", "migrate"
+                    description: |-
+                      The flyway actions to apply, like "info", "migrate"
                       See https://documentation.red-gate.com/fd/commands-184127446.html
                     items:
                       type: string
                     type: array
                   defaultSchema:
-                    description: The default flyway schema to use. See https://documentation.red-gate.com/fd/default-schema-184127496.html
+                    description: |-
+                      The default flyway schema to use.
+                      See https://documentation.red-gate.com/fd/default-schema-184127496.html
                     type: string
                   envVars:
                     description: Arbitrary entries to set as env-vars to Flyway migration
@@ -100,15 +115,16 @@ spec:
                             C_IDENTIFIER.
                           type: string
                         value:
-                          description: 'Variable references $(VAR_NAME) are expanded
-                            using the previously defined environment variables in
-                            the container and any service environment variables. If
-                            a variable cannot be resolved, the reference in the input
-                            string will be unchanged. Double $$ are reduced to a single
-                            $, which allows for escaping the $(VAR_NAME) syntax: i.e.
+                          description: |-
+                            Variable references $(VAR_NAME) are expanded
+                            using the previously defined environment variables in the container and
+                            any service environment variables. If a variable cannot be resolved,
+                            the reference in the input string will be unchanged. Double $$ are reduced
+                            to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e.
                             "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)".
-                            Escaped references will never be expanded, regardless
-                            of whether the variable exists or not. Defaults to "".'
+                            Escaped references will never be expanded, regardless of whether the variable
+                            exists or not.
+                            Defaults to "".
                           type: string
                         valueFrom:
                           description: Source for the environment variable's value.
@@ -121,9 +137,13 @@ spec:
                                   description: The key to select.
                                   type: string
                                 name:
-                                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                    TODO: Add other useful fields. apiVersion, kind,
-                                    uid?'
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                                   type: string
                                 optional:
                                   description: Specify whether the ConfigMap or its
@@ -134,11 +154,9 @@ spec:
                               type: object
                               x-kubernetes-map-type: atomic
                             fieldRef:
-                              description: 'Selects a field of the pod: supports metadata.name,
-                                metadata.namespace, `metadata.labels[''<KEY>'']`,
-                                `metadata.annotations[''<KEY>'']`, spec.nodeName,
-                                spec.serviceAccountName, status.hostIP, status.podIP,
-                                status.podIPs.'
+                              description: |-
+                                Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
+                                spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
                               properties:
                                 apiVersion:
                                   description: Version of the schema the FieldPath
@@ -153,10 +171,9 @@ spec:
                               type: object
                               x-kubernetes-map-type: atomic
                             resourceFieldRef:
-                              description: 'Selects a resource of the container: only
-                                resources limits and requests (limits.cpu, limits.memory,
-                                limits.ephemeral-storage, requests.cpu, requests.memory
-                                and requests.ephemeral-storage) are currently supported.'
+                              description: |-
+                                Selects a resource of the container: only resources limits and requests
+                                (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
                               properties:
                                 containerName:
                                   description: 'Container name: required for volumes,
@@ -186,9 +203,13 @@ spec:
                                     be a valid secret key.
                                   type: string
                                 name:
-                                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                    TODO: Add other useful fields. apiVersion, kind,
-                                    uid?'
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                                   type: string
                                 optional:
                                   description: Specify whether the Secret or its key
@@ -216,12 +237,18 @@ spec:
                     description: Optional. Image-pull secret to pull the migration
                       source
                     items:
-                      description: LocalObjectReference contains enough information
-                        to let you locate the referenced object inside the same namespace.
+                      description: |-
+                        LocalObjectReference contains enough information to let you locate the
+                        referenced object inside the same namespace.
                       properties:
                         name:
-                          description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                            TODO: Add other useful fields. apiVersion, kind, uid?'
+                          default: ""
+                          description: |-
+                            Name of the referent.
+                            This field is effectively required, but due to backwards compatibility is
+                            allowed to be empty. Instances of this type with an empty value here are
+                            almost certainly wrong.
+                            More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                           type: string
                       type: object
                       x-kubernetes-map-type: atomic
@@ -240,8 +267,9 @@ spec:
                   placeholders:
                     additionalProperties:
                       type: string
-                    description: 'Flyway placeholders, see: https://documentation.red-gate.com/fd/placeholders-configuration-184127475.html
-                      These will be injected as env-vars with the required prefix.'
+                    description: |-
+                      Flyway placeholders, see: https://documentation.red-gate.com/fd/placeholders-configuration-184127475.html
+                      These will be injected as env-vars with the required prefix.
                     type: object
                 required:
                 - encoding
@@ -258,43 +286,35 @@ spec:
             properties:
               conditions:
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource. --- This struct is intended for direct
-                    use as an array at the field path .status.conditions.  For example,
-                    \n type FooStatus struct{ // Represents the observations of a
-                    foo's current state. // Known .status.conditions.type are: \"Available\",
-                    \"Progressing\", and \"Degraded\" // +patchMergeKey=type // +patchStrategy=merge
-                    // +listType=map // +listMapKey=type Conditions []metav1.Condition
-                    `json:\"conditions,omitempty\" patchStrategy:\"merge\" patchMergeKey:\"type\"
-                    protobuf:\"bytes,1,rep,name=conditions\"` \n // other fields }"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
-                      description: lastTransitionTime is the last time the condition
-                        transitioned from one status to another. This should be when
-                        the underlying condition changed.  If that is not known, then
-                        using the time when the API field changed is acceptable.
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
                       format: date-time
                       type: string
                     message:
-                      description: message is a human readable message indicating
-                        details about the transition. This may be an empty string.
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
                       maxLength: 32768
                       type: string
                     observedGeneration:
-                      description: observedGeneration represents the .metadata.generation
-                        that the condition was set based upon. For instance, if .metadata.generation
-                        is currently 12, but the .status.conditions[x].observedGeneration
-                        is 9, the condition is out of date with respect to the current
-                        state of the instance.
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
                       format: int64
                       minimum: 0
                       type: integer
                     reason:
-                      description: reason contains a programmatic identifier indicating
-                        the reason for the condition's last transition. Producers
-                        of specific condition types may define expected values and
-                        meanings for this field, and whether the values are considered
-                        a guaranteed API. The value should be a CamelCase string.
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
                         This field may not be empty.
                       maxLength: 1024
                       minLength: 1
@@ -309,10 +329,6 @@ spec:
                       type: string
                     type:
                       description: type of condition in CamelCase or in foo.example.com/CamelCase.
-                        --- Many .condition.type values are consistent across resources
-                        like Available, but because arbitrary conditions can be useful
-                        (see .node.status.conditions), the ability to deconflict is
-                        important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -328,6 +344,8 @@ spec:
                 - type
                 x-kubernetes-list-type: map
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true
