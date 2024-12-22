@@ -34,3 +34,4 @@ Stable:
     - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.2.6
     - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.2.7
     - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.2.8
+    - Image: ghcr.io/davidkarlsen/flyway-operator-bundle:v0.2.9
