@@ -1,7 +1,6 @@
 module github.com/davidkarlsen/flyway-operator
 
 go 1.24.1
-
 require (
 	github.com/caitlinelfring/go-env-default v1.1.0
 	github.com/gophercloud/gophercloud v1.14.1
@@ -13,7 +12,7 @@ require (
 	k8s.io/apimachinery v0.32.3
 	k8s.io/client-go v0.32.3
 	k8s.io/utils v0.0.0-20241104100929-3ea5e8cea738
-	sigs.k8s.io/controller-runtime v0.20.2
+	sigs.k8s.io/controller-runtime v0.20.3
 )
 
 require (
