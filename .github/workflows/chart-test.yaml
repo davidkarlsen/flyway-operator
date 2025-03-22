@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        kubernetesVersion: [ "v1.24.15", "v1.28.0" ]
+        kubernetesVersion: [ "v1.30.11", "v1.32.2" ]
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/master'
     steps:
