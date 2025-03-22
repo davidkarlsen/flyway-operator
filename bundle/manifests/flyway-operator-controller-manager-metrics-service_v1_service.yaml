@@ -18,7 +18,7 @@ spec:
     protocol: TCP
     targetPort: https
   selector:
-    control-plane: controller-manager
     app.kubernetes.io/part-of: flyway-operator
+    control-plane: controller-manager
 status:
   loadBalancer: {}

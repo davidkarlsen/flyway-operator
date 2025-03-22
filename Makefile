@@ -229,7 +229,9 @@ bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metada
 	$(OPERATOR_SDK) generate kustomize manifests -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
-	$(OPERATOR_SDK) bundle validate ./bundle --select-optional name=operatorhub
+	$(OPERATOR_SDK) bundle validate ./bundle --select-optional suite=operatorframework
+	$(OPERATOR_SDK) bundle validate ./bundle --select-optional name=good-practices
+	$(OPERATOR_SDK) bundle validate ./bundle --select-optional name=alpha-deprecated-apis
 
 .PHONY: bundle-build
 bundle-build: ## Build the bundle image.
