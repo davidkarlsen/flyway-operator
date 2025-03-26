@@ -63,7 +63,7 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	migration := &flywayv1alpha1.Migration{}
 
-	if err := r.Client.Get(ctx, req.NamespacedName, migration); err != nil {
+	if err := r.Get(ctx, req.NamespacedName, migration); err != nil {
 		logger.Error(err, err.Error())
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
