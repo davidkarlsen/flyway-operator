@@ -67,5 +67,5 @@ func TestGithubactionRunnerController(t *testing.T) {
 
 	res, err := r.Reconcile(ctx, req)
 	testhelper.AssertNoErr(t, err)
-	testhelper.AssertEquals(t, false, res.Requeue)
+	testhelper.AssertEquals(t, false, res.RequeueAfter)
 }
