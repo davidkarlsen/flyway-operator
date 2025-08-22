@@ -132,6 +132,11 @@ type FlywayConfiguration struct {
 	// Arbitrary entries to set as env-vars to Flyway migration job.
 	// +kubebuilder:validation:Optional
 	EnvVars []v1.EnvVar `json:"envVars"`
+
+	// jdbcProperties to pass to the execution.
+	// See https://documentation.red-gate.com/fd/environment-jdbc-properties-namespace-277578928.html
+	// +kubebuilder:validation:Optional
+	JdbcProperties map[string]string `json:"jdbcProperties,omitempty"`
 }
 
 // MigrationSource defines the source for the flyway-migrations.

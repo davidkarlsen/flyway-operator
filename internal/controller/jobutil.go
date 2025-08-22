@@ -48,6 +48,11 @@ func getFlywayArgs(migration *flywayv1alpha1.Migration) []string {
 	args := migration.Spec.FlywayConfiguration.Commands
 	args = append(args, "-outputType=json")
 
+	jdbcProps := lo.MapToSlice(migration.Spec.FlywayConfiguration.JdbcProperties, func(key string, value string) string {
+		return fmt.Sprintf("-environments.default.jdbcProperties.%s=%s", key, value)
+	})
+	args = append(args, jdbcProps...)
+
 	return args
 }
 
