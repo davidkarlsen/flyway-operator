@@ -142,7 +142,7 @@ type FlywayConfiguration struct {
 	// +kubebuilder:validation:Optional
 	Volumes []v1.Volume `json:"volumes,omitempty"`
 
-	// volumes to mount into the migration job.
+	// Volume mounts to mount into the migration job.
 	// +kubebuilder:validation:Optional
 	VolumeMounts []v1.VolumeMount `json:"volumeMounts,omitempty"`
 }
