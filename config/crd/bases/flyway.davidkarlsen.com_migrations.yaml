@@ -227,6 +227,13 @@ spec:
                   flywayImage:
                     description: Reference to the flyway image to use.
                     type: string
+                  jdbcProperties:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      jdbcProperties to pass to the execution.
+                      See https://documentation.red-gate.com/fd/environment-jdbc-properties-namespace-277578928.html
+                    type: object
                 required:
                 - commands
                 type: object
