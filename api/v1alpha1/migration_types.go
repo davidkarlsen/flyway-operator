@@ -138,7 +138,7 @@ type FlywayConfiguration struct {
 	// +kubebuilder:validation:Optional
 	JdbcProperties map[string]string `json:"jdbcProperties,omitempty"`
 
-	// volumes to make available to the migration job.
+	// Volumes to make available to the migration job.
 	// +kubebuilder:validation:Optional
 	Volumes []v1.Volume `json:"volumes,omitempty"`
 
