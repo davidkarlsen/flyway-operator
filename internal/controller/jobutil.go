@@ -138,22 +138,22 @@ func createJobSpec(migration *flywayv1alpha1.Migration) *batchv1.Job {
 							ImagePullPolicy: corev1.PullAlways,
 							Args:            getFlywayArgs(migration),
 							Env:             envVars,
-							VolumeMounts: []corev1.VolumeMount{
+							VolumeMounts: append([]corev1.VolumeMount{
 								{
 									Name:      sqlVolumeName,
 									MountPath: "/flyway/sql",
 								},
-							},
+							}, migration.Spec.FlywayConfiguration.VolumeMounts...),
 						},
 					},
-					Volumes: []corev1.Volume{
+					Volumes: append([]corev1.Volume{
 						{
 							Name: sqlVolumeName,
 							VolumeSource: corev1.VolumeSource{
 								EmptyDir: &corev1.EmptyDirVolumeSource{},
 							},
 						},
-					},
+					}, migration.Spec.FlywayConfiguration.Volumes...),
 					ImagePullSecrets: migration.Spec.MigrationSource.ImagePullSecrets,
 					RestartPolicy:    corev1.RestartPolicyNever,
 				},

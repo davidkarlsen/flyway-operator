@@ -137,6 +137,14 @@ type FlywayConfiguration struct {
 	// See https://documentation.red-gate.com/fd/environment-jdbc-properties-namespace-277578928.html
 	// +kubebuilder:validation:Optional
 	JdbcProperties map[string]string `json:"jdbcProperties,omitempty"`
+
+	// Volumes to make available to the migration job.
+	// +kubebuilder:validation:Optional
+	Volumes []v1.Volume `json:"volumes,omitempty"`
+
+	// Volume mounts to mount into the migration job.
+	// +kubebuilder:validation:Optional
+	VolumeMounts []v1.VolumeMount `json:"volumeMounts,omitempty"`
 }
 
 // MigrationSource defines the source for the flyway-migrations.
