@@ -235,7 +235,7 @@ spec:
                       See https://documentation.red-gate.com/fd/environment-jdbc-properties-namespace-277578928.html
                     type: object
                   volumeMounts:
-                    description: volumes to mount into the migration job.
+                    description: Volume mounts to mount into the migration job.
                     items:
                       description: VolumeMount describes a mounting of a Volume within
                         a container.
@@ -299,7 +299,7 @@ spec:
                       type: object
                     type: array
                   volumes:
-                    description: volumes to make available to the migration job.
+                    description: Volumes to make available to the migration job.
                     items:
                       description: Volume represents a named volume in a pod that
                         may be accessed by any container in the pod.
