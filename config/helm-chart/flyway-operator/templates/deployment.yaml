@@ -28,9 +28,17 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: {{ include "common.images.image" ( dict "imageRoot" .Values.image "global" .Values.global) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --leader-elect
+            - --health-probe-bind-address=:8081
+            - --metrics-bind-address=:8443
+            - --metrics-secure=true
           ports:
             - name: http
               containerPort: 8081
+              protocol: TCP
+            - name: https
+              containerPort: 8443
               protocol: TCP
           livenessProbe:
             httpGet:
