@@ -9,8 +9,8 @@ require (
 	github.com/onsi/gomega v1.38.2
 	github.com/redhat-cop/operator-utils v1.3.8
 	github.com/samber/lo v1.52.0
-	k8s.io/api v0.34.2
-	k8s.io/apimachinery v0.34.2
+	k8s.io/api v0.34.3
+	k8s.io/apimachinery v0.34.3
 	k8s.io/client-go v0.34.2
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
 	sigs.k8s.io/controller-runtime v0.22.4
