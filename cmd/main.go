@@ -19,9 +19,10 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"github.com/redhat-cop/operator-utils/pkg/util"
 	"os"
 	"path/filepath"
+
+	"github.com/redhat-cop/operator-utils/pkg/util"
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 
@@ -165,6 +166,7 @@ func main() {
 	}
 
 	if err = (&controller.MigrationReconciler{
+		//nolint:SA1019 - need library upgrade
 		ReconcilerBase: util.NewFromManager(mgr, mgr.GetEventRecorderFor("Migration")),
 		Client:         mgr.GetClient(),
 		Scheme:         mgr.GetScheme(),
