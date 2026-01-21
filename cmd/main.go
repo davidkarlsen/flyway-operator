@@ -166,7 +166,7 @@ func main() {
 	}
 
 	if err = (&controller.MigrationReconciler{
-		//nolint:SA1019 - need library upgrade
+		//nolint:staticcheck - need library upgrade
 		ReconcilerBase: util.NewFromManager(mgr, mgr.GetEventRecorderFor("Migration")),
 		Client:         mgr.GetClient(),
 		Scheme:         mgr.GetScheme(),

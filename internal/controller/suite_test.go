@@ -75,7 +75,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&MigrationReconciler{
-		//nolint:SA1019 - need library upgrade
+		//nolint:staticcheck - need library upgrade
 		ReconcilerBase: util.NewFromManager(k8sManager, k8sManager.GetEventRecorderFor("Migration")),
 		Client:         k8sManager.GetClient(),
 		Scheme:         k8sManager.GetScheme(),
