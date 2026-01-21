@@ -17,19 +17,20 @@ limitations under the License.
 package controller
 
 import (
+	"path/filepath"
+	"testing"
+	"time"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/redhat-cop/operator-utils/pkg/util"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	"path/filepath"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"testing"
-	"time"
 
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
@@ -74,6 +75,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&MigrationReconciler{
+		//nolint:SA1019 - need library upgrade
 		ReconcilerBase: util.NewFromManager(k8sManager, k8sManager.GetEventRecorderFor("Migration")),
 		Client:         k8sManager.GetClient(),
 		Scheme:         k8sManager.GetScheme(),
