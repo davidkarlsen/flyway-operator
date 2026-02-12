@@ -166,8 +166,7 @@ func main() {
 	}
 
 	if err = (&controller.MigrationReconciler{
-		//nolint:staticcheck - need library upgrade
-		ReconcilerBase: util.NewFromManager(mgr, mgr.GetEventRecorderFor("Migration")),
+		ReconcilerBase: util.NewFromManager(mgr, mgr.GetEventRecorderFor("Migration")), //nolint:staticcheck // SA1019 - GetEventRecorderFor is deprecated
 		Client:         mgr.GetClient(),
 		Scheme:         mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
