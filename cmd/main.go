@@ -166,7 +166,6 @@ func main() {
 	}
 
 	if err = (&controller.MigrationReconciler{
-		//nolint:staticcheck // SA1019 - GetEventRecorderFor is deprecated, need library upgrade
 		ReconcilerBase: util.NewFromManager(mgr, mgr.GetEventRecorderFor("Migration")), //nolint:staticcheck // SA1019 - GetEventRecorderFor is deprecated
 		Client:         mgr.GetClient(),
 		Scheme:         mgr.GetScheme(),

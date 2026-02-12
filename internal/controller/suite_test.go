@@ -75,7 +75,6 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&MigrationReconciler{
-		//nolint:staticcheck // SA1019 - GetEventRecorderFor is deprecated, need library upgrade
 		ReconcilerBase: util.NewFromManager(k8sManager, k8sManager.GetEventRecorderFor("Migration")), //nolint:staticcheck // SA1019 - GetEventRecorderFor is deprecated
 		Client:         k8sManager.GetClient(),
 		Scheme:         k8sManager.GetScheme(),
