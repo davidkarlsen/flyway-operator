@@ -40,6 +40,11 @@ service:
   type: ClusterIP
   port: 80
 
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+
 resources:
   limits:
     cpu: 500m
