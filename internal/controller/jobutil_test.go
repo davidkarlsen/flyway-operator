@@ -442,9 +442,10 @@ func TestGetFlywayImage(t *testing.T) {
 
 func TestGetFlywayArgs(t *testing.T) {
 	tests := []struct {
-		name      string
-		migration *flywayv1alpha1.Migration
-		want      []string
+		name              string
+		migration         *flywayv1alpha1.Migration
+		want              []string
+		expectedJdbcProps map[string]string
 	}{
 		{
 			name: "basic commands only",
@@ -464,12 +465,17 @@ func TestGetFlywayArgs(t *testing.T) {
 					FlywayConfiguration: flywayv1alpha1.FlywayConfiguration{
 						Commands: []string{"migrate"},
 						JdbcProperties: map[string]string{
-							"ssl":             "true",
-							"sslmode":         "require",
-							"connectTimeout":  "30",
+							"ssl":            "true",
+							"sslmode":        "require",
+							"connectTimeout": "30",
 						},
 					},
 				},
+			},
+			expectedJdbcProps: map[string]string{
+				"ssl":            "true",
+				"sslmode":        "require",
+				"connectTimeout": "30",
 			},
 		},
 	}
@@ -495,22 +501,30 @@ func TestGetFlywayArgs(t *testing.T) {
 				if got[1] != "-outputType=json" {
 					t.Errorf("getFlywayArgs()[1] = %v, want -outputType=json", got[1])
 				}
-				// Check that jdbc properties are included
-				if len(got) < 5 {
-					t.Errorf("getFlywayArgs() length = %v, expected at least 5 (command + outputType + 3 jdbc properties)", len(got))
-				}
-				// Verify at least one jdbc property is formatted correctly
-				foundJdbcProp := false
-				for _, arg := range got {
-					if len(arg) > len("-environments.default.jdbcProperties.") {
-						if arg[:len("-environments.default.jdbcProperties.")] == "-environments.default.jdbcProperties." {
-							foundJdbcProp = true
-							break
+				
+				// Verify all JDBC properties are present with correct format
+				jdbcArgsFound := make(map[string]bool)
+				for _, arg := range got[2:] {
+					prefix := "-environments.default.jdbcProperties."
+					if len(arg) > len(prefix) && arg[:len(prefix)] == prefix {
+						// Check if this arg matches any expected jdbc property
+						for key, expectedValue := range tt.expectedJdbcProps {
+							expectedArg := prefix + key + "=" + expectedValue
+							if arg == expectedArg {
+								jdbcArgsFound[key] = true
+							}
 						}
 					}
 				}
-				if !foundJdbcProp {
-					t.Errorf("getFlywayArgs() did not contain expected jdbc property format")
+				
+				// Verify all expected JDBC properties were found
+				if len(jdbcArgsFound) != len(tt.expectedJdbcProps) {
+					t.Errorf("getFlywayArgs() found %d jdbc properties, want %d", len(jdbcArgsFound), len(tt.expectedJdbcProps))
+				}
+				for key := range tt.expectedJdbcProps {
+					if !jdbcArgsFound[key] {
+						t.Errorf("getFlywayArgs() missing jdbc property: %s", key)
+					}
 				}
 			}
 		})
