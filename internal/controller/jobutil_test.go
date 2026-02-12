@@ -483,7 +483,7 @@ func TestGetFlywayArgs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := getFlywayArgs(tt.migration)
-			
+
 			if tt.name == "basic commands only" {
 				if len(got) != len(tt.want) {
 					t.Errorf("getFlywayArgs() length = %v, want %v", len(got), len(tt.want))
@@ -501,7 +501,7 @@ func TestGetFlywayArgs(t *testing.T) {
 				if got[1] != "-outputType=json" {
 					t.Errorf("getFlywayArgs()[1] = %v, want -outputType=json", got[1])
 				}
-				
+
 				// Verify all JDBC properties are present with correct format
 				jdbcArgsFound := make(map[string]bool)
 				for _, arg := range got[2:] {
@@ -516,7 +516,7 @@ func TestGetFlywayArgs(t *testing.T) {
 						}
 					}
 				}
-				
+
 				// Verify all expected JDBC properties were found
 				if len(jdbcArgsFound) != len(tt.expectedJdbcProps) {
 					t.Errorf("getFlywayArgs() found %d jdbc properties, want %d", len(jdbcArgsFound), len(tt.expectedJdbcProps))

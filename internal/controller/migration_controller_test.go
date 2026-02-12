@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"strings"
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	"github.com/gophercloud/gophercloud/testhelper"
 	"github.com/redhat-cop/operator-utils/pkg/util"
@@ -17,6 +16,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"strings"
 	"testing"
 )
 
