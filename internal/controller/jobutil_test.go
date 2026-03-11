@@ -1,11 +1,14 @@
 package controller
 
 import (
+	"os"
 	"strconv"
 	"testing"
 
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestCreateJobSpec(t *testing.T) {
@@ -161,6 +164,367 @@ func TestCreateJobSpec(t *testing.T) {
 				}
 				if !foundVol {
 					t.Errorf("expected secret volume ca-volume with ca.crt not found")
+				}
+			}
+		})
+	}
+}
+
+func TestJobIsCurrent(t *testing.T) {
+	tests := []struct {
+		name       string
+		job        *batchv1.Job
+		migration  *flywayv1alpha1.Migration
+		wantResult bool
+	}{
+		{
+			name: "job is current",
+			job: &batchv1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						flywayv1alpha1.Generation: "5",
+					},
+				},
+			},
+			migration: &flywayv1alpha1.Migration{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 5,
+				},
+			},
+			wantResult: true,
+		},
+		{
+			name: "job is not current - different generation",
+			job: &batchv1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						flywayv1alpha1.Generation: "3",
+					},
+				},
+			},
+			migration: &flywayv1alpha1.Migration{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 5,
+				},
+			},
+			wantResult: false,
+		},
+		{
+			name: "job has no generation annotation",
+			job: &batchv1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{},
+				},
+			},
+			migration: &flywayv1alpha1.Migration{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 5,
+				},
+			},
+			wantResult: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := jobIsCurrent(tt.job, tt.migration)
+			if result != tt.wantResult {
+				t.Errorf("jobIsCurrent() = %v, want %v", result, tt.wantResult)
+			}
+		})
+	}
+}
+
+func TestIsJobFinished(t *testing.T) {
+	tests := []struct {
+		name       string
+		job        *batchv1.Job
+		wantResult bool
+	}{
+		{
+			name: "job is complete",
+			job: &batchv1.Job{
+				Status: batchv1.JobStatus{
+					Conditions: []batchv1.JobCondition{
+						{
+							Type:   batchv1.JobComplete,
+							Status: corev1.ConditionTrue,
+						},
+					},
+				},
+			},
+			wantResult: true,
+		},
+		{
+			name: "job is failed",
+			job: &batchv1.Job{
+				Status: batchv1.JobStatus{
+					Conditions: []batchv1.JobCondition{
+						{
+							Type:   batchv1.JobFailed,
+							Status: corev1.ConditionTrue,
+						},
+					},
+				},
+			},
+			wantResult: true,
+		},
+		{
+			name: "job is running",
+			job: &batchv1.Job{
+				Status: batchv1.JobStatus{
+					Conditions: []batchv1.JobCondition{
+						{
+							Type:   batchv1.JobComplete,
+							Status: corev1.ConditionFalse,
+						},
+					},
+				},
+			},
+			wantResult: false,
+		},
+		{
+			name: "job has no conditions",
+			job: &batchv1.Job{
+				Status: batchv1.JobStatus{
+					Conditions: []batchv1.JobCondition{},
+				},
+			},
+			wantResult: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isJobFinished(tt.job)
+			if result != tt.wantResult {
+				t.Errorf("isJobFinished() = %v, want %v", result, tt.wantResult)
+			}
+		})
+	}
+}
+
+func TestHasFailed(t *testing.T) {
+	tests := []struct {
+		name       string
+		job        *batchv1.Job
+		wantResult bool
+	}{
+		{
+			name: "job has failed",
+			job: &batchv1.Job{
+				Status: batchv1.JobStatus{
+					Failed: 1,
+				},
+			},
+			wantResult: true,
+		},
+		{
+			name: "job has failed multiple times",
+			job: &batchv1.Job{
+				Status: batchv1.JobStatus{
+					Failed: 3,
+				},
+			},
+			wantResult: true,
+		},
+		{
+			name: "job has not failed",
+			job: &batchv1.Job{
+				Status: batchv1.JobStatus{
+					Failed: 0,
+				},
+			},
+			wantResult: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := hasFailed(tt.job)
+			if result != tt.wantResult {
+				t.Errorf("hasFailed() = %v, want %v", result, tt.wantResult)
+			}
+		})
+	}
+}
+
+func TestHasSucceeded(t *testing.T) {
+	tests := []struct {
+		name       string
+		job        *batchv1.Job
+		wantResult bool
+	}{
+		{
+			name: "job has succeeded",
+			job: &batchv1.Job{
+				Status: batchv1.JobStatus{
+					Succeeded: 1,
+				},
+			},
+			wantResult: true,
+		},
+		{
+			name: "job has not succeeded",
+			job: &batchv1.Job{
+				Status: batchv1.JobStatus{
+					Succeeded: 0,
+				},
+			},
+			wantResult: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := hasSucceeded(tt.job)
+			if result != tt.wantResult {
+				t.Errorf("hasSucceeded() = %v, want %v", result, tt.wantResult)
+			}
+		})
+	}
+}
+
+func TestGetFlywayImage(t *testing.T) {
+	tests := []struct {
+		name      string
+		migration *flywayv1alpha1.Migration
+		envValue  string
+		want      string
+	}{
+		{
+			name: "custom image in spec",
+			migration: &flywayv1alpha1.Migration{
+				Spec: flywayv1alpha1.MigrationSpec{
+					FlywayConfiguration: flywayv1alpha1.FlywayConfiguration{
+						FlywayImage: "custom/flyway:latest",
+					},
+				},
+			},
+			want: "custom/flyway:latest",
+		},
+		{
+			name: "default image when spec is empty",
+			migration: &flywayv1alpha1.Migration{
+				Spec: flywayv1alpha1.MigrationSpec{
+					FlywayConfiguration: flywayv1alpha1.FlywayConfiguration{},
+				},
+			},
+			want: defaultFlywayImage,
+		},
+		{
+			name: "image from environment variable",
+			migration: &flywayv1alpha1.Migration{
+				Spec: flywayv1alpha1.MigrationSpec{
+					FlywayConfiguration: flywayv1alpha1.FlywayConfiguration{},
+				},
+			},
+			envValue: "env/flyway:v9",
+			want:     "env/flyway:v9",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.envValue != "" {
+				os.Setenv(envNameFlywayImage, tt.envValue)
+				defer os.Unsetenv(envNameFlywayImage)
+			} else {
+				os.Unsetenv(envNameFlywayImage)
+			}
+			got := getFlywayImage(tt.migration)
+			if got != tt.want {
+				t.Errorf("getFlywayImage() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetFlywayArgs(t *testing.T) {
+	tests := []struct {
+		name              string
+		migration         *flywayv1alpha1.Migration
+		want              []string
+		expectedJdbcProps map[string]string
+	}{
+		{
+			name: "basic commands only",
+			migration: &flywayv1alpha1.Migration{
+				Spec: flywayv1alpha1.MigrationSpec{
+					FlywayConfiguration: flywayv1alpha1.FlywayConfiguration{
+						Commands: []string{"info", "migrate"},
+					},
+				},
+			},
+			want: []string{"info", "migrate", "-outputType=json"},
+		},
+		{
+			name: "commands with jdbc properties",
+			migration: &flywayv1alpha1.Migration{
+				Spec: flywayv1alpha1.MigrationSpec{
+					FlywayConfiguration: flywayv1alpha1.FlywayConfiguration{
+						Commands: []string{"migrate"},
+						JdbcProperties: map[string]string{
+							"ssl":            "true",
+							"sslmode":        "require",
+							"connectTimeout": "30",
+						},
+					},
+				},
+			},
+			expectedJdbcProps: map[string]string{
+				"ssl":            "true",
+				"sslmode":        "require",
+				"connectTimeout": "30",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getFlywayArgs(tt.migration)
+
+			if tt.name == "basic commands only" {
+				if len(got) != len(tt.want) {
+					t.Errorf("getFlywayArgs() length = %v, want %v", len(got), len(tt.want))
+				}
+				for i, arg := range tt.want {
+					if got[i] != arg {
+						t.Errorf("getFlywayArgs()[%d] = %v, want %v", i, got[i], arg)
+					}
+				}
+			} else if tt.name == "commands with jdbc properties" {
+				// Check that we have the command and output type
+				if got[0] != "migrate" {
+					t.Errorf("getFlywayArgs()[0] = %v, want migrate", got[0])
+				}
+				if got[1] != "-outputType=json" {
+					t.Errorf("getFlywayArgs()[1] = %v, want -outputType=json", got[1])
+				}
+
+				// Verify all JDBC properties are present with correct format
+				jdbcArgsFound := make(map[string]bool)
+				for _, arg := range got[2:] {
+					prefix := "-environments.default.jdbcProperties."
+					if len(arg) > len(prefix) && arg[:len(prefix)] == prefix {
+						// Check if this arg matches any expected jdbc property
+						for key, expectedValue := range tt.expectedJdbcProps {
+							expectedArg := prefix + key + "=" + expectedValue
+							if arg == expectedArg {
+								jdbcArgsFound[key] = true
+							}
+						}
+					}
+				}
+
+				// Verify all expected JDBC properties were found
+				if len(jdbcArgsFound) != len(tt.expectedJdbcProps) {
+					t.Errorf("getFlywayArgs() found %d jdbc properties, want %d", len(jdbcArgsFound), len(tt.expectedJdbcProps))
+				}
+				for key := range tt.expectedJdbcProps {
+					if !jdbcArgsFound[key] {
+						t.Errorf("getFlywayArgs() missing jdbc property: %s", key)
+					}
 				}
 			}
 		})
