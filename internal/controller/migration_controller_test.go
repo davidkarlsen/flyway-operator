@@ -46,7 +46,7 @@ func TestGithubactionRunnerController(t *testing.T) {
 	ctx := context.TODO()
 
 	s := scheme.Scheme
-	s.AddKnownTypes(flywayv1alpha1.SchemeBuilder.GroupVersion, migration)
+	s.AddKnownTypes(flywayv1alpha1.GroupVersion, migration)
 
 	fakeClient := fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(objs...).WithStatusSubresource(migration).Build()
 

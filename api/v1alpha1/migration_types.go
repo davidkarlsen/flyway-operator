@@ -190,6 +190,3 @@ type MigrationList struct {
 	Items           []Migration `json:"items"`
 }
 
-func init() {
-	SchemeBuilder.Register(&Migration{}, &MigrationList{})
-}
