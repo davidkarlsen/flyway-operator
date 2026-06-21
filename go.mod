@@ -6,7 +6,7 @@ require (
 	github.com/caitlinelfring/go-env-default v1.1.0
 	github.com/gophercloud/gophercloud v1.14.1
 	github.com/onsi/ginkgo/v2 v2.31.0
-	github.com/onsi/gomega v1.41.0
+	github.com/onsi/gomega v1.42.0
 	github.com/redhat-cop/operator-utils v1.3.8
 	github.com/samber/lo v1.53.0
 	k8s.io/api v0.36.2
