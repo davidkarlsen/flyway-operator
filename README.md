@@ -17,7 +17,7 @@
 The operator will spawn [Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/job/) using the
 [flyway-docker image](https://hub.docker.com/r/flyway/flyway).
 
-See `config/samples` for example CRs.
+See the [documentation](docs/README.md) for features, installation and examples.
 
 It is still an early project and I want to further develop some day-2 elements as described in the [backlog](https://github.com/davidkarlsen/flyway-operator/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement).
 
@@ -27,7 +27,7 @@ You’ll need a Kubernetes cluster to run against. You can use [KIND](https://si
 
 ### Running on the cluster
 
-See [INSTALLING.md](INSTALLING.md)
+See [docs/installing.md](docs/installing.md)
 
 
 ## Contributing

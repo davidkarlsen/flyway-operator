@@ -16,7 +16,7 @@ Kubernetes operator that reconciles `Migration` CRDs (`flyway.davidkarlsen.com/v
 | `Dockerfile.catalog` / `bundle.Dockerfile` / `catalog-template.yaml` | OLM catalog/bundle build assets |
 | `kind-config.yaml` / `ct-config.yaml` / `codecov.yml` | Kind cluster + chart-testing + Codecov config |
 | `CLAUDE.md` | AI agent guidance (commands, architecture, conventions) |
-| `README.md` / `INSTALLING.md` / `USING.md` / `CONTRIBUTING.md` | Human-facing docs |
+| `README.md` / `docs/` / `CONTRIBUTING.md` | Human-facing docs |
 
 ## Subdirectories
 

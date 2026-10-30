@@ -10,7 +10,7 @@ Sample `Migration` custom resources used in docs, demos, and as the source of tr
 
 | File | Description |
 |------|-------------|
-| `flyway_v1alpha1_migration.yaml` | Minimal but realistic Migration CR — referenced from `USING.md` |
+| `flyway_v1alpha1_migration.yaml` | Minimal but realistic Migration CR — referenced from `docs/usage.md` |
 | `kustomization.yaml` | Kustomize wiring (used by OLM bundling to populate `alm-examples`) |
 
 ## For AI Agents
