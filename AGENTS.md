@@ -26,7 +26,7 @@ Kubernetes operator that reconciles `Migration` CRDs (`flyway.davidkarlsen.com/v
 | `cmd/` | Operator binary entry point (see `cmd/AGENTS.md`) |
 | `internal/` | Reconciler implementation, kept private to module (see `internal/AGENTS.md`) |
 | `config/` | Kustomize bases (CRD, RBAC, manager, default, samples, prometheus, scorecard) and the Helm chart (see `config/AGENTS.md`) |
-| `bundle/` | OLM bundle manifests, metadata, scorecard tests (see `bundle/AGENTS.md`) |
+| `bundle/` | OLM bundle manifests, metadata, scorecard tests |
 | `hack/` | License header boilerplate consumed by `controller-gen` (see `hack/AGENTS.md`) |
 | `.github/` | GitHub Actions workflows + Copilot rules |
 
