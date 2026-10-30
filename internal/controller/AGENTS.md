@@ -24,7 +24,7 @@ Reconciliation logic for the `Migration` CRD. The reconciler owns child Kubernet
 - Honour `IsPaused()` early-exit before any side-effecting calls.
 - Always set `controllerutil.SetControllerReference(migration, job, scheme)` so deletion cascades.
 - RBAC markers (`+kubebuilder:rbac:groups=...`) on `Reconcile` drive `config/rbac/role.yaml`. After adding a new resource access, run `make manifests`.
-- The migration source image **must contain `cp`**; the init container relies on it. If you change the init pattern, document it in `USING.md`.
+- The migration source image **must contain `cp`**; the init container relies on it. If you change the init pattern, document it in `docs/usage.md`.
 
 ### Testing Requirements
 - Pure unit subset: `go test -count=1 -run "TestCreateJobSpec|TestGithubactionRunnerController" ./internal/controller/`.

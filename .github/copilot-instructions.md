@@ -115,8 +115,8 @@ When editing API definitions in `api/v1alpha1/`:
 ## Documentation
 
 - Update `README.md` for user-facing changes
-- Update `USING.md` for usage examples
-- Update `INSTALLING.md` for installation changes
+- Update `docs/usage.md` / `docs/examples/` for usage examples
+- Update `docs/installing.md` for installation changes
 - Update `CONTRIBUTING.md` for development process changes
 
 ## Important Notes
