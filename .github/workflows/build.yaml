@@ -70,6 +70,16 @@ jobs:
         with:
           go-version-file: 'go.mod'
 
+      - name: check generated files are up to date
+        run: |
+          make manifests generate
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --short
+            git diff
+            echo "::error::generated files are stale; run make manifests generate and commit"
+            exit 1
+          fi
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
