@@ -4,12 +4,14 @@ import (
 	"maps"
 	"strconv"
 	"testing"
+	"time"
 
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestCreateJobSpecMetadata(t *testing.T) {
@@ -311,6 +313,26 @@ func TestCreateJobSpec(t *testing.T) {
 				if !foundVol {
 					t.Errorf("expected secret volume ca-volume with ca.crt not found")
 				}
+			}
+		})
+	}
+}
+
+func TestCreateJobSpecActiveDeadline(t *testing.T) {
+	tests := []struct {
+		name     string
+		deadline *metav1.Duration
+		want     int64
+	}{
+		{name: "unset uses the default", deadline: nil, want: 3600},
+		{name: "whole seconds", deadline: &metav1.Duration{Duration: 30 * time.Minute}, want: 1800},
+		{name: "rounded up", deadline: &metav1.Duration{Duration: 1500 * time.Millisecond}, want: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &flywayv1alpha1.Migration{Spec: flywayv1alpha1.MigrationSpec{ActiveDeadline: tt.deadline}}
+			if got := createJobSpec(m, 1).Spec.ActiveDeadlineSeconds; got == nil || *got != tt.want {
+				t.Errorf("activeDeadlineSeconds = %d (nil: %t), want %d", ptr.Deref(got, 0), got == nil, tt.want)
 			}
 		})
 	}

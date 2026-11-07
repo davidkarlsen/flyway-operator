@@ -19,6 +19,9 @@ package v1alpha1
 import (
 	"maps"
 	"testing"
+	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestObjectMetadataGetters(t *testing.T) {
@@ -53,5 +56,15 @@ func TestObjectMetadataGetters(t *testing.T) {
 	}
 	if got := o.GetAnnotations(); !maps.Equal(got, o.Annotations) {
 		t.Errorf("GetAnnotations() = %v, want %v", got, o.Annotations)
+	}
+}
+
+func TestGetActiveDeadline(t *testing.T) {
+	if got := (&Migration{}).GetActiveDeadline(); got != DefaultActiveDeadline {
+		t.Errorf("unset: GetActiveDeadline() = %s, want %s", got, DefaultActiveDeadline)
+	}
+	m := &Migration{Spec: MigrationSpec{ActiveDeadline: &metav1.Duration{Duration: 30 * time.Minute}}}
+	if got := m.GetActiveDeadline(); got != 30*time.Minute {
+		t.Errorf("GetActiveDeadline() = %s, want 30m0s", got)
 	}
 }

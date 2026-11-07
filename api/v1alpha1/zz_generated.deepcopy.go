@@ -197,6 +197,11 @@ func (in *MigrationSpec) DeepCopyInto(out *MigrationSpec) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.ActiveDeadline != nil {
+		in, out := &in.ActiveDeadline, &out.ActiveDeadline
+		*out = new(v1.Duration)
+		**out = **in
+	}
 	if in.JobMetadata != nil {
 		in, out := &in.JobMetadata, &out.JobMetadata
 		*out = new(ObjectMetadata)

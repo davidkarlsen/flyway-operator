@@ -39,6 +39,18 @@ spec:
           spec:
             description: MigrationSpec defines the desired state of Migration
             properties:
+              activeDeadline:
+                default: 1h
+                description: |-
+                  Maximum run time per Job attempt, e.g. "30m", set as the Job's activeDeadlineSeconds (rounded up to whole seconds).
+                  It includes image pulls and the Job's own pod retries.
+                  A Job that exceeds it fails with reason DeadlineExceeded and counts against retryLimit;
+                  when the last attempt times out the Migration reports Failed=True with reason TimedOut.
+                type: string
+                x-kubernetes-validations:
+                - message: must be a duration such as 30m, at least 1s and at most
+                    8760h
+                  rule: duration(self) >= duration('1s') && duration(self) <= duration('8760h')
               database:
                 description: settings for database connection
                 properties:

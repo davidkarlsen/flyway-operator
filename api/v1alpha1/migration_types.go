@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/samber/lo"
 	v1 "k8s.io/api/core/v1"
@@ -36,6 +37,8 @@ const (
 
 	// DefaultRetryLimit is used when spec.retryLimit is not set.
 	DefaultRetryLimit int32 = 2
+	// DefaultActiveDeadline is used when spec.activeDeadline is not set.
+	DefaultActiveDeadline = time.Hour
 )
 
 // Condition types reported on MigrationStatus.Conditions.
@@ -45,17 +48,21 @@ const (
 	ConditionApplied = "Applied"
 	// ConditionProgressing is True while a Job for the current generation is created, running or being retried.
 	ConditionProgressing = "Progressing"
-	// ConditionFailed is True when the Job for the current generation failed and retryLimit is exhausted.
+	// ConditionFailed is True when the Job for the current generation failed and retryLimit is exhausted,
+	// with reason TimedOut when that last attempt exceeded spec.activeDeadline, else RetryLimitExceeded.
 	ConditionFailed = "Failed"
 )
 
 // Reasons set on the Applied, Progressing and Failed conditions.
 const (
-	ReasonJobCreated          = "JobCreated"
-	ReasonJobRunning          = "JobRunning"
-	ReasonJobSucceeded        = "JobSucceeded"
-	ReasonRetrying            = "Retrying"
-	ReasonRetryLimitExceeded  = "RetryLimitExceeded"
+	ReasonJobCreated         = "JobCreated"
+	ReasonJobRunning         = "JobRunning"
+	ReasonJobSucceeded       = "JobSucceeded"
+	ReasonRetrying           = "Retrying"
+	ReasonRetryLimitExceeded = "RetryLimitExceeded"
+	// ReasonTimedOut replaces RetryLimitExceeded when the last attempt's Job exceeded spec.activeDeadline.
+	// It is also the reason of the Warning event emitted then.
+	ReasonTimedOut            = "TimedOut"
 	ReasonPreviousJobRunning  = "PreviousJobRunning"
 	ReasonPreviousJobReplaced = "PreviousJobReplaced"
 )
@@ -114,6 +121,14 @@ func (m *Migration) GetRetryLimit() int32 {
 	return *m.Spec.RetryLimit
 }
 
+// GetActiveDeadline returns spec.activeDeadline, or DefaultActiveDeadline when unset.
+func (m *Migration) GetActiveDeadline() time.Duration {
+	if m.Spec.ActiveDeadline == nil {
+		return DefaultActiveDeadline
+	}
+	return m.Spec.ActiveDeadline.Duration
+}
+
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 63",message="metadata.name must be at most 63 characters (it is used as the Job name and as a pod label value)"
@@ -148,6 +163,15 @@ type MigrationSpec struct {
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:default=2
 	RetryLimit *int32 `json:"retryLimit,omitempty"`
+
+	// Maximum run time per Job attempt, e.g. "30m", set as the Job's activeDeadlineSeconds (rounded up to whole seconds).
+	// It includes image pulls and the Job's own pod retries.
+	// A Job that exceeds it fails with reason DeadlineExceeded and counts against retryLimit;
+	// when the last attempt times out the Migration reports Failed=True with reason TimedOut.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default="1h"
+	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('1s') && duration(self) <= duration('8760h')",message="must be a duration such as 30m, at least 1s and at most 8760h"
+	ActiveDeadline *metav1.Duration `json:"activeDeadline,omitempty"`
 
 	// Labels and annotations to set on the Job. Nothing is copied from the Migration's own metadata.
 	// A change creates a new Job, re-running the migration.

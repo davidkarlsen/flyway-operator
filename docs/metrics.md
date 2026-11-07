@@ -185,8 +185,14 @@ The rules come in two groups with different audiences, set in the `alert_audienc
 - Migration alerts aggregate with `max by (namespace, migration)` or `sum by (namespace, migration)`, so they
   keep those two labels and are not reset when the operator pod changes during a rollout or failover.
 - `FlywayMigrationStuck` measures time since `Progressing` turned true from its last-transition timestamp, so an
-  operator restart does not reset it. It pairs with a run timeout (`spec.timeout`, in progress): once a
-  Migration has one, keep the alert's threshold above it.
+  operator restart does not reset it. `Progressing` stays true across retries, and every Job attempt is bounded by
+  `spec.activeDeadline` (default `1h`), so a run ends on its own within `activeDeadline × (retryLimit + 1)`. Keep the
+  threshold below that to hear about a hung run before it times out, or above it to hear only about Migrations that
+  are still progressing after that.
+- `FlywayMigrationFailed` covers both terminal reasons, `RetryLimitExceeded` and `TimedOut` (the last attempt
+  exceeded `spec.activeDeadline`): it matches `Failed=True`, and `status_condition` has no `reason` label. A timed-out
+  final attempt counts once in `flyway_operator_migration_runs_total{result="failed"}`. Read the reason with
+  `kubectl describe migration` or from the `TimedOut` Warning event.
 - Default severities are `warning` and `info`. Raise `FlywayMigrationFailed` to `critical` where a failed
   migration blocks a release, as in the per-namespace example below.
 
@@ -252,7 +258,7 @@ spec:
           annotations:
             summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} failed and is not retried.
             description: >-
-              retryLimit is exhausted. Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}`
+              retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline, else RetryLimitExceeded). Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}`
               and `kubectl -n {{ $labels.namespace }} logs job/{{ $labels.migration }} -c flyway`.
               A spec change starts a new run.
         - alert: FlywayMigrationStuck
@@ -334,7 +340,7 @@ groups:
         annotations:
           summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} failed and is not retried.
           description: >-
-            retryLimit is exhausted. Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}`
+            retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline, else RetryLimitExceeded). Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}`
             and `kubectl -n {{ $labels.namespace }} logs job/{{ $labels.migration }} -c flyway`.
             A spec change starts a new run.
       - alert: FlywayMigrationStuck
@@ -405,7 +411,7 @@ spec:
           annotations:
             summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} failed and is not retried.
             description: >-
-              retryLimit is exhausted. Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}`
+              retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline, else RetryLimitExceeded). Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}`
               and `kubectl -n {{ $labels.namespace }} logs job/{{ $labels.migration }} -c flyway`.
               A spec change starts a new run.
         - alert: FlywayMigrationStuck

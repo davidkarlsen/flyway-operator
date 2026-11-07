@@ -104,6 +104,35 @@ var _ = Describe("Migration", func() {
 		Expect(psql("SELECT to_regclass('wrongpw.flyway_schema_history')")).To(BeEmpty())
 	})
 
+	It("reports Failed with reason TimedOut when the Job exceeds spec.activeDeadline", func() {
+		cmd := exec.Command("kubectl", "-n", namespace, "apply", "-f", "-")
+		cmd.Stdin = strings.NewReader(fmt.Sprintf(`apiVersion: flyway.davidkarlsen.com/v1alpha1
+kind: Migration
+metadata:
+  name: timeout
+spec:
+  database:
+    username: app
+    jdbcUrl: jdbc:postgresql://postgres:5432/app
+    credentials:
+      name: postgres
+      key: password
+  migrationSource:
+    imageRef: %s
+  flywayConfiguration:
+    defaultSchema: timeout
+  retryLimit: 0
+  activeDeadline: 45s
+`, sqlImage("sleep")))
+		mustRun(cmd)
+
+		m := waitForCondition("timeout", flywayv1alpha1.ConditionFailed, flywayv1alpha1.ReasonTimedOut, 0)
+		Expect(meta.FindStatusCondition(m.Status.Conditions, flywayv1alpha1.ConditionFailed).Message).
+			To(And(ContainSubstring("timed out (activeDeadline 45s)"), ContainSubstring("DeadlineExceeded")))
+		Expect(mustRun(exec.Command("kubectl", "-n", namespace, "get", "job", "timeout",
+			"-o", "jsonpath={.spec.activeDeadlineSeconds}"))).To(Equal("45"))
+	})
+
 	It("sets podMetadata and the operator labels on the Job's pod", func() {
 		cmd := exec.Command("kubectl", "-n", namespace, "apply", "-f", "-")
 		cmd.Stdin = strings.NewReader(fmt.Sprintf(`apiVersion: flyway.davidkarlsen.com/v1alpha1
