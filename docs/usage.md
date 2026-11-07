@@ -29,6 +29,14 @@ spec:
       key: password
     jdbcUrl: "jdbc:postgresql://my-db:5432/my_app"  # must start with jdbc:
   retryLimit: 2                      # optional, default 2: re-creations of a failed Job
+  jobMetadata:                       # optional, labels and annotations set on the Job
+    labels:
+      example.com/team: payments
+    annotations: {}
+  podMetadata:                       # optional, labels and annotations set on the Job's pod
+    labels: {}
+    annotations:
+      sidecar.istio.io/inject: "false"
   migrationSource:
     imageRef: "registry.example.com/my-app-sql:1.4.0"
     path: /sql                       # optional, default /sql
@@ -53,10 +61,50 @@ changes the default for all migrations, and `flywayImage` changes it for one mig
 Any Flyway setting not covered above can be set with `envVars`
 (see [Flyway environment variables](https://documentation.red-gate.com/fd/environment-variables-184127165.html)).
 
+## Job and pod metadata
+
+`jobMetadata` sets labels and annotations on the Job, `podMetadata` on the Job's pod template. Use them for sidecar
+and injector annotations, or for cost, team and NetworkPolicy labels. Nothing is copied from the `Migration`'s own
+labels or annotations: an `app` label shared with your Deployment would let its Services, PodDisruptionBudgets and
+NetworkPolicies select the migration pod, and GitOps tracking metadata would leak onto the Job.
+
+The operator sets `app.kubernetes.io/managed-by: flyway-operator`, `app.kubernetes.io/name: flyway` and
+`app.kubernetes.io/instance: <Migration name>` on both the Job and its pod template, and its own annotations on the Job.
+These keys are reserved and a `Migration` using them in either map is rejected:
+
+- keys under `flyway-operator.davidkarlsen.com/` and `batch.kubernetes.io/`
+- `controller-uid` and `job-name`, which Kubernetes sets on Job pods
+- `app.kubernetes.io/managed-by`, `app.kubernetes.io/name` and `app.kubernetes.io/instance`
+
+Keys must be valid label or annotation keys, and label values valid label values (at most 63 characters).
+Each map holds at most 64 entries.
+
+### Istio
+
+An Istio sidecar keeps running after Flyway exits, so the Job never completes. Disable injection for the migration pod:
+
+```yaml
+spec:
+  podMetadata:
+    annotations:
+      sidecar.istio.io/inject: "false"
+```
+
+Istio in native sidecar mode (Kubernetes 1.29+) runs the proxy as a native sidecar, which does not keep the Job running.
+
+Adding `podMetadata` does not unstick a Job that already hangs: the operator waits for a running Job of an older
+generation to finish before it creates the new one, and a Job held by a sidecar never finishes. Delete it by hand:
+
+```shell
+kubectl delete job my-app
+```
+
 ## What happens
 
 - The operator creates a Job with the same name as the `Migration`, owned by the `Migration`.
 - The Job is annotated with the `Migration`'s generation. A spec change creates a new Job; an unchanged spec does not rerun it.
+  This includes `jobMetadata` and `podMetadata`: changing them re-runs the migration, which is a no-op for `migrate` when
+  nothing is pending. Existing Jobs are never patched in place.
 - The Job retries its pod twice (`backoffLimit: 2`) before it fails.
 - A failed Job is re-created up to `spec.retryLimit` times (default `2`) for the same generation. After that the
   `Migration` reports `Failed=True` and no new Job starts until the spec changes. Deleting the failed Job starts one more attempt.

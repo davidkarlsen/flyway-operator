@@ -265,6 +265,38 @@ var _ = Describe("Migration controller (envtest)", func() {
 			}))
 		})
 
+		It("sets jobMetadata on the Job and podMetadata and the operator labels on its pod template", func(ctx SpecContext) {
+			m := newMigration(ns, key.Name)
+			m.Labels = map[string]string{"app": "my-app"}
+			m.Spec.JobMetadata = &flywayv1alpha1.ObjectMetadata{
+				Labels:      map[string]flywayv1alpha1.LabelValue{"example.com/team": "payments"},
+				Annotations: map[string]string{"example.com/owner": "payments"},
+			}
+			m.Spec.PodMetadata = &flywayv1alpha1.ObjectMetadata{
+				Labels:      map[string]flywayv1alpha1.LabelValue{"netpol": "db"},
+				Annotations: map[string]string{"sidecar.istio.io/inject": "false"},
+			}
+			Expect(k8sClient.Create(ctx, m)).To(Succeed())
+
+			job := waitForJob(ctx, key, "")
+
+			Expect(job.Labels).To(HaveKeyWithValue("example.com/team", "payments"))
+			Expect(job.Labels).To(HaveKeyWithValue("app.kubernetes.io/instance", key.Name))
+			Expect(job.Labels).NotTo(HaveKey("app"))
+			Expect(job.Labels).NotTo(HaveKey("netpol"))
+			Expect(job.Annotations).To(HaveKeyWithValue("example.com/owner", "payments"))
+			Expect(job.Annotations).NotTo(HaveKey("sidecar.istio.io/inject"))
+
+			pod := job.Spec.Template.ObjectMeta
+			Expect(pod.Labels).To(HaveKeyWithValue("netpol", "db"))
+			Expect(pod.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "flyway-operator"))
+			Expect(pod.Labels).To(HaveKeyWithValue("app.kubernetes.io/name", "flyway"))
+			Expect(pod.Labels).To(HaveKeyWithValue("app.kubernetes.io/instance", key.Name))
+			Expect(pod.Labels).NotTo(HaveKey("example.com/team"))
+			Expect(pod.Labels).NotTo(HaveKey("app"))
+			Expect(pod.Annotations).To(Equal(map[string]string{"sidecar.istio.io/inject": "false"}))
+		})
+
 		It("reports Progressing=True with reason JobRunning while the Job runs", func(ctx SpecContext) {
 			Expect(k8sClient.Create(ctx, newMigration(ns, key.Name))).To(Succeed())
 			waitForJob(ctx, key, "")
@@ -532,7 +564,48 @@ var _ = Describe("Migration controller (envtest)", func() {
 			Entry("negative retryLimit", func(spec map[string]any) {
 				spec["retryLimit"] = int64(-1)
 			}, "spec.retryLimit"),
+			Entry("reserved pod label job-name", func(spec map[string]any) {
+				spec["podMetadata"] = map[string]any{"labels": map[string]any{"job-name": "x"}}
+			}, "spec.podMetadata.labels: Invalid value: must not contain a reserved key"),
+			Entry("reserved pod label controller-uid", func(spec map[string]any) {
+				spec["podMetadata"] = map[string]any{"labels": map[string]any{"controller-uid": "x"}}
+			}, "spec.podMetadata.labels: Invalid value: must not contain a reserved key"),
+			Entry("reserved pod annotation under the batch.kubernetes.io/ prefix", func(spec map[string]any) {
+				spec["podMetadata"] = map[string]any{"annotations": map[string]any{"batch.kubernetes.io/job-name": "x"}}
+			}, "spec.podMetadata.annotations: Invalid value: must not contain a reserved key"),
+			Entry("reserved Job annotation under the operator prefix", func(spec map[string]any) {
+				spec["jobMetadata"] = map[string]any{"annotations": map[string]any{flywayv1alpha1.Generation: "7"}}
+			}, "spec.jobMetadata.annotations: Invalid value: must not contain a reserved key"),
+			Entry("reserved Job label app.kubernetes.io/managed-by", func(spec map[string]any) {
+				spec["jobMetadata"] = map[string]any{"labels": map[string]any{"app.kubernetes.io/managed-by": "me"}}
+			}, "spec.jobMetadata.labels: Invalid value: must not contain a reserved key"),
+			Entry("invalid label value", func(spec map[string]any) {
+				spec["podMetadata"] = map[string]any{"labels": map[string]any{"team": "not a label value"}}
+			}, "spec.podMetadata.labels.team in body should match"),
+			Entry("label value longer than 63 characters", func(spec map[string]any) {
+				spec["jobMetadata"] = map[string]any{"labels": map[string]any{"team": strings.Repeat("a", 64)}}
+			}, "spec.jobMetadata.labels.team: Too long: may not be more than 63 bytes"),
+			Entry("invalid label key", func(spec map[string]any) {
+				spec["podMetadata"] = map[string]any{"labels": map[string]any{"Example.com/team": "x"}}
+			}, "spec.podMetadata.labels: Invalid value: keys must be valid label keys"),
+			Entry("invalid annotation key", func(spec map[string]any) {
+				spec["podMetadata"] = map[string]any{"annotations": map[string]any{"a/b/c": "x"}}
+			}, "spec.podMetadata.annotations: Invalid value: keys must be valid annotation keys"),
 		)
+
+		It("accepts valid jobMetadata and podMetadata", func(ctx SpecContext) {
+			u := validMigration(ns)
+			spec := u.Object["spec"].(map[string]any)
+			spec["jobMetadata"] = map[string]any{
+				"labels":      map[string]any{"example.com/team": "payments", "empty": ""},
+				"annotations": map[string]any{"Example.com/Owner": "Payments Team <payments@example.com>"},
+			}
+			spec["podMetadata"] = map[string]any{
+				"labels":      map[string]any{"app.kubernetes.io/component": "db-migration"},
+				"annotations": map[string]any{"sidecar.istio.io/inject": "false"},
+			}
+			Expect(k8sClient.Create(ctx, u)).To(Succeed())
+		})
 
 		It("applies defaults for commands, path, encoding and retryLimit", func(ctx SpecContext) {
 			u := validMigration(ns)
