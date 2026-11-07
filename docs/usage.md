@@ -27,7 +27,7 @@ spec:
     credentials:                     # Secret key passed as FLYWAY_PASSWORD
       name: my-app-db
       key: password
-    jdbcUrl: "jdbc:..."              # must start with jdbc:
+    jdbcUrl: "jdbc:postgresql://my-db:5432/my_app"  # must start with jdbc:
   retryLimit: 2                      # optional, default 2: re-creations of a failed Job
   migrationSource:
     imageRef: "registry.example.com/my-app-sql:1.4.0"

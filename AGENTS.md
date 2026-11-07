@@ -34,7 +34,7 @@ Kubernetes operator that reconciles `Migration` CRDs (`flyway.davidkarlsen.com/v
 
 ### Working In This Directory
 - Run `make manifests fmt vet` before opening a PR — CI runs `golangci-lint` (default config; no `.golangci.*` in repo) plus `make test`.
-- After editing API types, run `make manifests generate` and update `config/samples/` if the public shape changed.
+- After editing API types, run `make manifests generate` and update the examples in `docs/usage.md` if the public shape changed. `config/samples/` is only the OLM `alm-examples` source; keep it minimal and valid.
 - Operator-owned annotations must use the `Prefix = "flyway-operator.davidkarlsen.com"` constant from `api/v1alpha1/migration_types.go` — do not hardcode the domain.
 - Apache 2.0 license header (see `hack/boilerplate.go.txt`) is required on new Go files; `controller-gen` enforces it.
 

@@ -95,7 +95,7 @@ When editing API definitions in `api/v1alpha1/`:
 1. Edit `api/v1alpha1/migration_types.go`
 2. Add kubebuilder validation markers
 3. Run `make manifests generate`
-4. Update samples in `config/samples/`
+4. Update the examples in `docs/usage.md` (`config/samples/` only feeds OLM `alm-examples`; keep it minimal and valid)
 5. Run tests to ensure compatibility
 
 ### Modifying Controller Logic

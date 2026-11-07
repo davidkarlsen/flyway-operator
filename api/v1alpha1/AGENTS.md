@@ -18,7 +18,7 @@ CRD types for the `flyway.davidkarlsen.com/v1alpha1` API group. Defines the `Mig
 
 ### Working In This Directory
 - Use kubebuilder validation markers on every spec field: `+kubebuilder:validation:Required|Optional|Pattern|Enum`, `+kubebuilder:default`. The `JdbcUrl` field already pins `^jdbc:.*` — keep that pattern.
-- After editing types, run `make manifests generate` to refresh `config/crd/bases/...` and `zz_generated.deepcopy.go`. Update `config/samples/flyway_v1alpha1_migration.yaml` if the public shape changed.
+- After editing types, run `make manifests generate` to refresh `config/crd/bases/...` and `zz_generated.deepcopy.go`. Update the examples in `docs/usage.md` if the public shape changed (`config/samples/` is only the minimal OLM `alm-examples` source; keep it valid).
 - All operator-specific annotations must be built from the `Prefix` constant. Adding a new annotation? Add a typed const next to `Generation` / `paused`.
 - Scheme registration is done in `addKnownTypes` — do **not** reintroduce an `init()` that calls `SchemeBuilder.Register(...)`, and do **not** switch back to the deprecated `sigs.k8s.io/controller-runtime/pkg/scheme.Builder` (`SA1019`). The exported GroupVersion is `flywayv1alpha1.GroupVersion`; there is no `SchemeBuilder.GroupVersion` field on `runtime.SchemeBuilder`.
 

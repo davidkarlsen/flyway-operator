@@ -87,7 +87,7 @@ Uses the upstream `k8s.io/apimachinery/pkg/runtime.SchemeBuilder` pattern, **not
 From `.github/copilot-instructions.md` (Copilot rules):
 
 - Apache 2.0 license header (see `hack/boilerplate.go.txt`) on new Go files; controller-gen also enforces it.
-- Use kubebuilder validation markers (`+kubebuilder:validation:Required|Optional|Pattern`, `+kubebuilder:default`) for all spec fields. After editing API types, run `make manifests generate` and update `config/samples/` if the public shape changed.
+- Use kubebuilder validation markers (`+kubebuilder:validation:Required|Optional|Pattern`, `+kubebuilder:default`) for all spec fields. After editing API types, run `make manifests generate` and update the examples in `docs/usage.md` if the public shape changed. `config/samples/` is only the OLM `alm-examples` source; keep it minimal and valid, not a second set of docs.
 - Operator-specific annotations must use the `Prefix` constant — do not hardcode the domain.
 - Env-var defaults use `github.com/caitlinelfring/go-env-default`.
 - Conditions are the canonical status mechanism; update them via `SetConditions` rather than mutating the slice in place.
