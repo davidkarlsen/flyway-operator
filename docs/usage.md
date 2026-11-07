@@ -77,6 +77,11 @@ All three share one reason: `JobCreated`, `JobRunning`, `JobSucceeded`, `Retryin
 `PreviousJobRunning` (a Job for an older generation is still running) or `PreviousJobReplaced`. On failure the message
 holds the Job's own failure reason and message. `ReconcileSuccess` only means the reconcile loop ran.
 
+`status.lastAppliedImageRef` holds the `migrationSource.imageRef` of the last Job that succeeded, taken from that Job, and
+`status.lastAppliedGeneration` the generation it ran for. Both keep their value while a later run is in progress or after
+it fails. This is the image the SQL files came from, not the schema version in the database; for that, see the Job's
+`flyway info` output.
+
 For an Argo CD health check, see [Argo CD](argocd.md).
 
 Check the result:

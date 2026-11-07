@@ -136,6 +136,8 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				fmt.Sprintf("Migration Succeeded: %s, source: %s", req.NamespacedName, migration.Spec.MigrationSource.ImageRef))
 		}
 		setApplied(migration, fmt.Sprintf("Job %s succeeded on attempt %d", existingJob.Name, attempt))
+		migration.Status.LastAppliedImageRef = jobSourceImage(existingJob)
+		migration.Status.LastAppliedGeneration = migration.Generation
 		return r.ManageSuccess(ctx, migration)
 
 	default: // jobFailed
