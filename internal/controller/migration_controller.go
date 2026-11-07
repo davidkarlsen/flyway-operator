@@ -107,12 +107,12 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.submitMigrationJob(ctx, migration)
 	}
 
-	if existingJob.DeletionTimestamp != nil {
-		logger.Info("Previous job is being deleted, requeueing", "job", existingJob.Name)
-		return r.ManageSuccessWithRequeue(ctx, migration, deletionRequeue)
-	}
-
+	// A terminating Job is not short-circuited: the reconcile that deleted it may have lost its status write, so the
+	// status is computed again below, and deleteJob only requeues until the Job is gone.
 	if imageVolumeUnsupported(migration) && jobIsCurrent(existingJob, migration) && !hasSourceImageVolume(existingJob) {
+		if existingJob.DeletionTimestamp != nil {
+			return r.ManageSuccessWithRequeue(ctx, migration, deletionRequeue)
+		}
 		// the cache still holds the rejected Job; delete it (again) and keep reporting Failed
 		return r.rejectJobWithoutImageVolume(ctx, migration, existingJob)
 	}
@@ -120,7 +120,7 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	state, failureReason, failure := jobState(existingJob)
 
 	if !jobIsCurrent(existingJob, migration) {
-		if state == jobRunning {
+		if state == jobRunning && existingJob.DeletionTimestamp == nil {
 			setConditions(migration, flywayv1alpha1.ReasonPreviousJobRunning,
 				fmt.Sprintf("Waiting for job of generation %s to finish", existingJob.Annotations[flywayv1alpha1.Generation]),
 				metav1.ConditionTrue, metav1.ConditionFalse)
@@ -288,7 +288,12 @@ func imageVolumeUnsupported(migration *flywayv1alpha1.Migration) bool {
 }
 
 // deleteJob deletes a finished Job; the next reconcile, triggered by the deletion, creates its successor.
+// A Job that is already terminating is not deleted again; the status is saved and the reconcile requeued.
 func (r *MigrationReconciler) deleteJob(ctx context.Context, migration *flywayv1alpha1.Migration, job *batchv1.Job) (reconcile.Result, error) {
+	if job.DeletionTimestamp != nil {
+		log.FromContext(ctx).Info("Previous job is being deleted, requeueing", "job", job.Name)
+		return r.ManageSuccessWithRequeue(ctx, migration, deletionRequeue)
+	}
 	opts := metav1.DeletePropagationBackground
 	err := r.GetClient().Delete(ctx, job, &client.DeleteOptions{
 		PropagationPolicy: &opts,

@@ -141,7 +141,9 @@ Create `$TOKEN` with `kubectl create token <serviceaccount> -n <namespace>`.
   reconciles after an operator restart, do not count it again.
 - An attempt can go uncounted, never counted twice. This happens when the status write fails, or for a retried
   attempt, when deleting its Job fails: the status already records `Retrying` for that attempt, so the
-  reconcile that then deletes the Job does not count it. Attempts of a superseded generation are not counted.
+  reconcile that then deletes the Job does not count it. A retried attempt whose status write failed after its
+  Job was deleted is counted once if the Job is still terminating at the next reconcile, and stays uncounted if
+  the Job is already gone. Attempts of a superseded generation are not counted.
 - Counters start at zero when the operator restarts. Alert on the state gauges, and use `increase()` or
   `rate()` on counters. An attempt that fails while the operator is down is counted before the first scrape
   after the restart, so `increase()` misses it.

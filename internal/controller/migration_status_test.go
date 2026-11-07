@@ -37,6 +37,8 @@ type statusHarness struct {
 	failStatusUpdates int
 	// failJobDeletes makes that many next Job deletes fail with a conflict.
 	failJobDeletes int
+	// jobDeletes counts the Job deletes that reached the client.
+	jobDeletes int
 }
 
 func newStatusHarness(t *testing.T, retryLimit *int32, extra ...interceptor.Funcs) *statusHarness {
@@ -63,9 +65,13 @@ func newStatusHarness(t *testing.T, retryLimit *int32, extra ...interceptor.Func
 	h := &statusHarness{t: t}
 	funcs := interceptor.Funcs{
 		Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
-			if _, isJob := obj.(*batchv1.Job); isJob && h.failJobDeletes > 0 {
+			_, isJob := obj.(*batchv1.Job)
+			if isJob && h.failJobDeletes > 0 {
 				h.failJobDeletes--
 				return apierrors.NewConflict(schema.GroupResource{Group: "batch", Resource: "jobs"}, obj.GetName(), errors.New("injected"))
+			}
+			if isJob {
+				h.jobDeletes++
 			}
 			return c.Delete(ctx, obj, opts...)
 		},
@@ -616,6 +622,147 @@ func TestStatusLegacyCopySQLJobIsFollowed(t *testing.T) {
 			}
 			if m := h.migration(); tt.succeeded && m.Status.LastAppliedImageRef != "somereg.io/someimage:1" {
 				t.Errorf("lastAppliedImageRef = %q, want the copy-sql image", m.Status.LastAppliedImageRef)
+			}
+		})
+	}
+}
+
+// holdJob adds a finalizer to the Job, so a delete leaves it terminating.
+func (h *statusHarness) holdJob() {
+	h.t.Helper()
+	j := h.job()
+	j.Finalizers = append(j.Finalizers, "test/hold")
+	if err := h.c.Update(context.TODO(), j); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+// releaseJob removes the finalizers, so a terminating Job goes away.
+func (h *statusHarness) releaseJob() {
+	h.t.Helper()
+	j := h.job()
+	j.Finalizers = nil
+	if err := h.c.Update(context.TODO(), j); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+// expectJobDeletes checks the number of Job deletes so far.
+func (h *statusHarness) expectJobDeletes(want int) {
+	h.t.Helper()
+	if h.jobDeletes != want {
+		h.t.Errorf("job deletes = %d, want %d", h.jobDeletes, want)
+	}
+}
+
+// reconcileExpectingConflict runs a reconcile whose status write, after the Job delete, fails with a conflict.
+func (h *statusHarness) reconcileExpectingConflict() {
+	h.t.Helper()
+	h.failStatusUpdates = 1
+	if _, err := h.r.Reconcile(context.TODO(), reconcile.Request{NamespacedName: statusKey}); !apierrors.IsConflict(err) {
+		h.t.Fatalf("reconcile err = %v, want a conflict", err)
+	}
+	if j := h.job(); j == nil || j.DeletionTimestamp == nil {
+		h.t.Fatal("job is not terminating after the reconcile")
+	}
+}
+
+// The reconcile that deletes a failed Job can lose its Retrying status write. While the Job terminates, later
+// reconciles report Retrying again, count the attempt once, and do not create a successor.
+func TestStatusRetryingSurvivesLostWriteWhileJobTerminates(t *testing.T) {
+	h := newMetricsHarness(t, nil)
+	h.reconcile()
+	h.reconcile()
+	h.holdJob()
+	h.finishJob(batchv1.JobFailed, 3)
+	uid := h.job().UID
+
+	h.reconcileExpectingConflict()
+	h.expect(h.migration(), flywayv1alpha1.ReasonJobRunning, metav1.ConditionFalse, metav1.ConditionTrue, metav1.ConditionFalse)
+
+	for range 2 {
+		m := h.reconcile()
+		h.expect(m, flywayv1alpha1.ReasonRetrying, metav1.ConditionFalse, metav1.ConditionTrue, metav1.ConditionFalse)
+		if m.Status.Attempts != 1 {
+			t.Errorf("attempts = %d, want 1", m.Status.Attempts)
+		}
+		if j := h.job(); j == nil || j.UID != uid {
+			t.Fatal("terminating job was replaced")
+		}
+	}
+	h.expectRuns(0, 1, 0)
+	h.expectJobDeletes(1) // the terminating Job is not deleted again
+
+	h.releaseJob()
+	if h.job() != nil {
+		t.Fatal("released job still exists")
+	}
+	m := h.reconcile()
+	h.expect(m, flywayv1alpha1.ReasonJobCreated, metav1.ConditionFalse, metav1.ConditionTrue, metav1.ConditionFalse)
+	if j := h.job(); j == nil || j.Annotations[flywayv1alpha1.Attempt] != "2" {
+		t.Errorf("successor = %+v, want attempt 2", j)
+	}
+	h.expectRuns(0, 1, 0)
+}
+
+// The same for a Job of an older generation: PreviousJobReplaced is reported again while it terminates.
+// A still-running old Job that is already terminating (deleted by hand) is replaced too, not waited for.
+func TestStatusReplacedSurvivesLostWriteWhileJobTerminates(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		// finish ends generation 1's Job; nil leaves it running, and it is then deleted by hand.
+		finish func(h *statusHarness)
+	}{
+		{name: "succeeded", finish: func(h *statusHarness) { h.finishJob(batchv1.JobComplete, 0) }},
+		{name: "failed", finish: func(h *statusHarness) { h.finishJob(batchv1.JobFailed, 3) }},
+		{name: "running"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newStatusHarness(t, ptr.To[int32](0))
+			h.reconcile()
+			h.holdJob()
+			if tt.finish != nil {
+				tt.finish(h)
+			}
+			h.reconcile() // records the outcome of generation 1, or JobRunning
+			uid := h.job().UID
+			if tt.finish == nil {
+				if err := h.c.Delete(context.TODO(), h.job()); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			m := h.migration()
+			m.Spec.MigrationSource.ImageRef = "somereg.io/someimage:2"
+			m.Generation = 2
+			if err := h.c.Update(context.TODO(), m); err != nil {
+				t.Fatal(err)
+			}
+
+			if tt.finish != nil {
+				h.reconcileExpectingConflict()
+			}
+			for range 2 {
+				m := h.reconcile()
+				h.expect(m, flywayv1alpha1.ReasonPreviousJobReplaced, metav1.ConditionFalse, metav1.ConditionTrue, metav1.ConditionFalse)
+				if m.Status.Attempts != 0 {
+					t.Errorf("attempts = %d, want 0", m.Status.Attempts)
+				}
+				if j := h.job(); j == nil || j.UID != uid {
+					t.Fatal("terminating job was replaced")
+				}
+			}
+			h.expectJobDeletes(1) // the terminating Job is not deleted again
+
+			h.releaseJob()
+			m = h.reconcile()
+			h.expect(m, flywayv1alpha1.ReasonJobCreated, metav1.ConditionFalse, metav1.ConditionTrue, metav1.ConditionFalse)
+			j := h.job()
+			if j == nil {
+				t.Fatalf("no generation 2 job after the old one was released")
+			}
+			if j.Annotations[flywayv1alpha1.Generation] != "2" || j.Annotations[flywayv1alpha1.Attempt] != "1" {
+				t.Errorf("successor annotations = %v, want generation 2 attempt 1", j.Annotations)
 			}
 		})
 	}
