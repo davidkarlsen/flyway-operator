@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"testing"
 
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
@@ -18,6 +20,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -29,7 +32,7 @@ type statusHarness struct {
 	r *MigrationReconciler
 }
 
-func newStatusHarness(t *testing.T, retryLimit *int32) *statusHarness {
+func newStatusHarness(t *testing.T, retryLimit *int32, funcs ...interceptor.Funcs) *statusHarness {
 	t.Helper()
 	s := runtime.NewScheme()
 	if err := clientgoscheme.AddToScheme(s); err != nil {
@@ -50,7 +53,11 @@ func newStatusHarness(t *testing.T, retryLimit *int32) *statusHarness {
 			RetryLimit:      retryLimit,
 		},
 	}
-	c := fake.NewClientBuilder().WithScheme(s).WithObjects(migration).WithStatusSubresource(migration).Build()
+	b := fake.NewClientBuilder().WithScheme(s).WithObjects(migration).WithStatusSubresource(migration)
+	for _, f := range funcs {
+		b = b.WithInterceptorFuncs(f)
+	}
+	c := b.Build()
 	r := &MigrationReconciler{
 		ReconcilerBase: util.NewReconcilerBase(c, s, nil, record.NewFakeRecorder(100), nil),
 		Client:         c,
@@ -240,5 +247,74 @@ func TestStatusCreateConflictDoesNotCountAnAttempt(t *testing.T) {
 	}
 	if got := h.migration().Status.Attempts; got != 0 {
 		t.Errorf("attempts = %d after a create that found the Job existing, want 0", got)
+	}
+}
+
+// dropImageVolumes mimics an API server with the ImageVolume feature gate off: it drops image volumes and their mounts.
+var dropImageVolumes = interceptor.Funcs{
+	Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+		if job, ok := obj.(*batchv1.Job); ok {
+			spec := &job.Spec.Template.Spec
+			spec.Volumes = slices.DeleteFunc(spec.Volumes, func(v corev1.Volume) bool { return v.Image != nil })
+			for i := range spec.Containers {
+				spec.Containers[i].VolumeMounts = slices.DeleteFunc(spec.Containers[i].VolumeMounts,
+					func(m corev1.VolumeMount) bool { return m.Name == sqlVolumeName })
+			}
+		}
+		return c.Create(ctx, obj, opts...)
+	},
+}
+
+func TestStatusDroppedImageVolumeFails(t *testing.T) {
+	h := newStatusHarness(t, nil, dropImageVolumes)
+
+	for range 3 {
+		m := h.reconcile()
+		h.expect(m, flywayv1alpha1.ReasonImageVolumeUnsupported, metav1.ConditionFalse, metav1.ConditionFalse, metav1.ConditionTrue)
+		if h.job() != nil {
+			t.Fatal("job without the image volume was not deleted")
+		}
+	}
+	recorder := h.r.GetRecorder().(*record.FakeRecorder)
+	events := 0
+	for len(recorder.Events) > 0 {
+		if e := <-recorder.Events; strings.Contains(e, flywayv1alpha1.ReasonImageVolumeUnsupported) {
+			events++
+		}
+	}
+	if events != 1 {
+		t.Errorf("got %d %s events, want 1 (no re-creation loop)", events, flywayv1alpha1.ReasonImageVolumeUnsupported)
+	}
+
+	// a spec change tries again
+	m := h.migration()
+	m.Spec.MigrationSource.ImageRef = "somereg.io/someimage:2"
+	m.Generation = 2
+	if err := h.c.Update(context.TODO(), m); err != nil {
+		t.Fatal(err)
+	}
+	h.expect(h.reconcile(), flywayv1alpha1.ReasonImageVolumeUnsupported, metav1.ConditionFalse, metav1.ConditionFalse, metav1.ConditionTrue)
+	if len(recorder.Events) != 1 {
+		t.Errorf("spec change did not try again: %d new events", len(recorder.Events))
+	}
+}
+
+func TestStatusStaleCachedJobWithoutImageVolumeKeepsFailed(t *testing.T) {
+	h := newStatusHarness(t, nil)
+	h.reconcile()
+	m := h.migration()
+	setAll(m, flywayv1alpha1.ReasonImageVolumeUnsupported, "dropped", metav1.ConditionFalse, metav1.ConditionFalse, metav1.ConditionTrue)
+	if err := h.c.Status().Update(context.TODO(), m); err != nil {
+		t.Fatal(err)
+	}
+	j := h.job()
+	j.Spec.Template.Spec.Volumes = nil
+	if err := h.c.Update(context.TODO(), j); err != nil {
+		t.Fatal(err)
+	}
+
+	h.expect(h.reconcile(), flywayv1alpha1.ReasonImageVolumeUnsupported, metav1.ConditionFalse, metav1.ConditionFalse, metav1.ConditionTrue)
+	if h.job() != nil {
+		t.Fatal("cached job without the image volume was not deleted")
 	}
 }

@@ -2,6 +2,8 @@ package controller
 
 import (
 	"fmt"
+	"path"
+	"slices"
 	"strconv"
 
 	"github.com/caitlinelfring/go-env-default"
@@ -17,6 +19,8 @@ import (
 const (
 	defaultFlywayImage = "docker.io/flyway/flyway:13"
 	envNameFlywayImage = "FLYWAY_IMAGE"
+	// sqlMountPath is where the migration source image is mounted, read-only, in the Flyway container.
+	sqlMountPath = "/flyway/migration-source"
 )
 
 func jobIsCurrent(job *batchv1.Job, migration *flywayv1alpha1.Migration) bool {
@@ -95,7 +99,7 @@ func getFlywayImage(migration *flywayv1alpha1.Migration) string {
 }
 
 func getFlywayArgs(migration *flywayv1alpha1.Migration) []string {
-	args := migration.Spec.FlywayConfiguration.Commands
+	args := slices.Clone(migration.Spec.FlywayConfiguration.Commands)
 	args = append(args, "-outputType=json")
 
 	jdbcProps := lo.MapToSlice(migration.Spec.FlywayConfiguration.JdbcProperties, func(key string, value string) string {
@@ -106,8 +110,20 @@ func getFlywayArgs(migration *flywayv1alpha1.Migration) []string {
 	return args
 }
 
+// sqlLocation is the Flyway location of the SQL files: spec.migrationSource.path inside the mounted source image.
+func sqlLocation(migration *flywayv1alpha1.Migration) string {
+	return "filesystem:" + path.Join(sqlMountPath, migration.Spec.MigrationSource.SqlPath)
+}
+
+// hasSourceImageVolume reports whether the Job still carries the migration source image volume.
+// API servers with the ImageVolume feature gate off silently drop it on create.
+func hasSourceImageVolume(job *batchv1.Job, migration *flywayv1alpha1.Migration) bool {
+	return slices.ContainsFunc(job.Spec.Template.Spec.Volumes, func(v corev1.Volume) bool {
+		return v.Name == sqlVolumeName && v.Image != nil && v.Image.Reference == migration.Spec.MigrationSource.ImageRef
+	})
+}
+
 func createJobSpec(migration *flywayv1alpha1.Migration, attempt int32) *batchv1.Job {
-	const targetPath = "/mnt/target/"
 	envVars := []corev1.EnvVar{
 		{
 			Name:  "FLYWAY_USER",
@@ -126,6 +142,15 @@ func createJobSpec(migration *flywayv1alpha1.Migration, attempt int32) *batchv1.
 		{
 			Name:  "FLYWAY_ENCODING",
 			Value: migration.Spec.MigrationSource.Encoding,
+		},
+		{
+			Name:  "FLYWAY_LOCATIONS",
+			Value: sqlLocation(migration),
+		},
+		{
+			// without it Flyway exits 0 without running anything when the location does not exist
+			Name:  "FLYWAY_FAIL_ON_MISSING_LOCATIONS",
+			Value: "true",
 		},
 	}
 
@@ -167,21 +192,6 @@ func createJobSpec(migration *flywayv1alpha1.Migration, attempt int32) *batchv1.
 			BackoffLimit: ptr.To[int32](2),
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
-					InitContainers: []corev1.Container{
-						{
-							Name:            "copy-sql",
-							Image:           migration.Spec.MigrationSource.ImageRef,
-							ImagePullPolicy: corev1.PullAlways,
-							Command:         []string{"sh", "-c"},
-							Args:            []string{fmt.Sprintf("cd %s && cp -rp * %s", migration.Spec.MigrationSource.SqlPath, targetPath)},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      sqlVolumeName,
-									MountPath: targetPath,
-								},
-							},
-						},
-					},
 					Containers: []corev1.Container{
 						{
 							Name:            "flyway",
@@ -192,7 +202,8 @@ func createJobSpec(migration *flywayv1alpha1.Migration, attempt int32) *batchv1.
 							VolumeMounts: append([]corev1.VolumeMount{
 								{
 									Name:      sqlVolumeName,
-									MountPath: "/flyway/sql",
+									MountPath: sqlMountPath,
+									ReadOnly:  true,
 								},
 							}, migration.Spec.FlywayConfiguration.VolumeMounts...),
 						},
@@ -201,7 +212,10 @@ func createJobSpec(migration *flywayv1alpha1.Migration, attempt int32) *batchv1.
 						{
 							Name: sqlVolumeName,
 							VolumeSource: corev1.VolumeSource{
-								EmptyDir: &corev1.EmptyDirVolumeSource{},
+								Image: &corev1.ImageVolumeSource{
+									Reference:  migration.Spec.MigrationSource.ImageRef,
+									PullPolicy: corev1.PullAlways,
+								},
 							},
 						},
 					}, migration.Spec.FlywayConfiguration.Volumes...),

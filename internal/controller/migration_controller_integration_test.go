@@ -68,8 +68,28 @@ var _ = Describe("Migration controller", func() {
 				job := &batchv1.Job{}
 				err = k8sClient.Get(ctx, objectKey, job)
 				g.Expect(err).To(BeNil())
+				// the API server kept the image volume (it drops it when the ImageVolume feature gate is off)
+				g.Expect(hasSourceImageVolume(job, migration)).To(BeTrue(), "stored job volumes: %+v", job.Spec.Template.Spec.Volumes)
 
 			}, timeout, interval).Should(Succeed())
+		})
+	})
+
+	Context("When the path escapes the image", func() {
+		It("Should reject it", func() {
+			migration := &flywayv1alpha1.Migration{
+				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "dotdot"},
+				Spec: flywayv1alpha1.MigrationSpec{
+					Database: flywayv1alpha1.Database{
+						Username:    "someUser",
+						Credentials: corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "somesecret"}, Key: "someKey"},
+						JdbcUrl:     "jdbc:db2://somehost:50000/SOME_DB",
+					},
+					MigrationSource: flywayv1alpha1.MigrationSource{ImageRef: "somereg.io/someimage:1", SqlPath: "/sql/../etc"},
+				},
+			}
+			err := k8sClient.Create(context.Background(), migration)
+			Expect(err).To(MatchError(ContainSubstring("path must not contain '..'")))
 		})
 	})
 })

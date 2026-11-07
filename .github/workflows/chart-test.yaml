@@ -9,7 +9,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        kubernetesVersion: [ "v1.30.10", "v1.32.2" ]
+        # image volumes need Kubernetes >= 1.35 (chart kubeVersion); node images published with kind v0.33.0
+        kubernetesVersion: [ "v1.35.8", "v1.36.4", "v1.37.0" ]
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/master'
     steps:

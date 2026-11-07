@@ -2390,12 +2390,18 @@ spec:
                     description: The encoding of the SQL-files.
                     type: string
                   imageRef:
-                    description: Reference to the image holding the SQLs to migrate
+                    description: |-
+                      Reference to the image holding the SQLs to migrate.
+                      The image is mounted read-only as an image volume, so it needs no shell or other tools and can be built FROM scratch.
                     type: string
                   path:
                     default: /sql
                     description: Path within the image to the SQLs for flyway
+                    maxLength: 1024
                     type: string
+                    x-kubernetes-validations:
+                    - message: path must not contain '..'
+                      rule: '!self.matches(''(^|/)[.][.](/|$)'')'
                   placeholders:
                     additionalProperties:
                       type: string

@@ -47,7 +47,7 @@ A `Migration` carries three sub-specs:
 
 - `Database` — `username` + `credentials` (Kubernetes `SecretKeySelector`) + `jdbcUrl` (validated by regex `^jdbc:.*`).
 - `FlywayConfiguration` — Flyway-specific knobs (baseline, default schema, placeholders, etc.) propagated to the Job as env vars.
-- `MigrationSource` — an `imageRef` that **must contain `cp`**: an init container `cp`s the SQL files out of that image into a shared volume which the Flyway container then reads. Optional `flywayImage` override (defaults to `docker.io/flyway/flyway:13`), `path` (default `/sql`), and `encoding`.
+- `MigrationSource` — an `imageRef` mounted read-only into the Flyway container as an image volume (`volumes[].image`, Kubernetes 1.35+), so the image needs no shell and can be `FROM scratch`; Flyway reads it through `FLYWAY_LOCATIONS=filesystem:/flyway/migration-source/<path>` (user `envVars` can override it). If the API server drops the image volume (ImageVolume gate off), the Job is deleted and the Migration reports `Failed` / `ImageVolumeUnsupported`. Optional `flywayImage` override (defaults to `docker.io/flyway/flyway:13`), `path` (default `/sql`), and `encoding`.
 
 Status is tracked entirely through `metav1.Condition`s on `MigrationStatus.Conditions`. Helper methods `GetConditions` / `SetConditions` satisfy the `redhat-cop/operator-utils` `ReconcilerBase` interface.
 
@@ -62,7 +62,7 @@ Operator-owned annotations are namespaced under the `Prefix = "flyway-operator.d
 1. Fetch the `Migration`; honour `IsPaused()` early-exit.
 2. Look up an existing owned Job by deterministic name (`getExistingJob`).
 3. If the Job exists and its `generation` annotation matches the current `Migration.Generation`, mirror its result into the `Applied`/`Progressing`/`Failed` conditions (with `observedGeneration`); re-create a failed Job until `spec.retryLimit`, then stop with `Failed=True`. A Job of an older generation is deleted once finished.
-4. Otherwise build a fresh Job spec via `internal/controller/jobutil.go` (init container `cp`s SQL files; main container runs Flyway with env vars derived from `FlywayConfiguration` and `Database`) and submit it (`submitMigrationJob`), with the Migration set as controller owner reference so deletion cascades.
+4. Otherwise build a fresh Job spec via `internal/controller/jobutil.go` (SQL image mounted as an image volume; Flyway container runs with env vars derived from `FlywayConfiguration` and `Database`) and submit it (`submitMigrationJob`), with the Migration set as controller owner reference so deletion cascades.
 
 The reconciler embeds `util.ReconcilerBase` from `redhat-cop/operator-utils` and uses its condition / event helpers. Events go to a `record.EventRecorder` (real one in `cmd/main.go`, `record.FakeRecorder` in tests).
 
