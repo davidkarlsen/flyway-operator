@@ -56,6 +56,8 @@ metrics:
     enabled: false
     # Scrape interval, e.g. 30s. Empty uses the Prometheus default.
     interval: ""
+    # The endpoint sets honorLabels: true so the `namespace` label on the operator's metrics (the
+    # Migration's namespace) is kept rather than renamed to exported_namespace.
     # Extra labels on the ServiceMonitor, e.g. to match a Prometheus serviceMonitorSelector.
     labels: {}
 

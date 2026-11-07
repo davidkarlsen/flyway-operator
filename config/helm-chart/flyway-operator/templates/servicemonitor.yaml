@@ -13,6 +13,8 @@ spec:
     - path: /metrics
       port: https
       scheme: https
+      # Keep the operator's own `namespace` label (the Migration's namespace) instead of exported_namespace.
+      honorLabels: true
       bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
       {{- with .Values.metrics.serviceMonitor.interval }}
       interval: {{ . }}
