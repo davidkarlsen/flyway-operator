@@ -10,6 +10,9 @@ on:
     tags:
     - "v*"
 
+permissions:
+  contents: read
+
 jobs:
   # Decides whether the build must run. Trigger-level paths-ignore is not used:
   # it leaves the required ci-success check unreported on docs-only PRs and blocks the merge.
@@ -18,7 +21,7 @@ jobs:
     outputs:
       code: ${{ steps.diff.outputs.code }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Detect build-relevant changes
@@ -49,15 +52,13 @@ jobs:
     runs-on: ubuntu-latest
     if: needs.changes.outputs.code == 'true' && !contains(github.event.head_commit.message, 'skip ci')
     permissions:
-      checks: write
       contents: write
       packages: write
-      statuses: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: fregante/setup-git-user@v2.0.2
+      - uses: fregante/setup-git-user@024bc0b8e177d7e77203b48dab6fb45666854b35 # v2.0.2
       - name: createVersion
         run: |
           GIT_VERSION=$(git describe --tag --always --match "v*")
@@ -65,12 +66,12 @@ jobs:
           echo "VERSION=$(echo ${GIT_VERSION} | sed s/^v//)" >> $GITHUB_ENV
 
       - name: setup go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9.3.0
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           args: --timeout=10m --build-tags e2e
 
@@ -78,12 +79,12 @@ jobs:
         run: |
           make test
 
-      - uses: codecov/codecov-action@v7
+      - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # required
 
       - name: 'Login to GitHub Container Registry'
-        uses: docker/login-action@v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -109,7 +110,7 @@ jobs:
 
       - name: createRelease
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: marvinpinto/action-automatic-releases@v1.2.1
+        uses: marvinpinto/action-automatic-releases@919008cf3f741b179569b7a6fb4d8860689ab7f0 # v1.2.1
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           prerelease: false
@@ -121,16 +122,16 @@ jobs:
     if: needs.changes.outputs.code == 'true' && !contains(github.event.head_commit.message, 'skip ci')
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: setup go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
 
       # Installs kind only; `make test-e2e` creates the cluster and its local registry.
       - name: install kind
-        uses: helm/kind-action@v1.15.2
+        uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376 # v1.15.2
         with:
           install_only: true
 
@@ -140,16 +141,29 @@ jobs:
 
       - name: upload e2e logs
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-logs
           path: bin/e2e-logs/
           if-no-files-found: ignore
 
+  # Read-only vulnerability scan. Gates PRs through ci-success but is not a dependency of the
+  # build job, so a new advisory cannot block a tag release.
+  govulncheck:
+    needs: changes
+    runs-on: ubuntu-latest
+    if: needs.changes.outputs.code == 'true' && !contains(github.event.head_commit.message, 'skip ci')
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
+        with:
+          go-version-file: go.mod
+
   # The single required status check: passes when build and e2e succeeded or were skipped
   # for a non-build change, so docs-only PRs can still auto-merge.
   ci-success:
-    needs: [changes, build, e2e]
+    needs: [changes, build, e2e, govulncheck]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -158,8 +172,10 @@ jobs:
           CHANGES: ${{ needs.changes.result }}
           BUILD: ${{ needs.build.result }}
           E2E: ${{ needs.e2e.result }}
+          VULN: ${{ needs.govulncheck.result }}
         run: |
-          echo "changes=${CHANGES} build=${BUILD} e2e=${E2E}"
+          echo "changes=${CHANGES} build=${BUILD} e2e=${E2E} govulncheck=${VULN}"
           [ "${CHANGES}" = success ] \
             && { [ "${BUILD}" = success ] || [ "${BUILD}" = skipped ]; } \
-            && { [ "${E2E}" = success ] || [ "${E2E}" = skipped ]; }
+            && { [ "${E2E}" = success ] || [ "${E2E}" = skipped ]; } \
+            && { [ "${VULN}" = success ] || [ "${VULN}" = skipped ]; }
