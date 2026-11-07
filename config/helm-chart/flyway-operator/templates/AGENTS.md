@@ -18,7 +18,7 @@ Helm templates for the operator workload and its RBAC. Equivalent to `config/man
 | `servicemonitor.yaml` | Prometheus Operator `ServiceMonitor`, gated on `metrics.enabled` and `metrics.serviceMonitor.enabled` |
 | `serviceaccount.yaml` | Manager ServiceAccount |
 | `role.yaml` / `role_binding.yaml` | Reconciler RBAC |
-| `migration_editor_role.yaml` / `migration_viewer_role.yaml` | User-facing aggregated roles |
+| `migration_editor_role.yaml` / `migration_viewer_role.yaml` | User-facing aggregated roles; names are per-release (`<fullname>-migration-editor/-viewer`) and intentionally differ from `config/rbac/` (kustomize/OLM is a single install) |
 | `NOTES.txt` | Post-install message rendered by `helm install` |
 
 ## For AI Agents

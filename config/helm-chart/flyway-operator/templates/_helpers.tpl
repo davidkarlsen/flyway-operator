@@ -57,6 +57,6 @@ Create the name of the service account to use
 {{- if .Values.serviceAccount.create }}
 {{- default (include "flyway-operator.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
-{{- default "default" .Values.serviceAccount.name }}
+{{- required "serviceAccount.name is required when serviceAccount.create=false" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
