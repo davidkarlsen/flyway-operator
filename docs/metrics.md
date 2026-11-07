@@ -113,8 +113,9 @@ Create `$TOKEN` with `kubectl create token <serviceaccount> -n <namespace>`.
 | `401` | No bearer token, or the `TokenReview` rejected it (expired or wrong audience). |
 | `403` | The token is valid, but its ServiceAccount is not bound to the `metrics-reader` ClusterRole. |
 | `200` | The ServiceAccount is authenticated and authorized. |
-| `400` or a TLS error | Plain `http://` was used against the HTTPS port. A TLS error with `https://` means the image is older than 0.3.0, which serves plain HTTP with no auth. |
-| Connection refused | Metrics are disabled (`--metrics-bind-address=0` or `metrics.enabled=false`). |
+| `400` or a TLS error | Plain `http://` was used against the HTTPS port. A TLS error with `https://` means the server speaks plain HTTP with no auth: either `--metrics-secure=false` is set, or the image is older than 0.3.0. |
+| Connection refused | kustomize or OLM with `--metrics-bind-address=0`: the Service exists, but nothing listens on 8443. |
+| `Could not resolve host` | Helm with `metrics.enabled=false`: the `<release-fullname>-metrics` Service is not rendered. |
 
 ## Available metrics
 
