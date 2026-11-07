@@ -14,7 +14,7 @@ Kustomize bases and overlays consumed by `make install`, `make deploy`, `make ma
 | `default/` | Default deployment overlay used by `make deploy` (see `default/AGENTS.md`) |
 | `manager/` | Operator Deployment + namespace manifests (see `manager/AGENTS.md`) |
 | `rbac/` | ClusterRole/Role bindings for the manager and the metrics endpoint (see `rbac/AGENTS.md`) |
-| `samples/` | Sample CRs (`flyway_v1alpha1_migration.yaml`) — kept in sync with API changes (see `samples/AGENTS.md`) |
+| `samples/` | Minimal Migration used only as the OLM CSV `alm-examples` source (see `samples/AGENTS.md`); documented examples live in `docs/` |
 | `prometheus/` | `ServiceMonitor` for Prometheus Operator scraping (see `prometheus/AGENTS.md`) |
 | `manifests/` | OLM `ClusterServiceVersion` base, used by `make bundle` (see `manifests/AGENTS.md`) |
 | `scorecard/` | Operator-SDK scorecard test config (see `scorecard/AGENTS.md`) |
