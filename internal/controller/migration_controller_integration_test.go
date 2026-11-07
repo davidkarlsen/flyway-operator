@@ -603,6 +603,24 @@ var _ = Describe("Migration controller (envtest)", func() {
 			Entry("annotation key with a non-ASCII letter", func(spec map[string]any) {
 				spec["podMetadata"] = map[string]any{"annotations": map[string]any{"example.com/\u212Aey": "x"}}
 			}, "spec.podMetadata.annotations", "keys must be valid annotation keys"),
+			Entry("zero activeDeadline", func(spec map[string]any) {
+				spec["activeDeadline"] = "0s"
+			}, "spec.activeDeadline", "must be a duration such as 30m"),
+			Entry("negative activeDeadline", func(spec map[string]any) {
+				spec["activeDeadline"] = "-5m"
+			}, "spec.activeDeadline", "must be a duration such as 30m"),
+			Entry("sub-second activeDeadline", func(spec map[string]any) {
+				spec["activeDeadline"] = "500ms"
+			}, "spec.activeDeadline", "must be a duration such as 30m"),
+			Entry("activeDeadline above 8760h", func(spec map[string]any) {
+				spec["activeDeadline"] = "8761h"
+			}, "spec.activeDeadline", "must be a duration such as 30m"),
+			Entry("activeDeadline in days", func(spec map[string]any) {
+				spec["activeDeadline"] = "1d"
+			}, "spec.activeDeadline"),
+			Entry("activeDeadline not a duration", func(spec map[string]any) {
+				spec["activeDeadline"] = "abc"
+			}, "spec.activeDeadline"),
 		)
 
 		It("rejects a name longer than 63 characters and accepts one of 63", func(ctx SpecContext) {
@@ -633,7 +651,17 @@ var _ = Describe("Migration controller (envtest)", func() {
 			Expect(k8sClient.Create(ctx, u)).To(Succeed())
 		})
 
-		It("applies defaults for commands, path, encoding and retryLimit", func(ctx SpecContext) {
+		It("accepts an activeDeadline such as 30m and decodes it", func(ctx SpecContext) {
+			u := validMigration(ns)
+			u.Object["spec"].(map[string]any)["activeDeadline"] = "30m"
+			Expect(k8sClient.Create(ctx, u)).To(Succeed())
+
+			m := getMigration(ctx, Default, types.NamespacedName{Namespace: ns, Name: u.GetName()})
+
+			Expect(m.Spec.ActiveDeadline).To(Equal(&metav1.Duration{Duration: 30 * time.Minute}))
+		})
+
+		It("applies defaults for commands, path, encoding, retryLimit and activeDeadline", func(ctx SpecContext) {
 			u := validMigration(ns)
 			Expect(k8sClient.Create(ctx, u)).To(Succeed())
 
@@ -643,6 +671,7 @@ var _ = Describe("Migration controller (envtest)", func() {
 			Expect(m.Spec.MigrationSource.SqlPath).To(Equal("/sql"))
 			Expect(m.Spec.MigrationSource.Encoding).To(Equal("UTF-8"))
 			Expect(m.Spec.RetryLimit).To(Equal(ptr.To(flywayv1alpha1.DefaultRetryLimit)))
+			Expect(m.Spec.ActiveDeadline).To(Equal(&metav1.Duration{Duration: flywayv1alpha1.DefaultActiveDeadline}))
 		})
 	})
 

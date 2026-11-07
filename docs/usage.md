@@ -29,6 +29,7 @@ spec:
       key: password
     jdbcUrl: "jdbc:postgresql://my-db:5432/my_app"  # must start with jdbc:
   retryLimit: 2                      # optional, default 2: re-creations of a failed Job
+  activeDeadline: 1h                 # optional, default 1h: maximum run time per Job attempt
   jobMetadata:                       # optional, labels and annotations set on the Job
     labels:
       example.com/team: payments
@@ -118,6 +119,33 @@ kubectl delete job my-app
 - The Job retries its pod twice (`backoffLimit: 2`) before it fails.
 - A failed Job is re-created up to `spec.retryLimit` times (default `2`) for the same generation. After that the
   `Migration` reports `Failed=True` and no new Job starts until the spec changes. Deleting the failed Job starts one more attempt.
+- Each Job runs for at most `spec.activeDeadline` (default `1h`), see [Deadline](#deadline).
+
+## Deadline
+
+`spec.activeDeadline` is the maximum run time per Job attempt: a duration such as `30m`, between `1s` and `8760h`,
+default `1h`. It becomes the Job's `activeDeadlineSeconds`, rounded up to whole seconds, and includes image pulls and the
+Job's pod retries. A migration that legitimately runs longer than an hour must set a higher value.
+
+- When the deadline is reached, Kubernetes kills the pod and fails the Job with reason `DeadlineExceeded`. This counts
+  against `retryLimit` like any other failure, so a `Migration` can run for up to `activeDeadline × (retryLimit + 1)`
+  before it reports `Failed`. Set `retryLimit: 0` to not retry after a timeout.
+- While retries remain the reason is `Retrying`. When the last attempt times out, the `Migration` reports `Failed=True`
+  with reason `TimedOut` instead of `RetryLimitExceeded`, and a `TimedOut` Warning event instead of `Failed`. The
+  message says `timed out (activeDeadline ...)` and holds the Job's `DeadlineExceeded` reason. Anything matching
+  `RetryLimitExceeded` to detect a failed `Migration` must also match `TimedOut`, or match `Failed=True` instead.
+- Killing Flyway mid-migration is only safe where DDL is transactional (PostgreSQL, SQL Server). On MySQL, Oracle and DB2 a
+  killed migration can leave a script partly applied and a failed row in the schema history table, which needs
+  `flyway repair` and manual cleanup. Prefer database-side limits that fail cleanly, such as `lock_timeout` /
+  `statement_timeout` set through `jdbcUrl` or `jdbcProperties`, and Flyway's `FLYWAY_CONNECT_RETRIES` and
+  `FLYWAY_LOCK_RETRY_COUNT` (in `envVars`), and keep `activeDeadline` as the outer bound.
+- Changing only `activeDeadline` is a spec change: it starts a new Job, which runs Flyway again (a no-op when nothing is
+  pending).
+- The deadline only applies to Jobs created with it. A Job that is already hung keeps running and blocks later spec
+  changes (`PreviousJobRunning`); delete it with `kubectl delete job <name>`.
+- With Istio, an injected sidecar that never exits keeps the pod running after Flyway has finished. The deadline bounds
+  this but reports it as a failure; disable injection for the Job's pod (`podMetadata` annotation
+  `sidecar.istio.io/inject: "false"`) or run the proxy as a native sidecar so the pod completes.
 
 ## Status
 
@@ -131,8 +159,9 @@ that generation) are also set.
 | `Progressing` | a Job for the current generation is created, running, or being retried |
 | `Failed` | the Job for the current generation failed and `retryLimit` is exhausted |
 
-All three share one reason: `JobCreated`, `JobRunning`, `JobSucceeded`, `Retrying`, `RetryLimitExceeded`,
-`PreviousJobRunning` (a Job for an older generation is still running) or `PreviousJobReplaced`. On failure the message
+All three share one reason: `JobCreated`, `JobRunning`, `JobSucceeded`, `Retrying`, `RetryLimitExceeded`, `TimedOut`
+(the last attempt exceeded `spec.activeDeadline`), `PreviousJobRunning` (a Job for an older generation is still
+running) or `PreviousJobReplaced`. On failure the message
 holds the Job's own failure reason and message. `ReconcileSuccess` only means the reconcile loop ran.
 
 `status.lastAppliedImageRef` holds the `migrationSource.imageRef` of the last Job that succeeded, taken from that Job, and

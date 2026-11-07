@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	"github.com/redhat-cop/operator-utils/pkg/util"
@@ -395,6 +396,73 @@ func TestStatusLastAppliedKeptWhenJobHasNoSourceImage(t *testing.T) {
 
 	if n := countContaining(h.events(), "LastAppliedUnknown"); n != 1 {
 		t.Errorf("LastAppliedUnknown events = %d, want 1", n)
+	}
+}
+
+func TestStatusDeadlineExceededRetriesThenFails(t *testing.T) {
+	h := newStatusHarness(t, ptr.To[int32](1))
+	m := h.migration()
+	m.Spec.ActiveDeadline = &metav1.Duration{Duration: time.Minute}
+	if err := h.c.Update(context.TODO(), m); err != nil {
+		t.Fatal(err)
+	}
+	h.reconcile()
+
+	deadlineExceeded := func() {
+		t.Helper()
+		if got := ptr.Deref(h.job().Spec.ActiveDeadlineSeconds, 0); got != 60 {
+			t.Fatalf("activeDeadlineSeconds = %d, want 60", got)
+		}
+		h.failJobDeadlineExceeded()
+	}
+	const (
+		timedOut = "timed out (activeDeadline 1m0s)"
+		want     = "DeadlineExceeded: Job was active longer than specified deadline"
+	)
+	messageHas := func(m *flywayv1alpha1.Migration, condType string) {
+		t.Helper()
+		c := meta.FindStatusCondition(m.Status.Conditions, condType)
+		if !strings.Contains(c.Message, timedOut) || !strings.Contains(c.Message, want) {
+			t.Errorf("%s message %q does not contain %q and %q", condType, c.Message, timedOut, want)
+		}
+	}
+
+	// a timeout under the limit is retried like any other failure
+	deadlineExceeded()
+	m = h.reconcile()
+	h.expect(m, flywayv1alpha1.ReasonRetrying, metav1.ConditionFalse, metav1.ConditionTrue, metav1.ConditionFalse)
+	messageHas(m, flywayv1alpha1.ConditionProgressing)
+	h.reconcile() // attempt 2 created
+
+	// a timeout at the limit fails the Migration with reason TimedOut, and a TimedOut event instead of Failed
+	deadlineExceeded()
+	for range 3 {
+		m = h.reconcile()
+		h.expect(m, flywayv1alpha1.ReasonTimedOut, metav1.ConditionFalse, metav1.ConditionFalse, metav1.ConditionTrue)
+	}
+	messageHas(m, flywayv1alpha1.ConditionFailed)
+	events := h.events()
+	if n := countContaining(events, "Warning TimedOut Migration "+timedOut+" on attempt 2 of 2: DeadlineExceeded"); n != 1 {
+		t.Errorf("TimedOut events = %d, want 1 (events: %q)", n, events)
+	}
+	if n := countContaining(events, "Warning Failed"); n != 0 {
+		t.Errorf("Failed events = %d, want 0", n)
+	}
+}
+
+// failJobDeadlineExceeded marks the Job failed the way the Job controller does when activeDeadlineSeconds is reached.
+func (h *statusHarness) failJobDeadlineExceeded() {
+	h.t.Helper()
+	j := h.job()
+	if j == nil {
+		h.t.Fatal("no job to fail")
+	}
+	j.Status.Conditions = append(j.Status.Conditions, batchv1.JobCondition{
+		Type: batchv1.JobFailed, Status: corev1.ConditionTrue,
+		Reason: batchv1.JobReasonDeadlineExceeded, Message: "Job was active longer than specified deadline",
+	})
+	if err := h.c.Status().Update(context.TODO(), j); err != nil {
+		h.t.Fatal(err)
 	}
 }
 

@@ -77,7 +77,7 @@ var _ = BeforeSuite(func() {
 	Expect(utils.LoadImageToKindCluster(postgresImage)).To(Succeed())
 
 	By("building and pushing the migration-source images")
-	for _, tag := range []string{"v1", "v2", "broken"} {
+	for _, tag := range []string{"v1", "v2", "broken", "sleep"} {
 		mustRun(exec.Command("docker", "build", "-t", sqlImage(tag),
 			"-f", "test/e2e/testdata/Dockerfile.sql", "test/e2e/testdata/sql-"+tag))
 		mustRun(exec.Command("docker", "push", sqlImage(tag)))

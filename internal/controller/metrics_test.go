@@ -153,6 +153,31 @@ func TestMetricsRetryingThenFailedCountedOnceEach(t *testing.T) {
 	}
 }
 
+func TestMetricsTimedOutCountedOnceAsFailed(t *testing.T) {
+	h := newMetricsHarness(t, ptr.To[int32](1))
+	h.reconcile()
+
+	// attempt 1 times out: retrying
+	h.failJobDeadlineExceeded()
+	h.reconcile() // Retrying, Job deleted
+	h.reconcile() // attempt 2 created
+	h.expectRuns(0, 1, 0)
+
+	// attempt 2 times out at the limit: Failed with reason TimedOut, counted once as failed across reconciles
+	h.failJobDeadlineExceeded()
+	for range 3 {
+		h.reconcile()
+	}
+	h.expect(h.migration(), flywayv1alpha1.ReasonTimedOut, metav1.ConditionFalse, metav1.ConditionFalse, metav1.ConditionTrue)
+	h.expectRuns(0, 1, 1)
+
+	// a restart loses all series; the persisted TimedOut status records the outcome, so it is not counted again
+	deleteRunMetrics(statusKey)
+	h.reconcile()
+	h.reconcile()
+	h.expectRuns(0, 0, 0)
+}
+
 func TestMetricsNewGenerationCountsAgain(t *testing.T) {
 	h := newMetricsHarness(t, ptr.To[int32](0))
 	h.reconcile()

@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"maps"
+	"math"
 	"strconv"
 
 	"github.com/caitlinelfring/go-env-default"
@@ -39,20 +40,21 @@ const (
 	jobFailed
 )
 
-// jobState reads the Job's terminal conditions; on failure it also returns the Job's reason and message.
-func jobState(job *batchv1.Job) (jobStatus, string) {
+// jobState reads the Job's terminal conditions; on failure it also returns the Job condition's reason,
+// and its reason and message as one string.
+func jobState(job *batchv1.Job) (state jobStatus, reason, failure string) {
 	for _, c := range job.Status.Conditions {
 		if c.Status != corev1.ConditionTrue {
 			continue
 		}
 		switch c.Type {
 		case batchv1.JobComplete:
-			return jobSucceeded, ""
+			return jobSucceeded, "", ""
 		case batchv1.JobFailed:
-			return jobFailed, fmt.Sprintf("%s: %s", c.Reason, c.Message)
+			return jobFailed, c.Reason, fmt.Sprintf("%s: %s", c.Reason, c.Message)
 		}
 	}
-	return jobRunning, ""
+	return jobRunning, "", ""
 }
 
 // jobAttempt returns the attempt annotation of the Job, 1 when absent (Jobs created before the annotation existed).
@@ -103,8 +105,9 @@ func setApplied(m *flywayv1alpha1.Migration, message string) {
 	setAll(m, flywayv1alpha1.ReasonJobSucceeded, message, metav1.ConditionTrue, metav1.ConditionFalse, metav1.ConditionFalse)
 }
 
-func setFailed(m *flywayv1alpha1.Migration, message string) {
-	setAll(m, flywayv1alpha1.ReasonRetryLimitExceeded, message, metav1.ConditionFalse, metav1.ConditionFalse, metav1.ConditionTrue)
+// setFailed sets Failed=True with reason RetryLimitExceeded or TimedOut.
+func setFailed(m *flywayv1alpha1.Migration, reason, message string) {
+	setAll(m, reason, message, metav1.ConditionFalse, metav1.ConditionFalse, metav1.ConditionTrue)
 }
 
 func setAll(m *flywayv1alpha1.Migration, reason, message string, applied, progressing, failed metav1.ConditionStatus) {
@@ -263,6 +266,8 @@ func createJobSpec(migration *flywayv1alpha1.Migration, attempt int32) *batchv1.
 			},
 		},
 	}
+
+	job.Spec.ActiveDeadlineSeconds = ptr.To(int64(math.Ceil(migration.GetActiveDeadline().Seconds())))
 
 	return job
 }
