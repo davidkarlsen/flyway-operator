@@ -321,17 +321,18 @@ var _ = Describe("Migration controller (envtest)", func() {
 		})
 
 		It("reports a ReconcileError and creates no Job when the API server rejects the Job", func(ctx SpecContext) {
-			// A Job name longer than 63 characters is invalid (it becomes a label value); a Migration name is not.
-			longKey := types.NamespacedName{Namespace: ns, Name: strings.Repeat("m", 70)}
-			Expect(k8sClient.Create(ctx, newMigration(ns, longKey.Name))).To(Succeed())
+			// The CRD accepts a volume mount without a matching volume; the Job's pod spec validation does not.
+			m := newMigration(ns, key.Name)
+			m.Spec.FlywayConfiguration.VolumeMounts = []corev1.VolumeMount{{Name: "missing", MountPath: "/mnt/missing"}}
+			Expect(k8sClient.Create(ctx, m)).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				m := getMigration(ctx, g, longKey)
+				m := getMigration(ctx, g, key)
 				c := meta.FindStatusCondition(m.Status.Conditions, apis.ReconcileError)
 				g.Expect(c).NotTo(BeNil())
 				g.Expect(c.Status).To(Equal(metav1.ConditionTrue))
 			}, envtestTimeout, envtestInterval).Should(Succeed())
-			Expect(apierrors.IsNotFound(k8sClient.Get(ctx, longKey, &batchv1.Job{}))).To(BeTrue())
+			Expect(apierrors.IsNotFound(k8sClient.Get(ctx, key, &batchv1.Job{}))).To(BeTrue())
 		})
 	})
 
@@ -603,6 +604,20 @@ var _ = Describe("Migration controller (envtest)", func() {
 				spec["podMetadata"] = map[string]any{"annotations": map[string]any{"example.com/\u212Aey": "x"}}
 			}, "spec.podMetadata.annotations", "keys must be valid annotation keys"),
 		)
+
+		It("rejects a name longer than 63 characters and accepts one of 63", func(ctx SpecContext) {
+			long := validMigration(ns)
+			long.SetGenerateName("")
+			long.SetName(strings.Repeat("a", 64))
+			err := k8sClient.Create(ctx, long)
+			Expect(apierrors.IsInvalid(err)).To(BeTrue(), "expected Invalid, got %v", err)
+			Expect(err.Error()).To(ContainSubstring("metadata.name must be at most 63 characters"))
+
+			ok := validMigration(ns)
+			ok.SetGenerateName("")
+			ok.SetName(strings.Repeat("a", 63))
+			Expect(k8sClient.Create(ctx, ok)).To(Succeed())
+		})
 
 		It("accepts valid jobMetadata and podMetadata", func(ctx SpecContext) {
 			u := validMigration(ns)

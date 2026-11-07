@@ -117,6 +117,7 @@ func (m *Migration) GetRetryLimit() int32 {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 63",message="metadata.name must be at most 63 characters (it is used as the Job name and as a pod label value)"
 
 // Migration is the Schema for the migrations API
 type Migration struct {

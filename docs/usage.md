@@ -110,8 +110,8 @@ kubectl delete job my-app
 
 ## What happens
 
-- The operator creates a Job with the same name as the `Migration`, owned by the `Migration`. Kubernetes rejects Jobs
-  with names longer than 63 characters, so keep `Migration` names within that.
+- The operator creates a Job with the same name as the `Migration`, owned by the `Migration`. A `Migration` name
+  longer than 63 characters is rejected, because the name is used as the Job name and as a pod label value.
 - The Job is annotated with the `Migration`'s generation. A spec change creates a new Job; an unchanged spec does not rerun it.
   This includes `jobMetadata` and `podMetadata`: changing them re-runs the migration, which is a no-op for `migrate` when
   nothing is pending. Existing Jobs are never patched in place.
