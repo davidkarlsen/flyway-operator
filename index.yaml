@@ -3,6 +3,26 @@ entries:
   flyway-operator:
   - apiVersion: v2
     appVersion: 0.2.13
+    created: "2026-11-07T10:50:52.122908554Z"
+    dependencies:
+    - name: common
+      repository: oci://registry-1.docker.io/bitnamicharts
+      tags:
+      - bitnami-common
+      version: 2.x.x
+    description: Flyway Operator - an operator to do declarative database schema migration.
+    digest: aec78ae5feb0101969678d3187ecc14615530eb0f902903839d4f387dd9e5304
+    icon: https://pbs.twimg.com/profile_images/1339525060999192576/9ltj0fpE_400x400.png
+    maintainers:
+    - email: david@davidkarlsen.com
+      name: davidkarlsen
+    name: flyway-operator
+    type: application
+    urls:
+    - https://github.com/davidkarlsen/flyway-operator/releases/download/flyway-operator-0.2.14/flyway-operator-0.2.14.tgz
+    version: 0.2.14
+  - apiVersion: v2
+    appVersion: 0.2.13
     created: "2025-06-15T14:23:25.365278281Z"
     dependencies:
     - name: common
@@ -181,4 +201,4 @@ entries:
     urls:
     - https://github.com/davidkarlsen/flyway-operator/releases/download/flyway-operator-0.1.1/flyway-operator-0.1.1.tgz
     version: 0.1.1
-generated: "2025-06-15T14:23:25.365311503Z"
+generated: "2026-11-07T10:50:52.122961473Z"
