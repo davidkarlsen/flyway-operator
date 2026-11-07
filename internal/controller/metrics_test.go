@@ -91,6 +91,10 @@ func (h *statusHarness) timeJob(d time.Duration) {
 	}
 	for i := range j.Status.Conditions {
 		j.Status.Conditions[i].LastTransitionTime = end
+		if j.Status.Conditions[i].Type == batchv1.JobFailureTarget {
+			// earlier than Failed, so a duration measured to it would be wrong
+			j.Status.Conditions[i].LastTransitionTime = metav1.NewTime(start.Add(time.Second))
+		}
 	}
 	if err := h.c.Status().Update(context.TODO(), j); err != nil {
 		h.t.Fatal(err)
@@ -192,6 +196,9 @@ func TestMetricsNotCountedAgainAfterRestart(t *testing.T) {
 			h.reconcile()
 			h.finishJob(tc.finish, 3)
 			h.reconcile()
+			if runs(resultSucceeded)+runs(resultFailed) != 1 {
+				t.Fatalf("runs before restart: succeeded=%v failed=%v, want one of them 1", runs(resultSucceeded), runs(resultFailed))
+			}
 
 			// a restart loses all series; the persisted status records the outcome, so it is not counted again
 			deleteRunMetrics(statusKey)
@@ -323,5 +330,92 @@ func TestMigrationCollector(t *testing.T) {
 	}
 	if n := testutil.CollectAndCount(collector); n != 0 {
 		t.Errorf("collector reported %d series after delete, want 0", n)
+	}
+}
+
+func TestOutcomeIsNew(t *testing.T) {
+	prev := &flywayv1alpha1.MigrationStatus{Attempts: 2}
+	meta.SetStatusCondition(&prev.Conditions, metav1.Condition{Type: flywayv1alpha1.ConditionApplied,
+		Status: metav1.ConditionFalse, Reason: flywayv1alpha1.ReasonRetrying, ObservedGeneration: 3})
+	for name, tc := range map[string]struct {
+		prev       *flywayv1alpha1.MigrationStatus
+		generation int64
+		attempt    int32
+		reason     string
+		want       bool
+	}{
+		"same outcome":        {prev, 3, 2, flywayv1alpha1.ReasonRetrying, false},
+		"other reason":        {prev, 3, 2, flywayv1alpha1.ReasonRetryLimitExceeded, true},
+		"other generation":    {prev, 4, 2, flywayv1alpha1.ReasonRetrying, true},
+		"other attempt":       {prev, 3, 3, flywayv1alpha1.ReasonRetrying, true},
+		"no previous outcome": {&flywayv1alpha1.MigrationStatus{}, 3, 2, flywayv1alpha1.ReasonRetrying, true},
+	} {
+		if got := outcomeIsNew(tc.prev, tc.generation, tc.attempt, tc.reason); got != tc.want {
+			t.Errorf("%s: outcomeIsNew = %v, want %v", name, got, tc.want)
+		}
+	}
+}
+
+// A stale cache can still show the deleted, failed attempt-1 Job after the Retrying reconcile.
+func TestMetricsRetryingNotCountedAgainForStaleJob(t *testing.T) {
+	h := newMetricsHarness(t, ptr.To[int32](1))
+	h.reconcile()
+	h.finishJob(batchv1.JobFailed, 3)
+	stale := h.job().DeepCopy()
+	h.reconcile() // Retrying, Job deleted
+	h.expectRuns(0, 1, 0)
+
+	stale.ResourceVersion = ""
+	stale.UID = ""
+	status := stale.Status
+	if err := h.c.Create(context.TODO(), stale); err != nil {
+		t.Fatal(err)
+	}
+	stale.Status = status
+	if err := h.c.Status().Update(context.TODO(), stale); err != nil {
+		t.Fatal(err)
+	}
+	h.reconcile()
+	h.expectRuns(0, 1, 0)
+}
+
+func TestMetricsFailedNotCountedWhenStatusWriteFails(t *testing.T) {
+	h := newMetricsHarness(t, ptr.To[int32](0))
+	h.reconcile()
+	h.finishJob(batchv1.JobFailed, 3)
+
+	h.failStatusUpdates = 1
+	if _, err := h.r.Reconcile(context.TODO(), reconcile.Request{NamespacedName: statusKey}); err == nil {
+		t.Fatal("expected the injected status conflict to be returned")
+	}
+	h.expectRuns(0, 0, 0)
+	h.reconcile()
+	h.reconcile()
+	h.expectRuns(0, 0, 1)
+}
+
+// When the Retrying reconcile fails, the attempt is not counted, and it stays uncounted: a lost count, not a double one.
+func TestMetricsRetryingNotCountedWhenReconcileFails(t *testing.T) {
+	for name, inject := range map[string]func(h *statusHarness){
+		"status write fails": func(h *statusHarness) { h.failStatusUpdates = 1 },
+		"job delete fails":   func(h *statusHarness) { h.failJobDeletes = 1 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newMetricsHarness(t, ptr.To[int32](1))
+			h.reconcile()
+			h.finishJob(batchv1.JobFailed, 3)
+
+			inject(h)
+			if _, err := h.r.Reconcile(context.TODO(), reconcile.Request{NamespacedName: statusKey}); err == nil {
+				t.Fatal("expected the injected conflict to be returned")
+			}
+			h.expectRuns(0, 0, 0)
+			h.reconcile()
+			h.reconcile()
+			if a := h.migration().Status.Attempts; a != 2 {
+				t.Fatalf("attempts = %d, want 2", a)
+			}
+			h.expectRuns(0, 0, 0)
+		})
 	}
 }

@@ -33,6 +33,8 @@ type statusHarness struct {
 	r *MigrationReconciler
 	// failStatusUpdates makes that many next status updates fail with a conflict.
 	failStatusUpdates int
+	// failJobDeletes makes that many next Job deletes fail with a conflict.
+	failJobDeletes int
 }
 
 func newStatusHarness(t *testing.T, retryLimit *int32) *statusHarness {
@@ -59,6 +61,13 @@ func newStatusHarness(t *testing.T, retryLimit *int32) *statusHarness {
 	h := &statusHarness{t: t}
 	h.c = fake.NewClientBuilder().WithScheme(s).WithObjects(migration).WithStatusSubresource(migration).
 		WithInterceptorFuncs(interceptor.Funcs{
+			Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+				if _, isJob := obj.(*batchv1.Job); isJob && h.failJobDeletes > 0 {
+					h.failJobDeletes--
+					return apierrors.NewConflict(schema.GroupResource{Group: "batch", Resource: "jobs"}, obj.GetName(), errors.New("injected"))
+				}
+				return c.Delete(ctx, obj, opts...)
+			},
 			SubResourceUpdate: func(ctx context.Context, c client.Client, sub string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
 				if h.failStatusUpdates > 0 {
 					h.failStatusUpdates--
@@ -140,6 +149,8 @@ func (h *statusHarness) finishJob(condType batchv1.JobConditionType, failedPods 
 	j.Status.Failed = failedPods
 	cond := batchv1.JobCondition{Type: condType, Status: corev1.ConditionTrue}
 	if condType == batchv1.JobFailed {
+		// the Job controller sets FailureTarget before Failed
+		j.Status.Conditions = append(j.Status.Conditions, batchv1.JobCondition{Type: batchv1.JobFailureTarget, Status: corev1.ConditionTrue})
 		cond.Reason = "BackoffLimitExceeded"
 		cond.Message = "Job has reached the specified backoff limit"
 	} else {
