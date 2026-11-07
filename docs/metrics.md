@@ -180,7 +180,7 @@ The rules come in two groups with different audiences, set in the `alert_audienc
 | Group | `alert_audience` | Alerts | Goes to |
 |-------|------------------|--------|---------|
 | `flyway-operator.operator` | `platform` | `FlywayOperatorMetricsAbsent` (no operator scrape target is up), `FlywayOperatorReconcileErrors` (over 10% of Migration reconciles fail) | The team running the operator. |
-| `flyway-operator.migrations` | `workload` | `FlywayMigrationFailed` (`Failed=True`, retries exhausted), `FlywayMigrationStuck` (`Progressing` for over 1h), `FlywayMigrationRetrying` (an attempt failed in the last 30m), `FlywayMigrationSlow` (the last successful run took over 15m; an example to tune) | The team owning the Migration, by its `namespace` label. |
+| `flyway-operator.migrations` | `workload` | `FlywayMigrationFailed` (`Failed=True`: retries exhausted, or image volumes unsupported), `FlywayMigrationStuck` (`Progressing` for over 1h), `FlywayMigrationRetrying` (an attempt failed in the last 30m), `FlywayMigrationSlow` (the last successful run took over 15m; an example to tune) | The team owning the Migration, by its `namespace` label. |
 
 - Migration alerts aggregate with `max by (namespace, migration)` or `sum by (namespace, migration)`, so they
   keep those two labels and are not reset when the operator pod changes during a rollout or failover.
@@ -193,6 +193,10 @@ The rules come in two groups with different audiences, set in the `alert_audienc
   exceeded `spec.activeDeadline`): it matches `Failed=True`, and `status_condition` has no `reason` label. A timed-out
   final attempt counts once in `flyway_operator_migration_runs_total{result="failed"}`. Read the reason with
   `kubectl describe migration` or from the `TimedOut` Warning event.
+- `FlywayMigrationFailed` also covers `ImageVolumeUnsupported`: the API server dropped the migration source image
+  volume from the Job (Kubernetes older than 1.35, or the `ImageVolume` feature gate off), and the operator deleted the
+  Job. No Job attempt ran, so `runs_total` does not count it; it shows only in `status_condition` and the
+  `ImageVolumeUnsupported` Warning event.
 - Default severities are `warning` and `info`. Raise `FlywayMigrationFailed` to `critical` where a failed
   migration blocks a release, as in the per-namespace example below.
 
@@ -258,7 +262,7 @@ spec:
           annotations:
             summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} failed and is not retried.
             description: >-
-              retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline, else RetryLimitExceeded). Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}`
+              retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline, else RetryLimitExceeded), or the cluster does not support image volumes (ImageVolumeUnsupported). Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}`
               and `kubectl -n {{ $labels.namespace }} logs job/{{ $labels.migration }} -c flyway`.
               A spec change starts a new run.
         - alert: FlywayMigrationStuck
@@ -340,7 +344,7 @@ groups:
         annotations:
           summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} failed and is not retried.
           description: >-
-            retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline, else RetryLimitExceeded). Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}`
+            retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline, else RetryLimitExceeded), or the cluster does not support image volumes (ImageVolumeUnsupported). Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}`
             and `kubectl -n {{ $labels.namespace }} logs job/{{ $labels.migration }} -c flyway`.
             A spec change starts a new run.
       - alert: FlywayMigrationStuck
@@ -411,7 +415,7 @@ spec:
           annotations:
             summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} failed and is not retried.
             description: >-
-              retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline, else RetryLimitExceeded). Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}`
+              retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline, else RetryLimitExceeded), or the cluster does not support image volumes (ImageVolumeUnsupported). Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}`
               and `kubectl -n {{ $labels.namespace }} logs job/{{ $labels.migration }} -c flyway`.
               A spec change starts a new run.
         - alert: FlywayMigrationStuck

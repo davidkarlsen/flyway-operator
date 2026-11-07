@@ -1,3 +1,3 @@
-# Migration-source image: the operator's init container runs `cp` from it, so the base must ship a shell and cp.
-FROM docker.io/library/busybox:1.37
+# Migration-source image: mounted read-only as an image volume, so it needs no shell or other tools.
+FROM scratch
 COPY *.sql /sql/

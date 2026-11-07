@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -38,7 +39,7 @@ type statusHarness struct {
 	failJobDeletes int
 }
 
-func newStatusHarness(t *testing.T, retryLimit *int32) *statusHarness {
+func newStatusHarness(t *testing.T, retryLimit *int32, extra ...interceptor.Funcs) *statusHarness {
 	t.Helper()
 	s := runtime.NewScheme()
 	if err := clientgoscheme.AddToScheme(s); err != nil {
@@ -60,23 +61,29 @@ func newStatusHarness(t *testing.T, retryLimit *int32) *statusHarness {
 		},
 	}
 	h := &statusHarness{t: t}
+	funcs := interceptor.Funcs{
+		Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+			if _, isJob := obj.(*batchv1.Job); isJob && h.failJobDeletes > 0 {
+				h.failJobDeletes--
+				return apierrors.NewConflict(schema.GroupResource{Group: "batch", Resource: "jobs"}, obj.GetName(), errors.New("injected"))
+			}
+			return c.Delete(ctx, obj, opts...)
+		},
+		SubResourceUpdate: func(ctx context.Context, c client.Client, sub string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+			if h.failStatusUpdates > 0 {
+				h.failStatusUpdates--
+				return apierrors.NewConflict(schema.GroupResource{Resource: "migrations"}, obj.GetName(), errors.New("injected"))
+			}
+			return c.SubResource(sub).Update(ctx, obj, opts...)
+		},
+	}
+	for _, f := range extra {
+		if f.Create != nil {
+			funcs.Create = f.Create
+		}
+	}
 	h.c = fake.NewClientBuilder().WithScheme(s).WithObjects(migration).WithStatusSubresource(migration).
-		WithInterceptorFuncs(interceptor.Funcs{
-			Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
-				if _, isJob := obj.(*batchv1.Job); isJob && h.failJobDeletes > 0 {
-					h.failJobDeletes--
-					return apierrors.NewConflict(schema.GroupResource{Group: "batch", Resource: "jobs"}, obj.GetName(), errors.New("injected"))
-				}
-				return c.Delete(ctx, obj, opts...)
-			},
-			SubResourceUpdate: func(ctx context.Context, c client.Client, sub string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
-				if h.failStatusUpdates > 0 {
-					h.failStatusUpdates--
-					return apierrors.NewConflict(schema.GroupResource{Resource: "migrations"}, obj.GetName(), errors.New("injected"))
-				}
-				return c.SubResource(sub).Update(ctx, obj, opts...)
-			},
-		}).Build()
+		WithInterceptorFuncs(funcs).Build()
 	h.r = &MigrationReconciler{
 		ReconcilerBase: util.NewReconcilerBase(h.c, s, nil, record.NewFakeRecorder(100), nil),
 		Client:         h.c,
@@ -384,7 +391,7 @@ func TestStatusLastAppliedKeptWhenJobHasNoSourceImage(t *testing.T) {
 	h.reconcile() // previous job replaced
 	h.reconcile() // job created
 	j := h.job()
-	j.Spec.Template.Spec.InitContainers[0].Name = "something-else"
+	j.Spec.Template.Spec.Volumes[0].Name = "something-else"
 	if err := h.c.Update(context.TODO(), j); err != nil {
 		t.Fatal(err)
 	}
@@ -491,5 +498,125 @@ func TestStatusLastAppliedFromPreviousGenerationJobSurvivesStatusConflict(t *tes
 	}
 	if n := countContaining(h.events(), "LastAppliedUnknown"); n != 0 {
 		t.Errorf("LastAppliedUnknown events = %d, want 0", n)
+	}
+}
+
+// dropImageVolumes mimics an API server with the ImageVolume feature gate off: it drops image volumes and their mounts.
+var dropImageVolumes = interceptor.Funcs{
+	Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+		if job, ok := obj.(*batchv1.Job); ok {
+			spec := &job.Spec.Template.Spec
+			spec.Volumes = slices.DeleteFunc(spec.Volumes, func(v corev1.Volume) bool { return v.Image != nil })
+			for i := range spec.Containers {
+				spec.Containers[i].VolumeMounts = slices.DeleteFunc(spec.Containers[i].VolumeMounts,
+					func(m corev1.VolumeMount) bool { return m.Name == sqlVolumeName })
+			}
+		}
+		return c.Create(ctx, obj, opts...)
+	},
+}
+
+func TestStatusDroppedImageVolumeFails(t *testing.T) {
+	h := newStatusHarness(t, nil, dropImageVolumes)
+
+	for range 3 {
+		m := h.reconcile()
+		h.expect(m, flywayv1alpha1.ReasonImageVolumeUnsupported, metav1.ConditionFalse, metav1.ConditionFalse, metav1.ConditionTrue)
+		if h.job() != nil {
+			t.Fatal("job without the image volume was not deleted")
+		}
+	}
+	recorder := h.r.GetRecorder().(*record.FakeRecorder)
+	events := 0
+	for len(recorder.Events) > 0 {
+		if e := <-recorder.Events; strings.Contains(e, flywayv1alpha1.ReasonImageVolumeUnsupported) {
+			events++
+		}
+	}
+	if events != 1 {
+		t.Errorf("got %d %s events, want 1 (no re-creation loop)", events, flywayv1alpha1.ReasonImageVolumeUnsupported)
+	}
+
+	// a spec change tries again
+	m := h.migration()
+	m.Spec.MigrationSource.ImageRef = "somereg.io/someimage:2"
+	m.Generation = 2
+	if err := h.c.Update(context.TODO(), m); err != nil {
+		t.Fatal(err)
+	}
+	h.expect(h.reconcile(), flywayv1alpha1.ReasonImageVolumeUnsupported, metav1.ConditionFalse, metav1.ConditionFalse, metav1.ConditionTrue)
+	if len(recorder.Events) != 1 {
+		t.Errorf("spec change did not try again: %d new events", len(recorder.Events))
+	}
+}
+
+func TestStatusStaleCachedJobWithoutImageVolumeKeepsFailed(t *testing.T) {
+	h := newStatusHarness(t, nil)
+	h.reconcile()
+	m := h.migration()
+	setAll(m, flywayv1alpha1.ReasonImageVolumeUnsupported, "dropped", metav1.ConditionFalse, metav1.ConditionFalse, metav1.ConditionTrue)
+	if err := h.c.Status().Update(context.TODO(), m); err != nil {
+		t.Fatal(err)
+	}
+	j := h.job()
+	j.Spec.Template.Spec.Volumes = nil
+	if err := h.c.Update(context.TODO(), j); err != nil {
+		t.Fatal(err)
+	}
+
+	h.expect(h.reconcile(), flywayv1alpha1.ReasonImageVolumeUnsupported, metav1.ConditionFalse, metav1.ConditionFalse, metav1.ConditionTrue)
+	if h.job() != nil {
+		t.Fatal("cached job without the image volume was not deleted")
+	}
+}
+
+// A current-generation Job created by an operator before 0.6.0 has a copy-sql init container and an emptyDir named
+// sql instead of the image volume. It is still followed to its outcome, not rejected as ImageVolumeUnsupported.
+func TestStatusLegacyCopySQLJobIsFollowed(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		succeeded   bool
+		reason      string
+		applied     metav1.ConditionStatus
+		progressing metav1.ConditionStatus
+	}{
+		{name: "succeeded", succeeded: true, reason: flywayv1alpha1.ReasonJobSucceeded, applied: metav1.ConditionTrue, progressing: metav1.ConditionFalse},
+		{name: "running", reason: flywayv1alpha1.ReasonJobRunning, applied: metav1.ConditionFalse, progressing: metav1.ConditionTrue},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newStatusHarness(t, nil)
+			sqlMount := []corev1.VolumeMount{{Name: "sql", MountPath: "/flyway/sql"}}
+			legacy := &batchv1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: statusKey.Name, Namespace: statusKey.Namespace,
+					Annotations: map[string]string{flywayv1alpha1.Generation: "1", flywayv1alpha1.Attempt: "1"},
+				},
+				Spec: batchv1.JobSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
+					InitContainers: []corev1.Container{{Name: copySQLContainerName, Image: "somereg.io/someimage:1", VolumeMounts: sqlMount}},
+					Containers:     []corev1.Container{{Name: "flyway", Image: defaultFlywayImage, VolumeMounts: sqlMount}},
+					Volumes:        []corev1.Volume{{Name: "sql", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}}},
+				}}},
+			}
+			if err := h.c.Create(context.TODO(), legacy); err != nil {
+				t.Fatal(err)
+			}
+			if tt.succeeded {
+				h.finishJob(batchv1.JobComplete, 0)
+			}
+			uid := h.job().UID
+
+			for range 2 {
+				h.expect(h.reconcile(), tt.reason, tt.applied, tt.progressing, metav1.ConditionFalse)
+			}
+			if j := h.job(); j == nil || j.UID != uid {
+				t.Error("legacy job was deleted or replaced")
+			}
+			if n := countContaining(h.events(), flywayv1alpha1.ReasonImageVolumeUnsupported); n != 0 {
+				t.Errorf("%s events = %d, want 0", flywayv1alpha1.ReasonImageVolumeUnsupported, n)
+			}
+			if m := h.migration(); tt.succeeded && m.Status.LastAppliedImageRef != "somereg.io/someimage:1" {
+				t.Errorf("lastAppliedImageRef = %q, want the copy-sql image", m.Status.LastAppliedImageRef)
+			}
+		})
 	}
 }

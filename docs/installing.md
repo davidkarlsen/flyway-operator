@@ -2,7 +2,20 @@
 
 The operator watches all namespaces. Choose one of the methods below, then continue with [usage](usage.md).
 
-Requires Kubernetes 1.25 or later: the CRD validates `jobMetadata` and `podMetadata` with CEL rules.
+## Requirements
+
+**Breaking (v0.6.0):** requires Kubernetes 1.35 or later and containerd 2.1 or later / CRI-O 1.31 or later.
+v0.5.x is the last release for older clusters.
+The SQL files are now mounted at `/flyway/migration-source`, not `/flyway/sql`: if you set `FLYWAY_LOCATIONS` yourself,
+update it. A location that does not exist fails the Job (`FLYWAY_FAIL_ON_MISSING_LOCATIONS=true`).
+
+- Kubernetes 1.35 or later; on OpenShift, 4.22 or later. Migration Jobs mount the SQL image as an
+  [image volume](https://kubernetes.io/docs/tasks/configure-pod-container/image-volumes/); the `ImageVolume`
+  feature gate is on by default from 1.35 (beta) and GA in 1.36
+  ([feature gates](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/), [KEP-4639](https://github.com/kubernetes/enhancements/tree/master/keps/sig-node/4639-oci-volume-source)).
+- A container runtime with image volume support: CRI-O 1.31 or later, or containerd 2.1 or later
+  ([Kubernetes blog](https://kubernetes.io/blog/2025/04/29/kubernetes-v1-33-image-volume-beta/), [containerd 2.1.0](https://github.com/containerd/containerd/releases/tag/v2.1.0)).
+- On OpenShift the pod's SCC must allow the `image` volume type (`restricted-v2` does).
 
 ## OpenShift (OLM)
 
