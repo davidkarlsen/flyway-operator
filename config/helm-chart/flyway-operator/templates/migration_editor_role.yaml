@@ -3,7 +3,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels: {{- include "common.labels.standard" . | nindent 4 }}
-  name: migration-editor-role
+  name: {{ include "common.names.fullname" . }}-migration-editor
 rules:
 - apiGroups:
   - flyway.davidkarlsen.com
