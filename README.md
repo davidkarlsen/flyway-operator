@@ -40,4 +40,4 @@ See the [contribution guide](CONTRIBUTING.md)
 
 ## Star history
 
-[![Star history of davidkarlsen/flyway-operator](https://next.ossinsight.io/widgets/official/analyze-repo-stars-history/thumbnail.png?repo_id=688360587&image_size=auto&color_scheme=light)](https://ossinsight.io/analyze/davidkarlsen/flyway-operator)
+[![Star History Chart](https://api.star-history.com/svg?repos=davidkarlsen/flyway-operator&type=Date)](https://star-history.com/#davidkarlsen/flyway-operator&Date)
