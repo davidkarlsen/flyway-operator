@@ -75,6 +75,6 @@ Remove it again with `make undeploy` (controller) and `make uninstall` (CRDs).
 
 - Jobs and their pods no longer carry `app.kubernetes.io/name: flyway` and `app.kubernetes.io/instance: <migration>`.
   Selectors on those labels (NetworkPolicies, monitoring, `kubectl -l`) must switch to
-  `flyway-operator.davidkarlsen.com/migration: <migration>`; see [Labels on the Job](usage.md).
+  `flyway-operator.davidkarlsen.com/migration: <migration>`; see [Job and pod metadata](usage.md#job-and-pod-metadata).
 
 Metrics are on by default in every install path; see [Metrics](metrics.md) for scraping, RBAC and verification.
