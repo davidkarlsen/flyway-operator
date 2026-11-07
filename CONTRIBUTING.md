@@ -2,42 +2,72 @@
 
 ## Issues
 
-Add as much info, such as logs, versions and CR-definitions to the issue.
+Include as much as you can: operator and Kubernetes versions, the `Migration` resource, its status
+(`kubectl get migration <name> -o yaml`), and the operator and Flyway Job logs.
 
-## Pull-requests
+## Prerequisites
 
-Create PRs including tests. Make sure you run `make manifests fmt vet` prior to opening the PR as this will update any API-defintion changes and format/vet the code.
+- Go, at the version in `go.mod`
+- Docker
+- For the e2e tests: [kind](https://kind.sigs.k8s.io/) and `kubectl`
 
+`controller-gen`, `kustomize`, `setup-envtest`, `operator-sdk` and `opm` are downloaded into `./bin/` by the
+Makefile on first use. `make help` lists all targets.
 
+## Before opening a pull request
 
-## How it works
-This project aims to follow the Kubernetes [Operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/).
-
-It uses [Controllers](https://kubernetes.io/docs/concepts/architecture/controller/),
-which provide a reconcile function responsible for synchronizing resources until the desired state is reached on the cluster.
-
-### Test It Out
-1. Install the CRDs into the cluster:
-
-```sh
-make install
-```
-
-2. Run your controller (this will run in the foreground, so switch to a new terminal if you want to leave it running):
+Run the same checks as CI:
 
 ```sh
-make run
+make test                                 # regenerates CRDs/RBAC/deepcopy, then fmt, vet and the envtest suite
+golangci-lint run --build-tags e2e ./...  # CI runs the latest golangci-lint with the default config
 ```
 
-**NOTE:** You can also run this in one step by running: `make install run`
+`make test` runs the unit tests and the envtest specs against a real Kubernetes API server (no cluster needed).
+Commit any files it regenerates.
 
-### Modifying the API definitions
-If you are editing the API definitions, generate the manifests such as CRs or CRDs using:
+Optionally, run the end-to-end tests locally. CI runs them on every pull request that changes code:
 
 ```sh
-make manifests
+make test-e2e           # kind cluster + local registry, real Flyway Jobs against Postgres
+make cleanup-test-e2e   # delete the kind cluster and registry
 ```
 
-**NOTE:** Run `make --help` for more information on all potential `make` targets
+Add or update tests with every change.
 
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+## Changing the API
+
+When you change `api/v1alpha1/`:
+
+1. Use kubebuilder markers for validation and defaults (`+kubebuilder:validation:...`, `+kubebuilder:default`).
+2. Run `make manifests generate`.
+3. Update the examples in [`docs/usage.md`](docs/usage.md).
+4. Keep `config/samples/` a minimal, valid subset of that example. It only feeds the OLM `alm-examples`
+   (the pre-filled "Create Migration" form); it is not documentation.
+
+## Documentation
+
+User documentation lives in [`docs/`](docs/README.md). Put examples there, not in YAML files elsewhere in the repo.
+
+## CI
+
+- `build` runs lint, `make test` and the container build.
+- `e2e` runs the kind tests.
+- `ci-success` is the only required check. It passes when `build` and `e2e` succeeded, or were skipped because
+  the change only touches docs (`*.md`, `docs/`), the Helm chart or similar files.
+- Changes to `config/helm-chart/` are tested by the chart-test workflow.
+
+## Running the operator against a cluster
+
+```sh
+make install run                                     # install the CRD and run the controller from your machine
+make docker-build deploy IMG=<registry>/flyway-operator:<tag>   # build and deploy in-cluster
+```
+
+## Releasing (maintainers)
+
+1. Push a `vX.Y.Z` tag on `main`. CI builds and pushes the operator image and the OLM bundle and catalog.
+2. Open a pull request that updates the Helm chart: `image.tag` and `appVersion` to the new release, a new chart
+   `version`, and the chart's copy of the CRD if it changed. The chart is published when that pull request merges.
+
+More background: the [Kubebuilder book](https://book.kubebuilder.io/introduction.html).
