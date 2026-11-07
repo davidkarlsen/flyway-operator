@@ -27,3 +27,7 @@ testbin/*
 catalog
 
 .omc
+
+# Local Claude Code state (skills and agents in .claude/ are committed)
+.claude/worktrees/
+.claude/settings.local.json
