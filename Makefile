@@ -107,7 +107,29 @@ vet: ## Run go vet against code.
 
 .PHONY: test
 test: manifests generate fmt vet envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /test/) -coverprofile cover.out
+
+KIND ?= kind
+KIND_CLUSTER ?= flyway-operator-e2e
+E2E_KUBECONFIG ?= $(LOCALBIN)/e2e-kubeconfig
+E2E_REGISTRY_NAME ?= flyway-operator-e2e-registry
+E2E_REGISTRY_PORT ?= 5001
+
+.PHONY: setup-test-e2e
+setup-test-e2e: $(LOCALBIN) ## Create the kind cluster and local registry for the e2e tests if missing.
+	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) KIND_KUBECONFIG=$(E2E_KUBECONFIG) \
+		E2E_REGISTRY_NAME=$(E2E_REGISTRY_NAME) E2E_REGISTRY_PORT=$(E2E_REGISTRY_PORT) ./test/e2e/setup-kind.sh
+
+.PHONY: test-e2e
+test-e2e: manifests kustomize setup-test-e2e ## Run the e2e tests against a kind cluster (needs docker and kind).
+	KUBECONFIG=$(E2E_KUBECONFIG) KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) KUSTOMIZE=$(KUSTOMIZE) \
+		E2E_REGISTRY=localhost:$(E2E_REGISTRY_PORT) \
+		go test -tags=e2e ./test/e2e/ -v -ginkgo.v -timeout 25m
+
+.PHONY: cleanup-test-e2e
+cleanup-test-e2e: ## Delete the e2e kind cluster and local registry.
+	$(KIND) delete cluster --name $(KIND_CLUSTER)
+	-docker rm -f $(E2E_REGISTRY_NAME)
 
 ##@ Build
 
