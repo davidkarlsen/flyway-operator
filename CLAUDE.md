@@ -100,9 +100,11 @@ Repo workflows live in `.claude/skills/` and build on the oh-my-claudecode agent
 |---|---|
 | `issue-to-pr` | feature/bug from issue to a PR that closes it (design review, worktree, tests incl. kind e2e lock, PR conventions, model selection) |
 | `review-loop` | independent critic + code-reviewer rounds until approval, then the merge rules |
-| `release` | readiness check, tag-build verification, Helm chart release PR, post-release gate |
+| `operator-release` | readiness check, tag-build verification, Helm chart release PR, post-release gate |
 | `tooling-upgrade` | one PR per outdated tool (Go, operator-sdk, controller-tools, envtest, kustomize, opm, default Flyway image) |
 | `security-sweep` | govulncheck, Dependabot/code-scanning alerts, Scorecard |
+
+The skills assume the oh-my-claudecode (OMC) plugin for the `critic`, `code-reviewer`, `architect`, `executor`, `plan`, `autopilot` and `ralph` agents and skills. Without OMC, use the built-in `general-purpose` agent with the same instructions.
 
 Agents in `.claude/agents/`: `operator-developer` (implements issues) and `operator-release-manager` (releases, upgrades, security). Reviews reuse the OMC `critic`, `code-reviewer` and `architect` agents.
 

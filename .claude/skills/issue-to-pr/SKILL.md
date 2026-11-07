@@ -31,11 +31,11 @@ Pass `model` explicitly when delegating (tier aliases):
 
 Delegate to `operator-developer` (or `oh-my-claudecode:executor`) with `isolation: worktree`, branch off the latest `origin/main`. The brief must include the issue number and these repo rules:
 
-- API changes: kubebuilder markers, then `make manifests generate`. `config/crd/bases` must be committed regenerated; CI fails on drift.
-- CEL rules must install on the oldest supported Kubernetes (`minKubeVersion` in `config/manifests/bases/*.clusterserviceversion.yaml`). Check with envtest at that version. Avoid `lowerAscii()` and other cost-heavy CEL; prefer schema markers (`MaxLength`, `Pattern`) where they suffice.
+- API changes: kubebuilder markers, then `make manifests generate`. Commit the regenerated `config/crd/bases`; CI fails on drift (the drift check comes from #498).
+- CEL rules need Kubernetes 1.25 or later (they're silently ignored before that) and must install on the oldest supported version (`minKubeVersion` in `config/manifests/bases/*.clusterserviceversion.yaml`). Adding the first CEL means raising `minKubeVersion` to at least 1.25; test the CRD with envtest at that version (`bin/setup-envtest use <version>`). Avoid `lowerAscii()` and other cost-heavy CEL; prefer schema markers (`MaxLength`, `Pattern`) where they suffice.
 - Docs live in `docs/`: user-facing behaviour in `docs/usage.md`, install/requirements in `docs/installing.md`, metrics in `docs/metrics.md`. The docs-examples envtest strictly validates every `Migration` in `docs/` and requires `config/samples/` to stay a subset of the `docs/usage.md` example.
-- Don't touch `config/helm-chart/` in feature PRs: merging chart changes publishes the chart. Chart changes go in the post-release chart PR (see the `release` skill).
-- Don't commit `bundle/` (CI regenerates it on tags).
+- Don't touch `config/helm-chart/` in feature PRs: merging chart changes publishes the chart. Chart changes go in the post-release chart PR (see the `operator-release` skill).
+- Don't hand-regenerate `bundle/manifests` in feature PRs; CI regenerates the bundle on main pushes and tags. Tooling bumps may update `bundle/` labels and scorecard image tags.
 - Operator annotations/labels use the `Prefix` constant.
 
 ### Large features: autopilot or ralph
@@ -52,22 +52,27 @@ Don't use autopilot for chores, dependency bumps or docs; a single agent is chea
 
 ## 3. Verify locally
 
-
-
 ```sh
 make test                                 # manifests, generate, fmt, vet, unit + envtest
 golangci-lint run --build-tags e2e ./...
 ```
 
-Kind e2e when the change affects the Job, reconcile behaviour or anything a real cluster would show. **Several agents may share the machine**: the suite builds a fixed image tag and defaults to one cluster/registry, so always take the lock and use unique names, in one shell:
+Kind e2e when the change affects the Job, reconcile behaviour or anything a real cluster would show. **Several agents may share the machine**: the suite builds a fixed image tag and defaults to one cluster/registry, so take the lock, use unique names, and run the block **in the background** (the suite can take ~25 minutes, longer than a foreground shell call; a killed shell skips the `EXIT` trap):
 
 ```sh
-until mkdir /tmp/flyway-e2e.lock 2>/dev/null; do sleep 15; done; trap 'rmdir /tmp/flyway-e2e.lock' EXIT
-make test-e2e KIND_CLUSTER=e2e-<topic> E2E_REGISTRY_NAME=e2e-<topic>-registry E2E_REGISTRY_PORT=<unique port>
-make cleanup-test-e2e KIND_CLUSTER=e2e-<topic> E2E_REGISTRY_NAME=e2e-<topic>-registry
+L=/tmp/flyway-e2e.lock
+until mkdir "$L" 2>/dev/null; do
+  # break a stale lock whose owner process is gone
+  if [ -f "$L/pid" ] && ! kill -0 "$(cat "$L/pid")" 2>/dev/null; then rm -rf "$L"; continue; fi
+  sleep 15
+done
+echo $$ > "$L/pid"; trap 'rm -rf "$L"' EXIT
+T=<topic>; PORT=$((5100 + $(printf '%s' "$T" | cksum | cut -d' ' -f1) % 900))   # unique per topic, never 5001
+make test-e2e KIND_CLUSTER=e2e-$T E2E_REGISTRY_NAME=e2e-$T-registry E2E_REGISTRY_PORT=$PORT
+make cleanup-test-e2e KIND_CLUSTER=e2e-$T E2E_REGISTRY_NAME=e2e-$T-registry
 ```
 
-Never delete clusters or registries you didn't create. Prove a new test bites: break the code it guards, see it fail, restore.
+Never delete clusters or registries you didn't create. If a run crashed, clean up your own `e2e-<topic>` cluster and registry before retrying. Prove a new test bites: break the code it guards, see it fail, restore.
 
 ## 4. Pull request
 

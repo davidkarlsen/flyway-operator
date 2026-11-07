@@ -25,4 +25,4 @@ description: Bring flyway-operator's toolchain up to date - Go, operator-sdk, co
 2. Report what's behind before changing anything.
 3. One branch and PR per tool (via `issue-to-pr` without the issue step for routine bumps), each verified with `make test`; tools that regenerate output (controller-gen, operator-sdk) must leave only the version annotation as a diff, or explain the rest.
 4. Major version jumps (e.g. Flyway 10→13, a new Go minor with language changes): read the release notes for anything the operator relies on (flags, env vars, defaults) and run a real migration (kind e2e under the shared lock, or `docker run` against a throwaway Postgres) before opening the PR. Create an issue for these.
-5. Review with `review-loop`; routine patch bumps that only touch versions may auto-merge once green.
+5. Review with `review-loop` (critic + code-reviewer, light models for pure version bumps); merge once both approve and CI is green.

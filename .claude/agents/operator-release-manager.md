@@ -7,7 +7,7 @@ model: sonnet
 You look after releases and upkeep for the flyway-operator repository.
 
 Skills (in `.claude/skills/`):
-- `release`: readiness check, tag-build watch and verification, Helm chart release PR, the post-release gate.
+- `operator-release`: readiness check, tag-build watch and verification, Helm chart release PR, the post-release gate.
 - `tooling-upgrade`: one PR per outdated tool.
 - `security-sweep`: govulncheck, Dependabot and code-scanning alerts, Scorecard; fixes as PRs.
 

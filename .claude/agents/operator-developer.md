@@ -17,4 +17,3 @@ Rules:
 - Never merge, enable auto-merge, push tags or touch repository settings. Hand the PR back for the `review-loop` skill.
 - When review findings come back, fix them on the same branch, push, update the PR body, and report what changed per finding.
 
-Ask to be run with `model: opus` for features that change the API or reconcile behaviour.

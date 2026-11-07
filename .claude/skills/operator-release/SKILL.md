@@ -1,5 +1,5 @@
 ---
-name: release
+name: operator-release
 description: Release flyway-operator - check main is ready, the maintainer pushes the vX.Y.Z tag, watch and verify the tag build (image, OLM bundle and catalog, signatures, provenance, GitHub release), then prepare the Helm chart release PR. Use when asked to "release", "cut vX.Y.Z", "prepare the chart PR" or to check a release.
 ---
 
@@ -10,7 +10,7 @@ The maintainer pushes tags; this skill prepares, watches and verifies. Don't pus
 ## 1. Ready check
 
 - Everything planned for the release is merged; drafts that wait for this release stay drafts.
-- `main` CI is green (`gh run list --branch main -L 3`).
+- `main` CI is green on the commit to be tagged, including `e2e` and `govulncheck` (`gh run list --branch main -L 3`, `gh run view <id>`). The tag's `release` job only waits for `build`, so these must be green beforehand.
 - `make manifests generate` leaves no diff on `main`.
 - Note the previous tag and summarise what's in the release (merged PRs since it). Call out behaviour changes and breaking changes (defaults, minimum Kubernetes, renamed labels/RBAC, Helm CRD step) for the release notes.
 
@@ -20,15 +20,14 @@ The maintainer pushes tags; this skill prepares, watches and verifies. Don't pus
 
 Watch it: `gh run watch` / `gh run view --log-failed`. The `release` job is re-runnable: on a transient failure, "Re-run failed jobs".
 
-Verify afterwards (commands in `docs/verifying.md`):
+Verify afterwards by running **every block in `docs/verifying.md`** for the new tag: `cosign verify` for the operator, bundle and catalog images; `gh attestation verify` for all three; `cosign verify-blob` on `checksums.txt` plus `sha256sum -c` and the asset attestation. Then:
 
 ```sh
-cosign verify ghcr.io/davidkarlsen/flyway-operator:<version> --certificate-identity-regexp '^https://github\.com/davidkarlsen/flyway-operator/\.github/workflows/build\.yaml@refs/tags/v.*$' --certificate-oidc-issuer https://token.actions.githubusercontent.com
-gh attestation verify oci://ghcr.io/davidkarlsen/flyway-operator:<version> -R davidkarlsen/flyway-operator
 gh release view v<version>      # assets: bundle tarball, images list, checksums + .sigstore.json, .intoto.jsonl
+opm render ghcr.io/davidkarlsen/flyway-operator-catalog:v<version> | grep -c 'flyway-operator.v<version>'   # new bundle is in the catalog
 ```
 
-Also check the catalog contains the new bundle and `:alpha` moved (only for the highest release tag).
+`:alpha` must have moved to the new catalog only if this is the highest release tag.
 
 ## 3. Helm chart release PR
 
@@ -40,7 +39,9 @@ A separate PR, merged after the tag build succeeded (merging any `config/helm-ch
 - Fold in any draft chart-fix PRs that were waiting for this release.
 - Release note: Helm never upgrades `crds/`, so users must `kubectl apply` the CRD before `helm upgrade`.
 
-Review it with the `review-loop` skill.
+Review it with the `review-loop` skill. **Merge it only when the user says so**; merging publishes the chart.
+
+After it merges, verify the chart release the same way: the `<chart>.tgz.sigstore.json` and `.intoto.jsonl` assets on the `flyway-operator-<chart version>` release, checked with the chart commands in `docs/verifying.md` (identity `chart-release.yaml`).
 
 ## 4. Gate
 

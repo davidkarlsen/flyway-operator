@@ -16,7 +16,7 @@ gh api repos/davidkarlsen/flyway-operator --jq .security_and_analysis
 GITHUB_AUTH_TOKEN="$(gh auth token -h github.com)" scorecard --repo=github.com/davidkarlsen/flyway-operator --show-details
 ```
 
-Use the Homebrew `scorecard` binary; the `gcr.io/openssf/scorecard` image isn't pullable without billing. Never print tokens; pipe them as above.
+Install the `scorecard` CLI (e.g. from its GitHub releases or a package manager). Never print tokens; pipe them as above.
 
 govulncheck finds reachable vulnerabilities that Dependabot may not alert on (Dependabot has no reachability analysis and lags the Go vuln DB). CI also runs govulncheck as its own job, gating PRs but not releases.
 
