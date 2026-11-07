@@ -29,10 +29,45 @@ const (
 	Prefix     = "flyway-operator.davidkarlsen.com"
 	Generation = Prefix + "/" + "generation"
 	paused     = Prefix + "/" + "paused"
+	// Attempt is the annotation on a Job holding which attempt (1-based) for its generation it is.
+	Attempt = Prefix + "/" + "attempt"
+
+	// DefaultRetryLimit is used when spec.retryLimit is not set.
+	DefaultRetryLimit int32 = 2
+)
+
+// Condition types reported on MigrationStatus.Conditions.
+// Every condition carries the observedGeneration it was computed for.
+const (
+	// ConditionApplied is True when the Job for the current generation succeeded.
+	ConditionApplied = "Applied"
+	// ConditionProgressing is True while a Job for the current generation is created, running or being retried.
+	ConditionProgressing = "Progressing"
+	// ConditionFailed is True when the Job for the current generation failed and retryLimit is exhausted.
+	ConditionFailed = "Failed"
+)
+
+// Reasons set on the Applied, Progressing and Failed conditions.
+const (
+	ReasonJobCreated          = "JobCreated"
+	ReasonJobRunning          = "JobRunning"
+	ReasonJobSucceeded        = "JobSucceeded"
+	ReasonRetrying            = "Retrying"
+	ReasonRetryLimitExceeded  = "RetryLimitExceeded"
+	ReasonPreviousJobRunning  = "PreviousJobRunning"
+	ReasonPreviousJobReplaced = "PreviousJobReplaced"
 )
 
 // MigrationStatus defines the observed state of Migration
 type MigrationStatus struct {
+	// The metadata.generation the status was computed for.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// Number of Jobs started for observedGeneration.
+	// +optional
+	Attempts int32 `json:"attempts,omitempty"`
+
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +listType=map
@@ -57,6 +92,14 @@ func (m *Migration) IsPaused() bool {
 
 func (m *Migration) GenerationAsString() string {
 	return strconv.Itoa(int(m.Generation))
+}
+
+// GetRetryLimit returns spec.retryLimit, or DefaultRetryLimit when unset.
+func (m *Migration) GetRetryLimit() int32 {
+	if m.Spec.RetryLimit == nil {
+		return DefaultRetryLimit
+	}
+	return *m.Spec.RetryLimit
 }
 
 //+kubebuilder:object:root=true
@@ -84,6 +127,14 @@ type MigrationSpec struct {
 	// settings defining the SQL migrations
 	// +kubebuilder:validation:Required
 	MigrationSource MigrationSource `json:"migrationSource"`
+
+	// How many times the operator re-creates a failed Job for the same generation.
+	// After that the Migration reports Failed=True and no new Job is started until the spec changes.
+	// Each Job also retries its pod twice (Job backoffLimit 2) before it counts as failed.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=2
+	RetryLimit *int32 `json:"retryLimit,omitempty"`
 }
 
 // Database defines the database-settings
@@ -189,4 +240,3 @@ type MigrationList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Migration `json:"items"`
 }
-

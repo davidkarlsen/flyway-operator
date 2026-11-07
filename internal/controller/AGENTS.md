@@ -10,11 +10,12 @@ Reconciliation logic for the `Migration` CRD. The reconciler owns child Kubernet
 
 | File | Description |
 |------|-------------|
-| `migration_controller.go` | `MigrationReconciler` (embeds `util.ReconcilerBase` from `redhat-cop/operator-utils`). `Reconcile` drives: fetch → paused-check → look up existing Job by deterministic name → if generation matches mirror status, else build+submit a fresh Job with controller owner reference. `SetupWithManager` registers the controller and watches owned Jobs. |
-| `jobutil.go` | Pure builder: turns a `Migration` into a `batchv1.Job` spec. Init container `cp`s SQL files from `MigrationSource.ImageRef` into a shared `emptyDir`; main container runs the Flyway image with env vars derived from `FlywayConfiguration` and `Database`. Annotates the Job with `flyway-operator.davidkarlsen.com/generation`. |
+| `migration_controller.go` | `MigrationReconciler` (embeds `util.ReconcilerBase` from `redhat-cop/operator-utils`). `Reconcile` drives: fetch → paused-check → look up existing Job by deterministic name → a Job of an older generation is waited for, then deleted; a current one is mirrored into the `Applied`/`Progressing`/`Failed` conditions; a failed one is deleted and re-created (attempt annotation +1) until `spec.retryLimit`, then left with `Failed=True`. No Job → create the next attempt. `SetupWithManager` registers the controller and watches owned Jobs. |
+| `jobutil.go` | Pure builder: turns a `Migration` into a `batchv1.Job` spec. Init container `cp`s SQL files from `MigrationSource.ImageRef` into a shared `emptyDir`; main container runs the Flyway image with env vars derived from `FlywayConfiguration` and `Database`. Annotates the Job with `flyway-operator.davidkarlsen.com/generation` and `/attempt`. Also `jobState` (reads the Job's `Complete`/`Failed` conditions, never pod counts) and the condition setters. |
 | `suite_test.go` | Ginkgo `TestAPIs` entry point — boots envtest, installs CRDs from `config/crd/bases/`, and starts a manager. Required by all integration specs. |
 | `migration_controller_test.go` | Mix of `testing.T`-style table tests using `fake.NewClientBuilder` + `record.FakeRecorder`, and Ginkgo specs that exercise the reconciler against envtest. |
 | `migration_controller_integration_test.go` | Ginkgo integration specs running inside `TestAPIs`. |
+| `migration_status_test.go` | Fake-client tests of the status contract: running, succeeded, retry under the limit, stop at the limit, spec change. |
 | `jobutil_test.go` | Pure unit tests for the Job spec builder. |
 
 ## For AI Agents
@@ -27,7 +28,7 @@ Reconciliation logic for the `Migration` CRD. The reconciler owns child Kubernet
 - The migration source image **must contain `cp`**; the init container relies on it. If you change the init pattern, document it in `docs/usage.md`.
 
 ### Testing Requirements
-- Pure unit subset: `go test -count=1 -run "TestCreateJobSpec|TestGithubactionRunnerController" ./internal/controller/`.
+- Pure unit subset: `go test -count=1 -run "TestCreateJobSpec|TestGithubactionRunnerController|TestStatus" ./internal/controller/`.
 - Full suite (Ginkgo + envtest): `make test`. Direct invocation requires `KUBEBUILDER_ASSETS` (set by `make envtest`).
 - Tests that need scheme registration call `s.AddKnownTypes(flywayv1alpha1.GroupVersion, migration)` — note `flywayv1alpha1.GroupVersion`, not `flywayv1alpha1.SchemeBuilder.GroupVersion`.
 

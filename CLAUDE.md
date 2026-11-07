@@ -61,7 +61,7 @@ Operator-owned annotations are namespaced under the `Prefix = "flyway-operator.d
 
 1. Fetch the `Migration`; honour `IsPaused()` early-exit.
 2. Look up an existing owned Job by deterministic name (`getExistingJob`).
-3. If the Job exists and its `generation` annotation matches the current `Migration.Generation`, mirror Job status onto `Migration.Status.Conditions` and return.
+3. If the Job exists and its `generation` annotation matches the current `Migration.Generation`, mirror its result into the `Applied`/`Progressing`/`Failed` conditions (with `observedGeneration`); re-create a failed Job until `spec.retryLimit`, then stop with `Failed=True`. A Job of an older generation is deleted once finished.
 4. Otherwise build a fresh Job spec via `internal/controller/jobutil.go` (init container `cp`s SQL files; main container runs Flyway with env vars derived from `FlywayConfiguration` and `Database`) and submit it (`submitMigrationJob`), with the Migration set as controller owner reference so deletion cascades.
 
 The reconciler embeds `util.ReconcilerBase` from `redhat-cop/operator-utils` and uses its condition / event helpers. Events go to a `record.EventRecorder` (real one in `cmd/main.go`, `record.FakeRecorder` in tests).
