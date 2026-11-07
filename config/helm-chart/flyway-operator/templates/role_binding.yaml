@@ -9,5 +9,5 @@ roleRef:
   name: {{ include "common.names.fullname" . }}
 subjects:
 - kind: ServiceAccount
-  name: {{ include "common.names.fullname" . }}
+  name: {{ include "flyway-operator.serviceAccountName" . }}
   namespace: {{ .Release.Namespace }}
