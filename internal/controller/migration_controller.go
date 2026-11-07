@@ -67,15 +67,21 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	migration := &flywayv1alpha1.Migration{}
 
 	if err := r.Get(ctx, req.NamespacedName, migration); err != nil {
+		if apierrors.IsNotFound(err) {
+			deleteRunMetrics(req.NamespacedName)
+		}
 		logger.Error(err, err.Error())
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	prev := migration.Status.DeepCopy()
 
 	if util.IsBeingDeleted(migration) {
+		deleteRunMetrics(req.NamespacedName)
 		logger.Info("Migration deleted, returning")
 		r.GetRecorder().Event(migration, corev1.EventTypeWarning, "Deleting", fmt.Sprintf("Migration deleted: %s", req.NamespacedName))
 		return r.ManageSuccess(ctx, migration)
 	}
+	initRunMetrics(req.NamespacedName)
 
 	valid, err := r.IsValid(migration)
 	if !valid || err != nil {
@@ -152,7 +158,11 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 		}
 		setApplied(migration, fmt.Sprintf("Job %s succeeded on attempt %d", existingJob.Name, attempt))
-		return r.ManageSuccess(ctx, migration)
+		res, err := r.ManageSuccess(ctx, migration)
+		if err == nil && outcomeIsNew(prev, migration.Generation, attempt, flywayv1alpha1.ReasonJobSucceeded) {
+			recordOutcome(migration, existingJob, resultSucceeded)
+		}
+		return res, err
 
 	default: // jobFailed
 		if attempt > retryLimit {
@@ -161,12 +171,20 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 					fmt.Sprintf("Migration failed after %d attempts: %s", attempt, failure))
 			}
 			setFailed(migration, fmt.Sprintf("Job %s failed on attempt %d of %d: %s", existingJob.Name, attempt, retryLimit+1, failure))
-			return r.ManageSuccess(ctx, migration)
+			res, err := r.ManageSuccess(ctx, migration)
+			if err == nil && outcomeIsNew(prev, migration.Generation, attempt, flywayv1alpha1.ReasonRetryLimitExceeded) {
+				recordOutcome(migration, existingJob, resultFailed)
+			}
+			return res, err
 		}
 		setConditions(migration, flywayv1alpha1.ReasonRetrying,
 			fmt.Sprintf("Job %s failed on attempt %d of %d, retrying: %s", existingJob.Name, attempt, retryLimit+1, failure),
 			metav1.ConditionTrue, metav1.ConditionFalse)
-		return r.deleteJob(ctx, migration, existingJob)
+		res, err := r.deleteJob(ctx, migration, existingJob)
+		if err == nil && outcomeIsNew(prev, migration.Generation, attempt, flywayv1alpha1.ReasonRetrying) {
+			recordOutcome(migration, existingJob, resultRetrying)
+		}
+		return res, err
 	}
 }
 
