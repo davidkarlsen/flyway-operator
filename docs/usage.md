@@ -77,7 +77,7 @@ All three share one reason: `JobCreated`, `JobRunning`, `JobSucceeded`, `Retryin
 `PreviousJobRunning` (a Job for an older generation is still running) or `PreviousJobReplaced`. On failure the message
 holds the Job's own failure reason and message. `ReconcileSuccess` only means the reconcile loop ran.
 
-For an Argo CD health check, see the [README](../README.md#argo-cd-health-check).
+For an Argo CD health check, see [Argo CD](argocd.md).
 
 Check the result:
 

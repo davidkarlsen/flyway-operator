@@ -21,40 +21,8 @@ See the [documentation](docs/README.md) for features, installation and examples.
 
 It is still an early project and I want to further develop some day-2 elements as described in the [backlog](https://github.com/davidkarlsen/flyway-operator/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement).
 
-## Argo CD health check
-The `Migration` reports `Applied`, `Progressing` and `Failed` conditions, each with the `observedGeneration` it refers to
-(see [docs/usage.md](docs/usage.md#status)). This health check in `argocd-cm` reports `Healthy` only when the current spec
-was applied, and `Degraded` once the retries are exhausted:
-
-```yaml
-resource.customizations.health.flyway.davidkarlsen.com_Migration: |
-  hs = {}
-  if obj.metadata.annotations ~= nil and obj.metadata.annotations["flyway-operator.davidkarlsen.com/paused"] == "true" then
-    hs.status = "Suspended"
-    hs.message = "Migration is paused"
-    return hs
-  end
-  local applied, failed
-  if obj.status ~= nil and obj.status.conditions ~= nil then
-    for _, c in ipairs(obj.status.conditions) do
-      if c.observedGeneration == obj.metadata.generation then
-        if c.type == "Applied" then applied = c end
-        if c.type == "Failed" then failed = c end
-      end
-    end
-  end
-  if failed ~= nil and failed.status == "True" then
-    hs.status = "Degraded"
-    hs.message = failed.message
-  elseif applied ~= nil and applied.status == "True" then
-    hs.status = "Healthy"
-    hs.message = applied.message
-  else
-    hs.status = "Progressing"
-    hs.message = applied ~= nil and applied.message or "Waiting for the operator to observe the current spec"
-  end
-  return hs
-```
+## Argo CD
+To make Argo CD wait for a `Migration` to apply before it syncs your application, see [docs/argocd.md](docs/argocd.md).
 
 ## Getting Started
 You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
