@@ -1,10 +1,10 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-09 | Updated: 2026-05-09 -->
-
 # prometheus
 
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-05-09 · **Updated:** 2026-11-07
+
 ## Purpose
-Optional kustomize component adding a `ServiceMonitor` so Prometheus Operator scrapes the manager's metrics service.
+Kustomize component adding a `ServiceMonitor` so Prometheus Operator scrapes the manager's metrics service.
 
 ## Key Files
 
@@ -16,6 +16,8 @@ Optional kustomize component adding a `ServiceMonitor` so Prometheus Operator sc
 ## For AI Agents
 
 ### Working In This Directory
-- This component is opt-in — enable it from `config/default/kustomization.yaml` (or a downstream overlay) when deploying to a cluster running Prometheus Operator.
+- `config/default/kustomization.yaml` includes this component (`../prometheus`), so `make deploy` needs the `monitoring.coreos.com/v1` CRDs. On clusters without the Prometheus Operator, remove `- ../prometheus` from that file first (see `docs/metrics.md`).
 
-<!-- MANUAL: -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.

@@ -1,7 +1,7 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-09 | Updated: 2026-05-09 -->
-
 # rbac
+
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-05-09 · **Updated:** 2026-11-07
 
 ## Purpose
 ClusterRoles/Roles and bindings for the operator's ServiceAccount, the metrics endpoint, leader election, and the user-facing editor/viewer roles.
@@ -24,4 +24,6 @@ ClusterRoles/Roles and bindings for the operator's ServiceAccount, the metrics e
 ### Working In This Directory
 - Do not hand-edit `role.yaml`. To grant the reconciler new resource access, add or change a `+kubebuilder:rbac:` marker in `internal/controller/migration_controller.go` and run `make manifests`.
 
-<!-- MANUAL: -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.
