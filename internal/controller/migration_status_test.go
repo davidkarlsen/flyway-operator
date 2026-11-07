@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
@@ -294,11 +295,60 @@ func TestStatusLastAppliedImageComesFromJob(t *testing.T) {
 	h.reconcile()
 	h.finishJob(batchv1.JobComplete, 0)
 
-	// the spec image differs from the Job's without a generation change: the Job's image is reported
+	// the spec image differs from the Job's without a generation change: the Job's image is reported.
+	// The API server bumps the generation on any spec change; only the fake client allows this state,
+	// which stands in for a stale read.
 	m := h.migration()
 	m.Spec.MigrationSource.ImageRef = "somereg.io/other:9"
 	if err := h.c.Update(context.TODO(), m); err != nil {
 		t.Fatal(err)
 	}
 	h.expectLastApplied(h.reconcile(), "somereg.io/someimage:1", 1)
+}
+
+func TestStatusLastAppliedFromPreviousGenerationJob(t *testing.T) {
+	h := newStatusHarness(t, nil)
+	h.reconcile()
+
+	// the spec moves on while the gen-1 Job runs; that Job then succeeds
+	h.updateImage("somereg.io/someimage:2", 2)
+	h.expect(h.reconcile(), flywayv1alpha1.ReasonPreviousJobRunning, metav1.ConditionFalse, metav1.ConditionTrue, metav1.ConditionFalse)
+	h.finishJob(batchv1.JobComplete, 0)
+
+	m := h.reconcile()
+	h.expect(m, flywayv1alpha1.ReasonPreviousJobReplaced, metav1.ConditionFalse, metav1.ConditionTrue, metav1.ConditionFalse)
+	h.expectLastApplied(m, "somereg.io/someimage:1", 1)
+}
+
+func TestStatusLastAppliedKeptWhenJobHasNoSourceImage(t *testing.T) {
+	h := newStatusHarness(t, nil)
+	h.reconcile()
+	h.finishJob(batchv1.JobComplete, 0)
+	h.expectLastApplied(h.reconcile(), "somereg.io/someimage:1", 1)
+
+	h.updateImage("somereg.io/someimage:2", 2)
+	h.reconcile() // previous job replaced
+	h.reconcile() // job created
+	j := h.job()
+	j.Spec.Template.Spec.InitContainers[0].Name = "something-else"
+	if err := h.c.Update(context.TODO(), j); err != nil {
+		t.Fatal(err)
+	}
+	h.finishJob(batchv1.JobComplete, 0)
+
+	m := h.reconcile()
+	h.expect(m, flywayv1alpha1.ReasonJobSucceeded, metav1.ConditionTrue, metav1.ConditionFalse, metav1.ConditionFalse)
+	h.expectLastApplied(m, "somereg.io/someimage:1", 1)
+
+	events := h.r.GetRecorder().(*record.FakeRecorder).Events
+	for {
+		select {
+		case e := <-events:
+			if strings.Contains(e, "LastAppliedUnknown") {
+				return
+			}
+		default:
+			t.Fatal("no LastAppliedUnknown warning event")
+		}
+	}
 }
