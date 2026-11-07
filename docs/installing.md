@@ -68,3 +68,5 @@ make deploy IMG=<some-registry>/flyway-operator:tag
 ```
 
 Remove it again with `make undeploy` (controller) and `make uninstall` (CRDs).
+
+Metrics are on by default in every install path; see [Metrics](metrics.md) for scraping, RBAC and verification.

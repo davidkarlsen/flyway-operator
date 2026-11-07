@@ -1,0 +1,16 @@
+{{- if .Values.metrics.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "common.names.fullname" . }}-metrics
+  labels: {{- include "common.labels.standard" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+spec:
+  type: ClusterIP
+  ports:
+    - name: https
+      port: {{ .Values.metrics.port }}
+      targetPort: https
+      protocol: TCP
+  selector: {{- include "common.labels.matchLabels" . | nindent 4 }}
+{{- end }}
