@@ -22,12 +22,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
@@ -40,19 +37,27 @@ const (
 	docsGlobExtra = "../../docs/examples/*.md"
 )
 
-var yamlBlock = regexp.MustCompile("(?s)```yaml\n(.*?)```")
+var (
+	yamlBlock = regexp.MustCompile("(?s)```ya?ml\\r?\\n(.*?)```")
+	docSep    = regexp.MustCompile(`(?m)^---\s*$`)
+)
 
 // documentedMigrations returns every YAML document of kind Migration found in fenced
-// ```yaml blocks of the given markdown files, keyed by "file#index".
+// ```yaml/```yml blocks of the given markdown files, keyed by "file#index".
 func documentedMigrations(files ...string) map[string]*unstructured.Unstructured {
 	out := map[string]*unstructured.Unstructured{}
 	for _, f := range files {
 		raw, err := os.ReadFile(f)
 		Expect(err).NotTo(HaveOccurred())
 		for bi, m := range yamlBlock.FindAllStringSubmatch(string(raw), -1) {
-			for di, doc := range strings.Split(m[1], "\n---") {
+			for di, doc := range docSep.Split(m[1], -1) {
 				u := &unstructured.Unstructured{}
-				if err := yaml.Unmarshal([]byte(doc), &u.Object); err != nil || u.GetKind() != "Migration" {
+				err := yaml.Unmarshal([]byte(doc), &u.Object)
+				if err != nil {
+					Expect(doc).NotTo(MatchRegexp(`(?m)^kind:\s*Migration\b`), "%s block %d doc %d contains kind: Migration but does not parse: %v", f, bi, di, err)
+					continue
+				}
+				if u.GetKind() != "Migration" {
 					continue
 				}
 				out[fmt.Sprintf("%s#%d.%d", filepath.Base(f), bi, di)] = u
@@ -87,19 +92,10 @@ func expectSubset(sub, full map[string]interface{}, path string) {
 }
 
 var _ = Describe("Documented examples", func() {
-	var ns string
-
-	BeforeEach(func() {
-		n := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{GenerateName: "docs-"}}
-		Expect(k8sClient.Create(context.Background(), n)).To(Succeed())
-		ns = n.Name
-		DeferCleanup(func() { _ = k8sClient.Delete(context.Background(), n) })
-	})
-
 	createDryRun := func(u *unstructured.Unstructured) error {
 		u = u.DeepCopy()
-		u.SetNamespace(ns)
-		return k8sClient.Create(context.Background(), u, client.DryRunAll)
+		u.SetNamespace("default")
+		return k8sClient.Create(context.Background(), u, client.DryRunAll, client.FieldValidation("Strict"))
 	}
 
 	It("validates every Migration in docs/ against the CRD", func() {
@@ -118,6 +114,12 @@ var _ = Describe("Documented examples", func() {
 		Expect(createDryRun(loadSample())).To(Succeed())
 	})
 
+	It("rejects unknown fields", func() {
+		u := loadSample()
+		Expect(unstructured.SetNestedField(u.Object, "x", "spec", "bogusField")).To(Succeed())
+		Expect(createDryRun(u)).NotTo(Succeed())
+	})
+
 	It("keeps the OLM sample a subset of the docs/usage.md example", func() {
 		docs := documentedMigrations(usageDocPath)
 		Expect(docs).To(HaveLen(1), "docs/usage.md should have exactly one reference Migration example")
@@ -128,6 +130,12 @@ var _ = Describe("Documented examples", func() {
 		sample := loadSample()
 		Expect(sample.GetAPIVersion()).To(Equal(reference.GetAPIVersion()))
 		Expect(sample.GetName()).To(Equal(reference.GetName()))
-		expectSubset(sample.Object["spec"].(map[string]interface{}), reference.Object["spec"].(map[string]interface{}), "spec")
+		sampleSpec, found, err := unstructured.NestedMap(sample.Object, "spec")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(found).To(BeTrue(), "OLM sample has no spec")
+		refSpec, found, err := unstructured.NestedMap(reference.Object, "spec")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(found).To(BeTrue(), "docs/usage.md example has no spec")
+		expectSubset(sampleSpec, refSpec, "spec")
 	})
 })
