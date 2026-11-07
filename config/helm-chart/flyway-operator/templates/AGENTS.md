@@ -11,8 +11,11 @@ Helm templates for the operator workload and its RBAC. Equivalent to `config/man
 | File | Description |
 |------|-------------|
 | `_helpers.tpl` | Common name/label helpers (`flyway-operator.fullname`, labels block, etc.) |
-| `deployment.yaml` | Operator Deployment — image/resources/probes from values |
-| `service.yaml` | Metrics service |
+| `deployment.yaml` | Operator Deployment — image/resources/probes from values; metrics bind arg and `https` port when `metrics.enabled` |
+| `service.yaml` | Health-probe Service (`http` → 8081) |
+| `metrics-service.yaml` | `<fullname>-metrics` Service (`https` → metrics port), gated on `metrics.enabled` |
+| `metrics-auth-rbac.yaml` | Metrics authn/authz ClusterRole + binding and the `metrics-reader` ClusterRole, gated on `metrics.enabled` |
+| `servicemonitor.yaml` | Prometheus Operator `ServiceMonitor`, gated on `metrics.enabled` and `metrics.serviceMonitor.enabled` |
 | `serviceaccount.yaml` | Manager ServiceAccount |
 | `role.yaml` / `role_binding.yaml` | Reconciler RBAC |
 | `migration_editor_role.yaml` / `migration_viewer_role.yaml` | User-facing aggregated roles |

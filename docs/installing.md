@@ -75,19 +75,21 @@ The operator serves Prometheus metrics on port 8443 over HTTPS (self-signed cert
 Every request is authenticated and authorized against the Kubernetes API, so the scraper needs a bearer token
 for a ServiceAccount that may `get` the `/metrics` non-resource URL.
 
-- **OLM and `make deploy`**: metrics are on, and a `ServiceMonitor` is installed when the Prometheus Operator
-  CRDs are present.
+- **OLM and `make deploy`**: metrics are on, and the install includes a `ServiceMonitor`.
+  `make deploy` always applies it, so it needs the Prometheus Operator CRDs (`monitoring.coreos.com/v1`);
+  without them the apply fails with `no matches for kind "ServiceMonitor"`. On such clusters, remove
+  `- ../prometheus` from `config/default/kustomization.yaml` first.
 - **Helm**: metrics are on (`metrics.enabled: true`). The `ServiceMonitor` is opt-in:
   `--set metrics.serviceMonitor.enabled=true`. Set `metrics.enabled=false` to turn metrics off.
 
 In both cases, bind the operator's `metrics-reader` ClusterRole to the ServiceAccount Prometheus runs as,
-otherwise scrapes get 403:
+otherwise scrapes get 403. For OLM and `make deploy`:
 
 ```shell
 kubectl create clusterrolebinding flyway-operator-metrics-reader \
-  --clusterrole=<metrics-reader-clusterrole> \
+  --clusterrole=flyway-operator-metrics-reader \
   --serviceaccount=<prometheus-namespace>:<prometheus-serviceaccount>
 ```
 
-The ClusterRole is `flyway-operator-metrics-reader` for OLM and `make deploy`, and
-`<release-fullname>-metrics-reader` for Helm (printed by `helm install`).
+For Helm, the ClusterRole is `<release-fullname>-metrics-reader`; `helm install` prints the exact command
+(see `helm get notes <release>`), with a binding name unique to the release.
