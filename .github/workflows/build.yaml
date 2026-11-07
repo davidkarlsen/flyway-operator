@@ -4,20 +4,50 @@ on:
   pull_request:
     branches:
     - "*"
-    paths-ignore:
-    - config/helm-chart/**
   push:
     branches:
     - main
     tags:
     - "v*"
-    paths-ignore:
-    - config/helm-chart/**
 
 jobs:
-  build:
+  # Decides whether the build must run. Trigger-level paths-ignore is not used:
+  # it leaves the required ci-success check unreported on docs-only PRs and blocks the merge.
+  changes:
     runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, 'skip ci')"
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Detect build-relevant changes
+        id: diff
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          code=true
+          if [ "${REF_TYPE}" != tag ] \
+             && [ -n "${BASE}" ] && [ "${BASE}" != 0000000000000000000000000000000000000000 ] \
+             && files="$(git diff --name-only "${BASE}" "${HEAD}")" && [ -n "${files}" ]; then
+            code=false
+            while IFS= read -r f; do
+              case "${f}" in
+                # config/helm-chart/** is covered by chart-test.yaml.
+                *.md|docs/*|config/helm-chart/*|.claude/*|.github/CODEOWNERS|LICENSE) ;;
+                *) echo "build-relevant: ${f}"; code=true ;;
+              esac
+            done <<< "${files}"
+          fi
+          echo "code=${code}" >> "${GITHUB_OUTPUT}"
+
+  build:
+    needs: changes
+    runs-on: ubuntu-latest
+    if: needs.changes.outputs.code == 'true' && !contains(github.event.head_commit.message, 'skip ci')
     permissions:
       checks: write
       contents: write
@@ -83,3 +113,18 @@ jobs:
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           prerelease: false
+
+  # The single required status check: passes when build succeeded or was skipped
+  # for a non-build change, so docs-only PRs can still auto-merge.
+  ci-success:
+    needs: [changes, build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require changes and build not failed
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          BUILD: ${{ needs.build.result }}
+        run: |
+          echo "changes=${CHANGES} build=${BUILD}"
+          [ "${CHANGES}" = success ] && { [ "${BUILD}" = success ] || [ "${BUILD}" = skipped ]; }
