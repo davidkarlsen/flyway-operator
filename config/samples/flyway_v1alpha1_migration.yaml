@@ -10,6 +10,7 @@ metadata:
   name: migration-sample
   namespace: test
 spec:
+  retryLimit: 2
   database:
     username: db2inst1
     credentials:

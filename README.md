@@ -21,6 +21,9 @@ See the [documentation](docs/README.md) for features, installation and examples.
 
 It is still an early project and I want to further develop some day-2 elements as described in the [backlog](https://github.com/davidkarlsen/flyway-operator/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement).
 
+## Argo CD
+To make Argo CD wait for a `Migration` to apply before it syncs your application, see [docs/argocd.md](docs/argocd.md).
+
 ## Getting Started
 You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
 **Note:** Your controller will automatically use the current context in your kubeconfig file (i.e. whatever cluster `kubectl cluster-info` shows).

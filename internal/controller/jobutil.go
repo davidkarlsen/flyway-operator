@@ -9,6 +9,7 @@ import (
 	"github.com/samber/lo"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 )
@@ -25,18 +26,67 @@ func jobIsCurrent(job *batchv1.Job, migration *flywayv1alpha1.Migration) bool {
 // from https://github.com/kubernetes/kubernetes/blob/v1.28.1/pkg/controller/job/utils.go
 // IsJobFinished checks whether the given Job has finished execution.
 // It does not discriminate between successful and failed terminations.
-func isJobFinished(j *batchv1.Job) bool {
-	return lo.ContainsBy(j.Status.Conditions, func(condition batchv1.JobCondition) bool {
-		return (condition.Type == batchv1.JobComplete || condition.Type == batchv1.JobFailed) && condition.Status == corev1.ConditionTrue
-	})
+type jobStatus int
+
+const (
+	jobRunning jobStatus = iota
+	jobSucceeded
+	jobFailed
+)
+
+// jobState reads the Job's terminal conditions; on failure it also returns the Job's reason and message.
+func jobState(job *batchv1.Job) (jobStatus, string) {
+	for _, c := range job.Status.Conditions {
+		if c.Status != corev1.ConditionTrue {
+			continue
+		}
+		switch c.Type {
+		case batchv1.JobComplete:
+			return jobSucceeded, ""
+		case batchv1.JobFailed:
+			return jobFailed, fmt.Sprintf("%s: %s", c.Reason, c.Message)
+		}
+	}
+	return jobRunning, ""
 }
 
-func hasFailed(job *batchv1.Job) bool {
-	return job.Status.Failed > 0
+// jobAttempt returns the attempt annotation of the Job, 1 when absent (Jobs created before the annotation existed).
+func jobAttempt(job *batchv1.Job) int32 {
+	attempt, err := strconv.ParseInt(job.Annotations[flywayv1alpha1.Attempt], 10, 32)
+	if err != nil || attempt < 1 {
+		return 1
+	}
+	return int32(attempt)
 }
 
-func hasSucceeded(job *batchv1.Job) bool {
-	return job.Status.Succeeded > 0
+// setConditions sets Applied=False, Failed=False and the given Progressing status, all with one reason and message.
+func setConditions(m *flywayv1alpha1.Migration, reason, message string, progressing, failed metav1.ConditionStatus) {
+	setAll(m, reason, message, metav1.ConditionFalse, progressing, failed)
+}
+
+func setApplied(m *flywayv1alpha1.Migration, message string) {
+	setAll(m, flywayv1alpha1.ReasonJobSucceeded, message, metav1.ConditionTrue, metav1.ConditionFalse, metav1.ConditionFalse)
+}
+
+func setFailed(m *flywayv1alpha1.Migration, message string) {
+	setAll(m, flywayv1alpha1.ReasonRetryLimitExceeded, message, metav1.ConditionFalse, metav1.ConditionFalse, metav1.ConditionTrue)
+}
+
+func setAll(m *flywayv1alpha1.Migration, reason, message string, applied, progressing, failed metav1.ConditionStatus) {
+	m.Status.ObservedGeneration = m.Generation
+	for condType, status := range map[string]metav1.ConditionStatus{
+		flywayv1alpha1.ConditionApplied:     applied,
+		flywayv1alpha1.ConditionProgressing: progressing,
+		flywayv1alpha1.ConditionFailed:      failed,
+	} {
+		meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
+			Type:               condType,
+			Status:             status,
+			ObservedGeneration: m.Generation,
+			Reason:             reason,
+			Message:            message,
+		})
+	}
 }
 
 func getFlywayImage(migration *flywayv1alpha1.Migration) string {
@@ -56,7 +106,7 @@ func getFlywayArgs(migration *flywayv1alpha1.Migration) []string {
 	return args
 }
 
-func createJobSpec(migration *flywayv1alpha1.Migration) *batchv1.Job {
+func createJobSpec(migration *flywayv1alpha1.Migration, attempt int32) *batchv1.Job {
 	const targetPath = "/mnt/target/"
 	envVars := []corev1.EnvVar{
 		{
@@ -110,6 +160,7 @@ func createJobSpec(migration *flywayv1alpha1.Migration) *batchv1.Job {
 			},
 			Annotations: map[string]string{
 				flywayv1alpha1.Generation: migration.GenerationAsString(),
+				flywayv1alpha1.Attempt:    strconv.Itoa(int(attempt)),
 			},
 		},
 		Spec: batchv1.JobSpec{

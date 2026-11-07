@@ -114,7 +114,7 @@ func TestCreateJobSpec(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			job := createJobSpec(&tt.migration)
+			job := createJobSpec(&tt.migration, 1)
 			if job == nil {
 				t.Fatalf("createJobSpec returned nil")
 			}

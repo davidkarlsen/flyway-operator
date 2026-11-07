@@ -20,17 +20,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	"github.com/redhat-cop/operator-utils/pkg/util"
-	"github.com/redhat-cop/operator-utils/pkg/util/crud"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -38,6 +40,7 @@ import (
 const (
 	sqlVolumeName    = "sql"
 	clientContextKey = "client"
+	deletionRequeue  = 2 * time.Second
 )
 
 // MigrationReconciler reconciles a Migration object
@@ -89,36 +92,66 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.ManageError(ctx, migration, err)
 	}
 
-	newJob := createJobSpec(migration)
-
-	if existingJob == nil { // no existing job - so submit one now
-		return r.submitMigrationJob(ctx, migration, newJob)
-	} else {
-		if !isJobFinished(existingJob) {
-			logger.Info("Job still running, returning for reconcile", "job", existingJob)
-			return r.ManageSuccess(ctx, migration)
-		}
-
-		jobIsCurrent := jobIsCurrent(existingJob, migration)
-
-		if hasFailed(existingJob) || !jobIsCurrent {
-			return r.submitMigrationJob(ctx, migration, newJob)
-		}
-
-		if hasSucceeded(existingJob) {
-			if jobIsCurrent {
-				logger.Info("Migration succeeded")
-				r.GetRecorder().Event(migration, corev1.EventTypeNormal, "Succeeded",
-					fmt.Sprintf("Migration Succeeded: %s, source: %s", req.NamespacedName, migration.Spec.MigrationSource.ImageRef))
-				return r.ManageSuccess(ctx, migration)
-			} else { // migration has changed - submit new job
-				return r.submitMigrationJob(ctx, migration, newJob)
-			}
-		}
+	if existingJob == nil {
+		return r.submitMigrationJob(ctx, migration)
 	}
 
-	err = fmt.Errorf("this is a bug and should not happen")
-	return r.ManageError(ctx, migration, err)
+	if existingJob.DeletionTimestamp != nil {
+		logger.Info("Previous job is being deleted, requeueing", "job", existingJob.Name)
+		return r.ManageSuccessWithRequeue(ctx, migration, deletionRequeue)
+	}
+
+	state, failure := jobState(existingJob)
+
+	if !jobIsCurrent(existingJob, migration) {
+		if state == jobRunning {
+			setConditions(migration, flywayv1alpha1.ReasonPreviousJobRunning,
+				fmt.Sprintf("Waiting for job of generation %s to finish", existingJob.Annotations[flywayv1alpha1.Generation]),
+				metav1.ConditionTrue, metav1.ConditionFalse)
+			migration.Status.Attempts = 0
+			return r.ManageSuccess(ctx, migration)
+		}
+		setConditions(migration, flywayv1alpha1.ReasonPreviousJobReplaced,
+			fmt.Sprintf("Replacing job of generation %s", existingJob.Annotations[flywayv1alpha1.Generation]),
+			metav1.ConditionTrue, metav1.ConditionFalse)
+		migration.Status.Attempts = 0
+		return r.deleteJob(ctx, migration, existingJob)
+	}
+
+	attempt := jobAttempt(existingJob)
+	retryLimit := migration.GetRetryLimit()
+	migration.Status.Attempts = attempt
+
+	switch state {
+	case jobRunning:
+		setConditions(migration, flywayv1alpha1.ReasonJobRunning,
+			fmt.Sprintf("Job %s attempt %d of %d is running", existingJob.Name, attempt, retryLimit+1),
+			metav1.ConditionTrue, metav1.ConditionFalse)
+		return r.ManageSuccess(ctx, migration)
+
+	case jobSucceeded:
+		if !meta.IsStatusConditionTrue(migration.Status.Conditions, flywayv1alpha1.ConditionApplied) {
+			logger.Info("Migration succeeded")
+			r.GetRecorder().Event(migration, corev1.EventTypeNormal, "Succeeded",
+				fmt.Sprintf("Migration Succeeded: %s, source: %s", req.NamespacedName, migration.Spec.MigrationSource.ImageRef))
+		}
+		setApplied(migration, fmt.Sprintf("Job %s succeeded on attempt %d", existingJob.Name, attempt))
+		return r.ManageSuccess(ctx, migration)
+
+	default: // jobFailed
+		if attempt > retryLimit {
+			if !meta.IsStatusConditionTrue(migration.Status.Conditions, flywayv1alpha1.ConditionFailed) {
+				r.GetRecorder().Event(migration, corev1.EventTypeWarning, "Failed",
+					fmt.Sprintf("Migration failed after %d attempts: %s", attempt, failure))
+			}
+			setFailed(migration, fmt.Sprintf("Job %s failed on attempt %d of %d: %s", existingJob.Name, attempt, retryLimit+1, failure))
+			return r.ManageSuccess(ctx, migration)
+		}
+		setConditions(migration, flywayv1alpha1.ReasonRetrying,
+			fmt.Sprintf("Job %s failed on attempt %d of %d, retrying: %s", existingJob.Name, attempt, retryLimit+1, failure),
+			metav1.ConditionTrue, metav1.ConditionFalse)
+		return r.deleteJob(ctx, migration, existingJob)
+	}
 }
 
 // IsValid does validation of the CR
@@ -142,9 +175,36 @@ func (r *MigrationReconciler) getExistingJob(ctx context.Context, migration *fly
 	return existingJob, err
 }
 
-func (r *MigrationReconciler) submitMigrationJob(ctx context.Context, migration *flywayv1alpha1.Migration, job *batchv1.Job) (reconcile.Result, error) {
+// submitMigrationJob creates the Job for the next attempt of the current generation.
+func (r *MigrationReconciler) submitMigrationJob(ctx context.Context, migration *flywayv1alpha1.Migration) (reconcile.Result, error) {
 	logger := log.FromContext(ctx)
-	//err := crud.DeleteResourceIfExists(ctx, job)
+
+	attempt := int32(1)
+	if migration.Status.ObservedGeneration == migration.Generation {
+		attempt = migration.Status.Attempts + 1
+	}
+
+	job := createJobSpec(migration, attempt)
+	logger.Info("Creating job", "job", job.Name, "attempt", attempt)
+	if err := controllerutil.SetControllerReference(migration, job, r.GetScheme()); err != nil {
+		return r.ManageError(ctx, migration, err)
+	}
+	if err := r.GetClient().Create(ctx, job); err != nil {
+		if apierrors.IsAlreadyExists(err) { // the cache has not seen our Job yet; status already describes it
+			return ctrl.Result{RequeueAfter: deletionRequeue}, nil
+		}
+		return r.ManageError(ctx, migration, err)
+	}
+
+	migration.Status.Attempts = attempt
+	setConditions(migration, flywayv1alpha1.ReasonJobCreated,
+		fmt.Sprintf("Created job %s attempt %d of %d", job.Name, attempt, migration.GetRetryLimit()+1),
+		metav1.ConditionTrue, metav1.ConditionFalse)
+	return r.ManageSuccess(ctx, migration)
+}
+
+// deleteJob deletes a finished Job; the next reconcile, triggered by the deletion, creates its successor.
+func (r *MigrationReconciler) deleteJob(ctx context.Context, migration *flywayv1alpha1.Migration, job *batchv1.Job) (reconcile.Result, error) {
 	opts := metav1.DeletePropagationBackground
 	err := r.GetClient().Delete(ctx, job, &client.DeleteOptions{
 		PropagationPolicy: &opts,
@@ -153,13 +213,7 @@ func (r *MigrationReconciler) submitMigrationJob(ctx context.Context, migration 
 		return r.ManageError(ctx, migration, err)
 	}
 
-	logger.Info("Creating job", "job", job)
-	err = crud.CreateResourceIfNotExists(ctx, migration, migration.Namespace, job)
-	if err != nil {
-		return r.ManageError(ctx, migration, err)
-	}
-
-	return r.ManageSuccess(ctx, migration)
+	return r.ManageSuccessWithRequeue(ctx, migration, deletionRequeue)
 }
 
 // SetupWithManager sets up the controller with the Manager.

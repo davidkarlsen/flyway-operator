@@ -22,6 +22,7 @@ startup, or hold DDL privileges. The SQL is versioned and promoted as an immutab
 
 - [Installing](installing.md): OpenShift OLM or Helm
 - [Usage](usage.md): the `Migration` resource, status, pausing
+- [Argo CD](argocd.md): health check and sync order
 - Examples
   - [DB2 with username and password](examples/db2-password.md)
   - [Azure SQL with a service principal and certificate](examples/mssql-sp-cert.md)
