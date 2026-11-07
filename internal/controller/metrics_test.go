@@ -430,6 +430,8 @@ func TestMetricsFailedNotCountedWhenStatusWriteFails(t *testing.T) {
 }
 
 // When the Retrying reconcile fails, the attempt is not counted, and it stays uncounted: a lost count, not a double one.
+// Here the Job is gone by the next reconcile. If it were still terminating, that reconcile would count the attempt once
+// (TestStatusRetryingSurvivesLostWriteWhileJobTerminates).
 func TestMetricsRetryingNotCountedWhenReconcileFails(t *testing.T) {
 	for name, inject := range map[string]func(h *statusHarness){
 		"status write fails": func(h *statusHarness) { h.failStatusUpdates = 1 },
