@@ -40,6 +40,19 @@ service:
   type: ClusterIP
   port: 80
 
+metrics:
+  # Serve /metrics over HTTPS, protected by Kubernetes authn/authz (TokenReview + SubjectAccessReview).
+  # Scrapers need a ServiceAccount bound to the <fullname>-metrics-reader ClusterRole.
+  enabled: true
+  port: 8443
+  serviceMonitor:
+    # Opt-in: requires the monitoring.coreos.com/v1 CRDs (Prometheus Operator).
+    enabled: false
+    # Scrape interval, e.g. 30s. Empty uses the Prometheus default.
+    interval: ""
+    # Extra labels on the ServiceMonitor, e.g. to match a Prometheus serviceMonitorSelector.
+    labels: {}
+
 resources:
   limits:
     cpu: 500m

@@ -1,0 +1,14 @@
+{{- if .Values.metrics.enabled }}
+Metrics are served over HTTPS on port {{ .Values.metrics.port }} by the Service
+{{ include "common.names.fullname" . }}-metrics in namespace {{ .Release.Namespace }}.
+Requests need a bearer token for a ServiceAccount allowed to GET /metrics. Grant it to your
+Prometheus ServiceAccount with:
+
+  kubectl create clusterrolebinding {{ include "common.names.fullname" . }}-metrics-reader \
+    --clusterrole={{ include "common.names.fullname" . }}-metrics-reader \
+    --serviceaccount=<prometheus-namespace>:<prometheus-serviceaccount>
+{{- if not .Values.metrics.serviceMonitor.enabled }}
+
+To have the Prometheus Operator scrape it, set metrics.serviceMonitor.enabled=true.
+{{- end }}
+{{- end }}

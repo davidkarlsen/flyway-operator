@@ -11,7 +11,7 @@ The default kustomize overlay rendered by `make deploy`. Composes the CRD, manag
 | File | Description |
 |------|-------------|
 | `kustomization.yaml` | Top-level overlay — sets the namespace, name prefix, image override, and resources list |
-| `manager_config_patch.yaml` | Patches the manager container args/env (e.g. metrics bind address) |
+| `manager_metrics_patch.yaml` | JSON6902 patch adding `--metrics-bind-address=:8443` to the manager args |
 | `metrics_service.yaml` | `Service` exposing the controller's metrics port |
 
 ## For AI Agents

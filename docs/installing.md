@@ -68,3 +68,26 @@ make deploy IMG=<some-registry>/flyway-operator:tag
 ```
 
 Remove it again with `make undeploy` (controller) and `make uninstall` (CRDs).
+
+## Metrics
+
+The operator serves Prometheus metrics on port 8443 over HTTPS (self-signed certificate) at `/metrics`.
+Every request is authenticated and authorized against the Kubernetes API, so the scraper needs a bearer token
+for a ServiceAccount that may `get` the `/metrics` non-resource URL.
+
+- **OLM and `make deploy`**: metrics are on, and a `ServiceMonitor` is installed when the Prometheus Operator
+  CRDs are present.
+- **Helm**: metrics are on (`metrics.enabled: true`). The `ServiceMonitor` is opt-in:
+  `--set metrics.serviceMonitor.enabled=true`. Set `metrics.enabled=false` to turn metrics off.
+
+In both cases, bind the operator's `metrics-reader` ClusterRole to the ServiceAccount Prometheus runs as,
+otherwise scrapes get 403:
+
+```shell
+kubectl create clusterrolebinding flyway-operator-metrics-reader \
+  --clusterrole=<metrics-reader-clusterrole> \
+  --serviceaccount=<prometheus-namespace>:<prometheus-serviceaccount>
+```
+
+The ClusterRole is `flyway-operator-metrics-reader` for OLM and `make deploy`, and
+`<release-fullname>-metrics-reader` for Helm (printed by `helm install`).
