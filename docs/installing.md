@@ -36,11 +36,14 @@ Requires Kubernetes 1.25 or later: the CRD validates `jobMetadata` and `podMetad
      namespace: openshift-operators
    spec:
      name: flyway-operator
-     channel: alpha
+     channel: stable-v0
      source: flyway-operator
      sourceNamespace: openshift-marketplace
      installPlanApproval: Automatic
    ```
+
+   `stable-v0` follows every 0.x release. To stay on one minor version, subscribe to `stable-v0.<minor>`
+   (e.g. `stable-v0.5`) instead, and switch channels to upgrade.
 
 3. Check that the install succeeded:
 
