@@ -242,3 +242,63 @@ func TestStatusCreateConflictDoesNotCountAnAttempt(t *testing.T) {
 		t.Errorf("attempts = %d after a create that found the Job existing, want 0", got)
 	}
 }
+
+func (h *statusHarness) expectLastApplied(m *flywayv1alpha1.Migration, image string, generation int64) {
+	h.t.Helper()
+	if m.Status.LastAppliedImageRef != image || m.Status.LastAppliedGeneration != generation {
+		h.t.Errorf("lastApplied = %q gen %d, want %q gen %d",
+			m.Status.LastAppliedImageRef, m.Status.LastAppliedGeneration, image, generation)
+	}
+}
+
+func (h *statusHarness) updateImage(image string, generation int64) {
+	h.t.Helper()
+	m := h.migration()
+	m.Spec.MigrationSource.ImageRef = image
+	m.Generation = generation
+	if err := h.c.Update(context.TODO(), m); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+func TestStatusLastAppliedImage(t *testing.T) {
+	h := newStatusHarness(t, ptr.To[int32](0))
+
+	m := h.reconcile()
+	h.expectLastApplied(m, "", 0)
+	h.finishJob(batchv1.JobComplete, 0)
+	h.expectLastApplied(h.reconcile(), "somereg.io/someimage:1", 1)
+
+	// a run of a new image is in progress, then fails: the last applied image is kept
+	h.updateImage("somereg.io/someimage:2", 2)
+	h.expectLastApplied(h.reconcile(), "somereg.io/someimage:1", 1) // previous job replaced
+	h.expectLastApplied(h.reconcile(), "somereg.io/someimage:1", 1) // job created
+	h.expectLastApplied(h.reconcile(), "somereg.io/someimage:1", 1) // job running
+	h.finishJob(batchv1.JobFailed, 3)
+	m = h.reconcile()
+	h.expect(m, flywayv1alpha1.ReasonRetryLimitExceeded, metav1.ConditionFalse, metav1.ConditionFalse, metav1.ConditionTrue)
+	h.expectLastApplied(m, "somereg.io/someimage:1", 1)
+
+	// a new image succeeds: the last applied image follows
+	h.updateImage("somereg.io/someimage:3", 3)
+	h.reconcile()
+	h.reconcile()
+	h.finishJob(batchv1.JobComplete, 0)
+	m = h.reconcile()
+	h.expect(m, flywayv1alpha1.ReasonJobSucceeded, metav1.ConditionTrue, metav1.ConditionFalse, metav1.ConditionFalse)
+	h.expectLastApplied(m, "somereg.io/someimage:3", 3)
+}
+
+func TestStatusLastAppliedImageComesFromJob(t *testing.T) {
+	h := newStatusHarness(t, nil)
+	h.reconcile()
+	h.finishJob(batchv1.JobComplete, 0)
+
+	// the spec image differs from the Job's without a generation change: the Job's image is reported
+	m := h.migration()
+	m.Spec.MigrationSource.ImageRef = "somereg.io/other:9"
+	if err := h.c.Update(context.TODO(), m); err != nil {
+		t.Fatal(err)
+	}
+	h.expectLastApplied(h.reconcile(), "somereg.io/someimage:1", 1)
+}
