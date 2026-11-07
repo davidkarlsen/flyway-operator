@@ -49,6 +49,10 @@ metrics:
   port: 8443
   serviceMonitor:
     # Opt-in: requires the monitoring.coreos.com/v1 CRDs (Prometheus Operator).
+    # The ServiceMonitor is only rendered when the cluster serves that API; if it does not, it is
+    # skipped (not failed) so `helm template` works without a cluster, and a warning is shown in
+    # the install notes. For offline rendering / GitOps without cluster access pass
+    # `--api-versions monitoring.coreos.com/v1/ServiceMonitor` to `helm template`.
     enabled: false
     # Scrape interval, e.g. 30s. Empty uses the Prometheus default.
     interval: ""

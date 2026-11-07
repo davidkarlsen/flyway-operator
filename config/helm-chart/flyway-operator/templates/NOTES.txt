@@ -10,5 +10,10 @@ Prometheus ServiceAccount with:
 {{- if not .Values.metrics.serviceMonitor.enabled }}
 
 To have the Prometheus Operator scrape it, set metrics.serviceMonitor.enabled=true.
+{{- else if not (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/ServiceMonitor") }}
+
+WARNING: metrics.serviceMonitor.enabled=true but the monitoring.coreos.com/v1 ServiceMonitor API
+is not available, so no ServiceMonitor was created. Install the Prometheus Operator CRDs and
+upgrade, or disable it.
 {{- end }}
 {{- end }}
