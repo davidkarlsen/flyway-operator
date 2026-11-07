@@ -38,7 +38,19 @@ Delegate to `operator-developer` (or `oh-my-claudecode:executor`) with `isolatio
 - Don't commit `bundle/` (CI regenerates it on tags).
 - Operator annotations/labels use the `Prefix` constant.
 
-## 3. Verify locally
+### Large features: autopilot or ralph
+
+For a large, well-specified feature (reviewed issue, clear acceptance criteria), implementation may be handed to `oh-my-claudecode:autopilot` (or `oh-my-claudecode:ralph` when it should loop until verification passes) instead of a single `operator-developer` run. Its own critic and validation passes then run on top of this workflow. Brief it with these constraints, which override its defaults:
+
+- Scope is the issue's acceptance criteria. Nothing else.
+- Work in a worktree on a branch off `origin/main`; follow the rules in step 2 and the e2e lock in step 3.
+- Stop at an open PR with `Closes #N`. Never merge, enable auto-merge, push tags, or change repository settings.
+- Hand the PR to the `review-loop` skill. The independent critic and code-reviewer rounds still apply, regardless of autopilot's internal reviews.
+- Ask the user, rather than deciding, when a finding changes the API shape, defaults or release order.
+
+Don't use autopilot for chores, dependency bumps or docs; a single agent is cheaper.
+
+
 
 ```sh
 make test                                 # manifests, generate, fmt, vet, unit + envtest
