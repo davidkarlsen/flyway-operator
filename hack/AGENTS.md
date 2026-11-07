@@ -1,7 +1,7 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-09 | Updated: 2026-05-09 -->
-
 # hack
+
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-05-09 · **Updated:** 2026-11-07
 
 ## Purpose
 Build/scaffolding helpers consumed by Kubebuilder tooling.
@@ -17,4 +17,6 @@ Build/scaffolding helpers consumed by Kubebuilder tooling.
 ### Working In This Directory
 - Treat `boilerplate.go.txt` as canonical for license-header text. If the project relicenses, update this file and regenerate (`make generate manifests`).
 
-<!-- MANUAL: -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.

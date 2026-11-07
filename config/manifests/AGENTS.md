@@ -1,7 +1,7 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-09 | Updated: 2026-05-09 -->
-
 # manifests
+
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-05-09 · **Updated:** 2026-11-07
 
 ## Purpose
 Inputs for `operator-sdk generate bundle` (`make bundle`). Hosts the seed `ClusterServiceVersion` whose values are merged with `config/default/` to produce `bundle/manifests/`.
@@ -18,4 +18,6 @@ Inputs for `operator-sdk generate bundle` (`make bundle`). Hosts the seed `Clust
 |-----------|---------|
 | `bases/` | Seed CSV containing maintainer/description/links/icon (see `bases/AGENTS.md`) |
 
-<!-- MANUAL: -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.

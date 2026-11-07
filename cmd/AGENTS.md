@@ -1,16 +1,16 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-09 | Updated: 2026-05-09 -->
-
 # cmd
 
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-05-09 · **Updated:** 2026-11-07
+
 ## Purpose
-Operator binary entry point. Wires up the controller-runtime manager, registers the v1alpha1 scheme, sets up health/metrics endpoints and leader election, and starts `MigrationReconciler`.
+Operator binary entry point. Wires up the controller-runtime manager, registers the v1alpha1 scheme, sets up health/metrics endpoints and leader election, detects whether the cluster is OpenShift, starts `MigrationReconciler` and registers the `MigrationCollector` metrics collector.
 
 ## Key Files
 
 | File | Description |
 |------|-------------|
-| `main.go` | Manager bootstrap; flag parsing for metrics-bind-address, health-probe-bind-address, leader-elect; scheme registration via `flywayv1alpha1.AddToScheme`; controller setup. |
+| `main.go` | Manager bootstrap; flags `--metrics-bind-address` (default `0`, the manifests set `:8443`), `--metrics-secure`, `--metrics-cert-path`/`-name`/`-key`, `--health-probe-bind-address`, `--leader-elect`; scheme registration via `flywayv1alpha1.AddToScheme`; `controller.IsOpenShift` detection passed to the reconciler as `OpenShift`; controller setup; `metrics.Registry.MustRegister(controller.NewMigrationCollector(mgr.GetCache(), mgr.Elected()))`. |
 
 ## For AI Agents
 
@@ -20,7 +20,7 @@ Operator binary entry point. Wires up the controller-runtime manager, registers 
 - When adding a new API version, also add `<version>.AddToScheme(scheme)` here.
 
 ### Testing Requirements
-- Smoke-tested implicitly through `make test` (envtest spins up a manager-equivalent).
+- `main.go` has no tests of its own; the reconciler is covered by `make test` (envtest) and the whole operator by `make test-e2e` (kind). Flag changes must be mirrored in `config/default/manager_metrics_patch.yaml`, `config/manager/manager.yaml` and the Helm `config/helm-chart/flyway-operator/templates/deployment.yaml`, and documented in `docs/metrics.md`.
 
 ## Dependencies
 
@@ -31,5 +31,8 @@ Operator binary entry point. Wires up the controller-runtime manager, registers 
 ### External
 - `sigs.k8s.io/controller-runtime` — manager, signal handler, leader election
 - `k8s.io/client-go/kubernetes/scheme` — base scheme
+- `sigs.k8s.io/controller-runtime/pkg/metrics` — registry and secured server filters
 
-<!-- MANUAL: -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.

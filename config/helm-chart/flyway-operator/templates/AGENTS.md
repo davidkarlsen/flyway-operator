@@ -1,7 +1,7 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-09 | Updated: 2026-05-09 -->
-
 # templates
+
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-05-09 · **Updated:** 2026-11-07
 
 ## Purpose
 Helm templates for the operator workload and its RBAC. Equivalent to `config/manager/` + `config/rbac/` rendered through Go templating with `values.yaml` overrides.
@@ -18,6 +18,7 @@ Helm templates for the operator workload and its RBAC. Equivalent to `config/man
 | `servicemonitor.yaml` | Prometheus Operator `ServiceMonitor`, gated on `metrics.enabled` and `metrics.serviceMonitor.enabled` |
 | `serviceaccount.yaml` | Manager ServiceAccount |
 | `role.yaml` / `role_binding.yaml` | Reconciler RBAC |
+| `leader_election_role.yaml` / `leader_election_role_binding.yaml` | Leader-election lease RBAC |
 | `migration_editor_role.yaml` / `migration_viewer_role.yaml` | User-facing aggregated roles; names are per-release (`<fullname>-migration-editor/-viewer`) and intentionally differ from `config/rbac/` (kustomize/OLM is a single install) |
 | `NOTES.txt` | Post-install message rendered by `helm install` |
 
@@ -27,4 +28,6 @@ Helm templates for the operator workload and its RBAC. Equivalent to `config/man
 - Always run `helm lint` (or `ct lint --charts config/helm-chart/flyway-operator`) after editing.
 - Keep this in sync with `config/manager/` and `config/rbac/`: a flag added to one should appear in the other.
 
-<!-- MANUAL: -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.
