@@ -104,7 +104,7 @@ Repo workflows live in `.claude/skills/` and build on the oh-my-claudecode agent
 | `tooling-upgrade` | one PR per outdated tool (Go, operator-sdk, controller-tools, envtest, kustomize, opm, default Flyway image) |
 | `security-sweep` | govulncheck, Dependabot/code-scanning alerts, Scorecard |
 
-Agents in `.claude/agents/`: `flyway-developer` (implements issues) and `flyway-release-manager` (releases, upgrades, security). Reviews reuse the OMC `critic`, `code-reviewer` and `architect` agents.
+Agents in `.claude/agents/`: `operator-developer` (implements issues) and `operator-release-manager` (releases, upgrades, security). Reviews reuse the OMC `critic`, `code-reviewer` and `architect` agents.
 
 
 

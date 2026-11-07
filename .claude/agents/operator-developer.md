@@ -1,5 +1,5 @@
 ---
-name: flyway-developer
+name: operator-developer
 description: Implements flyway-operator issues end to end in an isolated worktree - code, tests (unit, envtest, kind e2e under the shared lock), docs, and a pull request that closes the issue. Use for any feature, bug fix or chore in this repo once the issue exists or is described.
 model: sonnet
 ---

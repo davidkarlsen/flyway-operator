@@ -15,8 +15,8 @@ Pass `model` explicitly when delegating (tier aliases):
 |---|---|---|
 | Design review of a feature issue | `oh-my-claudecode:architect`, `oh-my-claudecode:critic` | `opus` |
 | Planning a vague or large request | `oh-my-claudecode:plan` / `planner` | `opus` |
-| Implementing a feature (API, reconcile behaviour, release/CI flow) | `flyway-developer` | `opus` |
-| Bug fix, chore, dependency or chart fix | `flyway-developer` | `sonnet` |
+| Implementing a feature (API, reconcile behaviour, release/CI flow) | `operator-developer` | `opus` |
+| Bug fix, chore, dependency or chart fix | `operator-developer` | `sonnet` |
 | Pure monitoring (wait for CI, poll a PR) | background shell loop or a monitor agent | `haiku` |
 
 ## 1. Issue
@@ -29,7 +29,7 @@ Pass `model` explicitly when delegating (tier aliases):
 
 ## 2. Implement
 
-Delegate to `flyway-developer` (or `oh-my-claudecode:executor`) with `isolation: worktree`, branch off the latest `origin/main`. The brief must include the issue number and these repo rules:
+Delegate to `operator-developer` (or `oh-my-claudecode:executor`) with `isolation: worktree`, branch off the latest `origin/main`. The brief must include the issue number and these repo rules:
 
 - API changes: kubebuilder markers, then `make manifests generate`. `config/crd/bases` must be committed regenerated; CI fails on drift.
 - CEL rules must install on the oldest supported Kubernetes (`minKubeVersion` in `config/manifests/bases/*.clusterserviceversion.yaml`). Check with envtest at that version. Avoid `lowerAscii()` and other cost-heavy CEL; prefer schema markers (`MaxLength`, `Pattern`) where they suffice.

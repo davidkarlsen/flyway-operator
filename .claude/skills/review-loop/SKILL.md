@@ -31,7 +31,7 @@ Re-review rounds reuse the same reviewer agents (SendMessage) so they keep their
 
 ## Loop
 
-1. Collect both verdicts, then send the combined findings to the PR's author agent (or a new `flyway-developer` with the PR branch). Critical/major/medium: fix. Minor/low: fix if cheap, otherwise say why not.
+1. Collect both verdicts, then send the combined findings to the PR's author agent (or a new `operator-developer` with the PR branch). Critical/major/medium: fix. Minor/low: fix if cheap, otherwise say why not.
 2. Findings that change scope or a user decision (API shape, defaults, release order): ask the user, with a recommendation.
 3. After the author pushes, send each reviewer a round-N message listing what changed; re-review the current head.
 4. Repeat until both approve. A rewrite (rebase into a new commit, conflict resolution) after approval gets a short final delta review.
