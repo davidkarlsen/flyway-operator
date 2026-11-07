@@ -17,6 +17,8 @@ import (
 const (
 	defaultFlywayImage = "docker.io/flyway/flyway:13"
 	envNameFlywayImage = "FLYWAY_IMAGE"
+	// DefaultFlywayImage is the Flyway image used when neither spec.flywayConfiguration.flywayImage nor FLYWAY_IMAGE is set.
+	DefaultFlywayImage = defaultFlywayImage
 )
 
 func jobIsCurrent(job *batchv1.Job, migration *flywayv1alpha1.Migration) bool {

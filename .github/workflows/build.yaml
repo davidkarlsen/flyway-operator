@@ -72,7 +72,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9.3.0
         with:
-          args: --timeout=10m
+          args: --timeout=10m --build-tags e2e
 
       - name: run tests
         run: |
@@ -114,17 +114,52 @@ jobs:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           prerelease: false
 
-  # The single required status check: passes when build succeeded or was skipped
+  # Runs real Flyway Jobs against Postgres on kind (test/e2e). Runs in parallel with build.
+  e2e:
+    needs: changes
+    runs-on: ubuntu-latest
+    if: needs.changes.outputs.code == 'true' && !contains(github.event.head_commit.message, 'skip ci')
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: setup go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: 'go.mod'
+
+      # Installs kind only; `make test-e2e` creates the cluster and its local registry.
+      - name: install kind
+        uses: helm/kind-action@v1.15.2
+        with:
+          install_only: true
+
+      - name: run e2e tests
+        run: |
+          make test-e2e
+
+      - name: upload e2e logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-logs
+          path: bin/e2e-logs/
+          if-no-files-found: ignore
+
+  # The single required status check: passes when build and e2e succeeded or were skipped
   # for a non-build change, so docs-only PRs can still auto-merge.
   ci-success:
-    needs: [changes, build]
+    needs: [changes, build, e2e]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Require changes and build not failed
+      - name: Require changes, build and e2e not failed
         env:
           CHANGES: ${{ needs.changes.result }}
           BUILD: ${{ needs.build.result }}
+          E2E: ${{ needs.e2e.result }}
         run: |
-          echo "changes=${CHANGES} build=${BUILD}"
-          [ "${CHANGES}" = success ] && { [ "${BUILD}" = success ] || [ "${BUILD}" = skipped ]; }
+          echo "changes=${CHANGES} build=${BUILD} e2e=${E2E}"
+          [ "${CHANGES}" = success ] \
+            && { [ "${BUILD}" = success ] || [ "${BUILD}" = skipped ]; } \
+            && { [ "${E2E}" = success ] || [ "${E2E}" = skipped ]; }

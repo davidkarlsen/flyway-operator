@@ -1,0 +1,12 @@
+# kind cluster used by `make test-e2e`. The containerd registry config path lets
+# setup-kind.sh point localhost:<port> at the local registry container, which the
+# Flyway Jobs pull from (the operator sets imagePullPolicy Always on them).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+containerdConfigPatches:
+- |-
+  [plugins."io.containerd.grpc.v1.cri".registry]
+    config_path = "/etc/containerd/certs.d"
+nodes:
+- role: control-plane
+  image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5

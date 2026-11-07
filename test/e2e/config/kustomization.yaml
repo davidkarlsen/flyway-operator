@@ -1,0 +1,21 @@
+# Deploys config/default with the locally built operator image for `make test-e2e`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../../../config/default
+images:
+- name: ghcr.io/davidkarlsen/flyway-operator
+  newName: flyway-operator
+  newTag: e2e
+# Points the operator's default Flyway image at the local-registry mirror of controller.DefaultFlywayImage.
+# The suite replaces the placeholder when it renders this overlay.
+patches:
+- target:
+    kind: Deployment
+    name: controller-manager
+  patch: |-
+    - op: add
+      path: /spec/template/spec/containers/0/env
+      value:
+      - name: FLYWAY_IMAGE
+        value: E2E_FLYWAY_IMAGE
