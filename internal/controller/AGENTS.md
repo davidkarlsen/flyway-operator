@@ -16,7 +16,7 @@ Reconciliation logic for the `Migration` CRD. The reconciler owns child Kubernet
 | `suite_test.go` | Ginkgo `TestAPIs` entry point: boots envtest, installs CRDs from `config/crd/bases/`, and starts a manager. Required by the Ginkgo specs. |
 | `migration_controller_test.go` | `TestGithubactionRunnerController`, a plain `testing.T` test of the reconciler with the fake client. |
 | `migration_controller_integration_test.go` | Ginkgo integration specs against envtest, running inside `TestAPIs`. |
-| `docs_examples_test.go` | Ginkgo specs inside `TestAPIs` that apply every `kind: Migration` YAML block of `docs/*.md`, `docs/examples/*.md` and the `config/samples` sample to the real CRD, so documented examples must stay valid. |
+| `docs_examples_test.go` | Ginkgo specs inside `TestAPIs` that apply every `kind: Migration` YAML block of `docs/*.md`, `docs/examples/*.md` and the `config/samples` sample to the real CRD, so documented examples must stay valid. It also requires exactly one reference `Migration` in `docs/usage.md` and the OLM sample to be a subset of it. |
 | `migration_status_test.go` | Fake-client tests of the status contract (`TestStatus*`): running, succeeded, retry under the limit, stop at the limit, spec change, deadline, last applied image, dropped image volume, legacy `copy-sql` Jobs, terminating Jobs. |
 | `metrics_test.go` | `TestMetrics*`, `TestOutcomeIsNew`, `TestMigrationCollector`: counting, collector output, cleanup on delete. |
 | `jobutil_test.go` | Pure unit tests for the Job spec builder, security context, `IsOpenShift`, source location and image volume detection. |
@@ -24,8 +24,8 @@ Reconciliation logic for the `Migration` CRD. The reconciler owns child Kubernet
 ## For AI Agents
 
 ### Working In This Directory
-- The reconciler is single-shot per generation: changing the `Migration` spec bumps `metadata.generation`, which deletes/recreates the Job. Do not silently "patch" an existing Job; the generation annotation is the source of truth.
-- Honour `IsPaused()` early-exit before any side-effecting calls.
+- The reconciler is single-shot per generation: changing the `Migration` spec bumps `metadata.generation`; the Job of the older generation is waited for while it is still running (`PreviousJobRunning`) and deleted once finished (`PreviousJobReplaced`), then the next generation's Job is created. Do not silently "patch" an existing Job; the generation annotation is the source of truth.
+- Honour `IsPaused()` early-exit before any side-effecting calls. Metrics bookkeeping is the exception: `initRunMetrics` (and `deleteRunMetrics` on deletion or not-found) runs before the paused check, so a paused Migration still has its run counters at 0.
 - Always set `controllerutil.SetControllerReference(migration, job, scheme)` so deletion cascades.
 - RBAC markers (`+kubebuilder:rbac:groups=...`) on `Reconcile` drive `config/rbac/role.yaml`. After adding a new resource access, run `make manifests`.
 - Every status path goes through `setAll`/`setConditions`/`setApplied`/`setFailed`, which set all three conditions with one reason. A new reason needs a `Reason*` const in `api/v1alpha1/migration_types.go`, a mention in `docs/usage.md` and a status test.

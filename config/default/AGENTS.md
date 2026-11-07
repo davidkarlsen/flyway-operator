@@ -17,7 +17,7 @@ The default kustomize overlay rendered by `make deploy`. Composes the CRD, manag
 ## For AI Agents
 
 ### Working In This Directory
-- The `IMG` env var passed to `make deploy` is substituted via `kustomize edit set image` against this overlay.
+- The `IMG` var passed to `make deploy` is applied by `kustomize edit set image` in `config/manager`, not in this overlay.
 - The `ServiceMonitor` is always applied, so the cluster needs the Prometheus Operator CRDs; see `docs/metrics.md`.
 - Adding a new manifest to the deployed bundle? Reference it from `kustomization.yaml`'s `resources:` list.
 
