@@ -108,8 +108,6 @@ Agents in `.claude/agents/`: `operator-developer` (implements issues) and `opera
 
 ## CI
 
-
-
 GitHub Actions in `.github/workflows/`:
 - `build.yaml` — main lint/test/release pipeline (uses `golangci/golangci-lint-action` with `--timeout=10m`, then `make test`, then container/helm publish).
 - `chart-test.yaml` — Helm chart-testing (`ct`) using `ct-config.yaml` and `kind-config.yaml`.
