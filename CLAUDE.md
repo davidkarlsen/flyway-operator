@@ -92,7 +92,21 @@ From `.github/copilot-instructions.md` (Copilot rules):
 - Env-var defaults use `github.com/caitlinelfring/go-env-default`.
 - Conditions are the canonical status mechanism; update them via `SetConditions` rather than mutating the slice in place.
 
-## CI
+## Workflows (skills and agents)
+
+Repo workflows live in `.claude/skills/` and build on the oh-my-claudecode agents; they hold the repo-specific rules, so read the relevant one before acting:
+
+| Skill | Use for |
+|---|---|
+| `issue-to-pr` | feature/bug from issue to a PR that closes it (design review, worktree, tests incl. kind e2e lock, PR conventions, model selection) |
+| `review-loop` | independent critic + code-reviewer rounds until approval, then the merge rules |
+| `release` | readiness check, tag-build verification, Helm chart release PR, post-release gate |
+| `tooling-upgrade` | one PR per outdated tool (Go, operator-sdk, controller-tools, envtest, kustomize, opm, default Flyway image) |
+| `security-sweep` | govulncheck, Dependabot/code-scanning alerts, Scorecard |
+
+Agents in `.claude/agents/`: `flyway-developer` (implements issues) and `flyway-release-manager` (releases, upgrades, security). Reviews reuse the OMC `critic`, `code-reviewer` and `architect` agents.
+
+
 
 GitHub Actions in `.github/workflows/`:
 - `build.yaml` — main lint/test/release pipeline (uses `golangci/golangci-lint-action` with `--timeout=10m`, then `make test`, then container/helm publish).
