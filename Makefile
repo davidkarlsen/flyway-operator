@@ -95,6 +95,7 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 
 .PHONY: helm-crds
 helm-crds: manifests ## Copy the generated CRDs into the Helm chart's crds/ directory.
+	rm -f config/helm-chart/flyway-operator/crds/*.yaml
 	cp config/crd/bases/*.yaml config/helm-chart/flyway-operator/crds/
 
 .PHONY: generate
