@@ -111,8 +111,17 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			migration.Status.Attempts = 0
 			return r.ManageSuccess(ctx, migration)
 		}
-		if state == jobSucceeded && !setLastApplied(migration, existingJob) {
-			r.warnLastAppliedUnknown(ctx, migration, existingJob)
+		if state == jobSucceeded {
+			before := migration.Status
+			if !setLastApplied(migration, existingJob) {
+				r.warnLastAppliedUnknown(ctx, migration, existingJob)
+			} else if before.LastAppliedImageRef != migration.Status.LastAppliedImageRef ||
+				before.LastAppliedGeneration != migration.Status.LastAppliedGeneration {
+				// persist before the Job, the only record of this success, is deleted
+				if err := r.GetClient().Status().Update(ctx, migration); err != nil {
+					return ctrl.Result{}, err
+				}
+			}
 		}
 		setConditions(migration, flywayv1alpha1.ReasonPreviousJobReplaced,
 			fmt.Sprintf("Replacing job of generation %s", existingJob.Annotations[flywayv1alpha1.Generation]),

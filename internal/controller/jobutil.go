@@ -62,7 +62,7 @@ func jobAttempt(job *batchv1.Job) int32 {
 }
 
 // jobSourceImage returns the migration source image of the Job: the image of the copy-sql init container,
-// or else the reference of an image volume. It returns "" when the Job has neither.
+// or else the reference of the SQL image volume. It returns "" when the Job has neither.
 func jobSourceImage(job *batchv1.Job) string {
 	podSpec := job.Spec.Template.Spec
 	for _, c := range podSpec.InitContainers {
@@ -71,7 +71,7 @@ func jobSourceImage(job *batchv1.Job) string {
 		}
 	}
 	for _, v := range podSpec.Volumes {
-		if v.Image != nil && v.Image.Reference != "" {
+		if v.Name == sqlVolumeName && v.Image != nil {
 			return v.Image.Reference
 		}
 	}
