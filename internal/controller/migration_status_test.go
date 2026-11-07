@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
@@ -12,12 +14,14 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -27,6 +31,8 @@ type statusHarness struct {
 	t *testing.T
 	c client.Client
 	r *MigrationReconciler
+	// failStatusUpdates makes that many next status updates fail with a conflict.
+	failStatusUpdates int
 }
 
 func newStatusHarness(t *testing.T, retryLimit *int32) *statusHarness {
@@ -50,13 +56,47 @@ func newStatusHarness(t *testing.T, retryLimit *int32) *statusHarness {
 			RetryLimit:      retryLimit,
 		},
 	}
-	c := fake.NewClientBuilder().WithScheme(s).WithObjects(migration).WithStatusSubresource(migration).Build()
-	r := &MigrationReconciler{
-		ReconcilerBase: util.NewReconcilerBase(c, s, nil, record.NewFakeRecorder(100), nil),
-		Client:         c,
+	h := &statusHarness{t: t}
+	h.c = fake.NewClientBuilder().WithScheme(s).WithObjects(migration).WithStatusSubresource(migration).
+		WithInterceptorFuncs(interceptor.Funcs{
+			SubResourceUpdate: func(ctx context.Context, c client.Client, sub string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+				if h.failStatusUpdates > 0 {
+					h.failStatusUpdates--
+					return apierrors.NewConflict(schema.GroupResource{Resource: "migrations"}, obj.GetName(), errors.New("injected"))
+				}
+				return c.SubResource(sub).Update(ctx, obj, opts...)
+			},
+		}).Build()
+	h.r = &MigrationReconciler{
+		ReconcilerBase: util.NewReconcilerBase(h.c, s, nil, record.NewFakeRecorder(100), nil),
+		Client:         h.c,
 		Scheme:         s,
 	}
-	return &statusHarness{t: t, c: c, r: r}
+	return h
+}
+
+// events drains and returns the events recorded so far.
+func (h *statusHarness) events() []string {
+	var out []string
+	ch := h.r.GetRecorder().(*record.FakeRecorder).Events
+	for {
+		select {
+		case e := <-ch:
+			out = append(out, e)
+		default:
+			return out
+		}
+	}
+}
+
+func countContaining(events []string, sub string) int {
+	n := 0
+	for _, e := range events {
+		if strings.Contains(e, sub) {
+			n++
+		}
+	}
+	return n
 }
 
 func (h *statusHarness) reconcile() *flywayv1alpha1.Migration {
@@ -240,5 +280,137 @@ func TestStatusCreateConflictDoesNotCountAnAttempt(t *testing.T) {
 	}
 	if got := h.migration().Status.Attempts; got != 0 {
 		t.Errorf("attempts = %d after a create that found the Job existing, want 0", got)
+	}
+}
+
+func (h *statusHarness) expectLastApplied(m *flywayv1alpha1.Migration, image string, generation int64) {
+	h.t.Helper()
+	if m.Status.LastAppliedImageRef != image || m.Status.LastAppliedGeneration != generation {
+		h.t.Errorf("lastApplied = %q gen %d, want %q gen %d",
+			m.Status.LastAppliedImageRef, m.Status.LastAppliedGeneration, image, generation)
+	}
+}
+
+func (h *statusHarness) updateImage(image string, generation int64) {
+	h.t.Helper()
+	m := h.migration()
+	m.Spec.MigrationSource.ImageRef = image
+	m.Generation = generation
+	if err := h.c.Update(context.TODO(), m); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+func TestStatusLastAppliedImage(t *testing.T) {
+	h := newStatusHarness(t, ptr.To[int32](0))
+
+	m := h.reconcile()
+	h.expectLastApplied(m, "", 0)
+	h.finishJob(batchv1.JobComplete, 0)
+	h.expectLastApplied(h.reconcile(), "somereg.io/someimage:1", 1)
+
+	// a run of a new image is in progress, then fails: the last applied image is kept
+	h.updateImage("somereg.io/someimage:2", 2)
+	h.expectLastApplied(h.reconcile(), "somereg.io/someimage:1", 1) // previous job replaced
+	h.expectLastApplied(h.reconcile(), "somereg.io/someimage:1", 1) // job created
+	h.expectLastApplied(h.reconcile(), "somereg.io/someimage:1", 1) // job running
+	h.finishJob(batchv1.JobFailed, 3)
+	m = h.reconcile()
+	h.expect(m, flywayv1alpha1.ReasonRetryLimitExceeded, metav1.ConditionFalse, metav1.ConditionFalse, metav1.ConditionTrue)
+	h.expectLastApplied(m, "somereg.io/someimage:1", 1)
+
+	// a new image succeeds: the last applied image follows
+	h.updateImage("somereg.io/someimage:3", 3)
+	h.reconcile()
+	h.reconcile()
+	h.finishJob(batchv1.JobComplete, 0)
+	m = h.reconcile()
+	h.expect(m, flywayv1alpha1.ReasonJobSucceeded, metav1.ConditionTrue, metav1.ConditionFalse, metav1.ConditionFalse)
+	h.expectLastApplied(m, "somereg.io/someimage:3", 3)
+}
+
+func TestStatusLastAppliedImageComesFromJob(t *testing.T) {
+	h := newStatusHarness(t, nil)
+	h.reconcile()
+	h.finishJob(batchv1.JobComplete, 0)
+
+	// the spec image differs from the Job's without a generation change: the Job's image is reported.
+	// The API server bumps the generation on any spec change; only the fake client allows this state,
+	// which stands in for a stale read.
+	m := h.migration()
+	m.Spec.MigrationSource.ImageRef = "somereg.io/other:9"
+	if err := h.c.Update(context.TODO(), m); err != nil {
+		t.Fatal(err)
+	}
+	h.expectLastApplied(h.reconcile(), "somereg.io/someimage:1", 1)
+	if n := countContaining(h.events(), "Succeeded Migration Succeeded: ns/status-migration, source: somereg.io/someimage:1"); n != 1 {
+		t.Errorf("Succeeded events naming the Job's image = %d, want 1", n)
+	}
+}
+
+func TestStatusLastAppliedFromPreviousGenerationJob(t *testing.T) {
+	h := newStatusHarness(t, nil)
+	h.reconcile()
+
+	// the spec moves on while the gen-1 Job runs; that Job then succeeds
+	h.updateImage("somereg.io/someimage:2", 2)
+	h.expect(h.reconcile(), flywayv1alpha1.ReasonPreviousJobRunning, metav1.ConditionFalse, metav1.ConditionTrue, metav1.ConditionFalse)
+	h.finishJob(batchv1.JobComplete, 0)
+
+	m := h.reconcile()
+	h.expect(m, flywayv1alpha1.ReasonPreviousJobReplaced, metav1.ConditionFalse, metav1.ConditionTrue, metav1.ConditionFalse)
+	h.expectLastApplied(m, "somereg.io/someimage:1", 1)
+}
+
+func TestStatusLastAppliedKeptWhenJobHasNoSourceImage(t *testing.T) {
+	h := newStatusHarness(t, nil)
+	h.reconcile()
+	h.finishJob(batchv1.JobComplete, 0)
+	h.expectLastApplied(h.reconcile(), "somereg.io/someimage:1", 1)
+
+	h.updateImage("somereg.io/someimage:2", 2)
+	h.reconcile() // previous job replaced
+	h.reconcile() // job created
+	j := h.job()
+	j.Spec.Template.Spec.InitContainers[0].Name = "something-else"
+	if err := h.c.Update(context.TODO(), j); err != nil {
+		t.Fatal(err)
+	}
+	h.finishJob(batchv1.JobComplete, 0)
+
+	m := h.reconcile()
+	h.expect(m, flywayv1alpha1.ReasonJobSucceeded, metav1.ConditionTrue, metav1.ConditionFalse, metav1.ConditionFalse)
+	h.expectLastApplied(m, "somereg.io/someimage:1", 1)
+
+	if n := countContaining(h.events(), "LastAppliedUnknown"); n != 1 {
+		t.Errorf("LastAppliedUnknown events = %d, want 1", n)
+	}
+}
+
+func TestStatusLastAppliedFromPreviousGenerationJobSurvivesStatusConflict(t *testing.T) {
+	h := newStatusHarness(t, nil)
+	h.reconcile()
+	h.updateImage("somereg.io/someimage:2", 2)
+	h.reconcile() // previous job running
+	h.finishJob(batchv1.JobComplete, 0)
+
+	// the status write recording the previous generation's success fails: the Job must not be deleted
+	h.failStatusUpdates = 1
+	if _, err := h.r.Reconcile(context.TODO(), reconcile.Request{NamespacedName: statusKey}); err == nil {
+		t.Fatal("expected the injected status conflict to be returned")
+	}
+	if h.job() == nil {
+		t.Fatal("job deleted although its success was not persisted")
+	}
+	h.expectLastApplied(h.migration(), "", 0)
+
+	m := h.reconcile()
+	h.expect(m, flywayv1alpha1.ReasonPreviousJobReplaced, metav1.ConditionFalse, metav1.ConditionTrue, metav1.ConditionFalse)
+	h.expectLastApplied(m, "somereg.io/someimage:1", 1)
+	if h.job() != nil {
+		t.Error("job of the previous generation was not deleted after its success was persisted")
+	}
+	if n := countContaining(h.events(), "LastAppliedUnknown"); n != 0 {
+		t.Errorf("LastAppliedUnknown events = %d, want 0", n)
 	}
 }

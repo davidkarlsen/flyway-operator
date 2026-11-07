@@ -17,6 +17,8 @@ import (
 const (
 	defaultFlywayImage = "docker.io/flyway/flyway:13"
 	envNameFlywayImage = "FLYWAY_IMAGE"
+	// copySQLContainerName is the init container copying the SQL files out of the migration source image.
+	copySQLContainerName = "copy-sql"
 )
 
 func jobIsCurrent(job *batchv1.Job, migration *flywayv1alpha1.Migration) bool {
@@ -57,6 +59,36 @@ func jobAttempt(job *batchv1.Job) int32 {
 		return 1
 	}
 	return int32(attempt)
+}
+
+// jobSourceImage returns the migration source image of the Job: the image of the copy-sql init container,
+// or else the reference of the SQL image volume. It returns "" when the Job has neither.
+func jobSourceImage(job *batchv1.Job) string {
+	podSpec := job.Spec.Template.Spec
+	for _, c := range podSpec.InitContainers {
+		if c.Name == copySQLContainerName {
+			return c.Image
+		}
+	}
+	for _, v := range podSpec.Volumes {
+		if v.Name == sqlVolumeName && v.Image != nil {
+			return v.Image.Reference
+		}
+	}
+	return ""
+}
+
+// setLastApplied records the succeeded Job's source image and generation on the status.
+// When either cannot be read from the Job, the status is left as is and false is returned.
+func setLastApplied(m *flywayv1alpha1.Migration, job *batchv1.Job) bool {
+	image := jobSourceImage(job)
+	generation, err := strconv.ParseInt(job.Annotations[flywayv1alpha1.Generation], 10, 64)
+	if image == "" || err != nil {
+		return false
+	}
+	m.Status.LastAppliedImageRef = image
+	m.Status.LastAppliedGeneration = generation
+	return true
 }
 
 // setConditions sets Applied=False, Failed=False and the given Progressing status, all with one reason and message.
@@ -169,7 +201,7 @@ func createJobSpec(migration *flywayv1alpha1.Migration, attempt int32) *batchv1.
 				Spec: corev1.PodSpec{
 					InitContainers: []corev1.Container{
 						{
-							Name:            "copy-sql",
+							Name:            copySQLContainerName,
 							Image:           migration.Spec.MigrationSource.ImageRef,
 							ImagePullPolicy: corev1.PullAlways,
 							Command:         []string{"sh", "-c"},
