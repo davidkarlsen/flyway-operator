@@ -55,6 +55,8 @@ spec:
     envVars: []                      # extra env vars for the Flyway container
     volumes: []                      # extra volumes for the Job
     volumeMounts: []                 # mounted into the Flyway container
+    # podSecurityContext: {}         # optional: replaces the default as a whole, see Security context
+    # securityContext: {}            # optional: replaces the default as a whole, for both containers
 ```
 
 The default Flyway image is `docker.io/flyway/flyway:13`. The operator's `FLYWAY_IMAGE` environment variable
@@ -117,6 +119,7 @@ kubectl delete job my-app
   This includes `jobMetadata` and `podMetadata`: changing them re-runs the migration, which is a no-op for `migrate` when
   nothing is pending. Existing Jobs are never patched in place.
 - The Job retries its pod twice (`backoffLimit: 2`) before it fails.
+- The Job's pod runs with a [restricted security context](#security-context).
 - A failed Job is re-created up to `spec.retryLimit` times (default `2`) for the same generation. After that the
   `Migration` reports `Failed=True` and no new Job starts until the spec changes. Deleting the failed Job starts one more attempt.
 - Each Job runs for at most `spec.activeDeadline` (default `1h`), see [Deadline](#deadline).
@@ -146,6 +149,75 @@ Job's pod retries. A migration that legitimately runs longer than an hour must s
 - With Istio, an injected sidecar that never exits keeps the pod running after Flyway has finished. The deadline bounds
   this but reports it as a failure; disable injection for the Job's pod (`podMetadata` annotation
   `sidecar.istio.io/inject: "false"`) or run the proxy as a native sidecar so the pod completes.
+
+## Security context
+
+By default the Job's pod complies with the `restricted`
+[Pod Security Standard](https://kubernetes.io/docs/concepts/security/pod-security-standards/), so it is admitted in
+namespaces labelled `pod-security.kubernetes.io/enforce=restricted`:
+
+- Pod: `runAsNonRoot: true`, `seccompProfile: RuntimeDefault`, `fsGroupChangePolicy: OnRootMismatch`.
+  - On OpenShift (detected once at operator startup from the `security.openshift.io` API), the SCC assigns the UID and
+    fsGroup.
+  - Elsewhere the pod sets `runAsUser: 1001` and `fsGroup: 1001`.
+- Both containers (`copy-sql` and `flyway`): `allowPrivilegeEscalation: false`, all capabilities dropped,
+  `readOnlyRootFilesystem: true`.
+- An `emptyDir` volume named `flyway-operator-tmp` is mounted at `/tmp` in both containers, because JDBC drivers such as
+  SQLite unpack native libraries into it. The name is reserved: if `volumes` already defines `flyway-operator-tmp`,
+  that volume is used instead. A container that already mounts something at `/tmp` keeps its own mount.
+
+What your images and volumes must allow:
+
+- The images must run as a UID that does not own their files, with group `0` (OpenShift) or `1001` as fsGroup, and
+  write only to `/tmp` or mounted volumes. Their files must be world-readable. The Flyway image meets this.
+- Volumes in `volumes`/`volumeMounts` must be readable, or writable where needed, by that user. Kubernetes gives the
+  fsGroup group access to Secret, ConfigMap, emptyDir and most persistent volumes (including a Secret with
+  `defaultMode: 0400`); volume types that ignore fsGroup, such as `hostPath` or some NFS servers, must allow the UID.
+
+### Overriding
+
+`flywayConfiguration.podSecurityContext` replaces the pod default and `flywayConfiguration.securityContext` the default
+of both containers. Each replaces its default as a whole, so repeat every field you still want. For example, for a
+Flyway image that needs a writable root filesystem, keep the rest of the restricted container context:
+
+```yaml
+  flywayConfiguration:
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
+      readOnlyRootFilesystem: false
+```
+
+An image that must run as root needs `podSecurityContext: {runAsUser: 0}` and a namespace that does not enforce
+`restricted`; on OpenShift, also an SCC such as `anyuid` granted to the Job's service account. The `anyuid` SCC assigns
+no UID, so an image without a non-root `USER` fails `runAsNonRoot` there unless `podSecurityContext.runAsUser` is set.
+
+### When the pod does not start
+
+The `Migration` then stays `Progressing` with reason `JobCreated` or `JobRunning`. Look at the events:
+
+```shell
+kubectl describe job my-app     # FailedCreate: the pod was not admitted
+kubectl describe pod -l batch.kubernetes.io/job-name=my-app   # CreateContainerConfigError and container errors
+```
+
+- `FailedCreate` with `violates PodSecurity "restricted"` or `unable to validate against any security context constraint`:
+  an override dropped part of the restricted context, the image needs a UID the SCC does not allow, or OpenShift chose
+  an SCC that assigns no UID. Pin the SCC with a pod annotation:
+
+  ```yaml
+  spec:
+    podMetadata:
+      annotations:
+        openshift.io/required-scc: restricted-v2
+  ```
+
+- `CreateContainerConfigError` with `container has runAsNonRoot and image will run as root`: no UID was assigned
+  (for example by `anyuid`) and the image has no non-root `USER`. Set `podSecurityContext.runAsUser`.
+
+Failed pod creations do not count against the Job's `backoffLimit`, so such a Job does not fail by itself;
+`spec.activeDeadline` bounds how long it runs. Fix the cause, then change the spec or delete the Job to start a new one.
 
 ## Status
 

@@ -287,6 +287,16 @@ type FlywayConfiguration struct {
 	// Volume mounts to mount into the migration job.
 	// +kubebuilder:validation:Optional
 	VolumeMounts []v1.VolumeMount `json:"volumeMounts,omitempty"`
+
+	// Security context of the migration job's pod. Replaces the operator's restricted default
+	// (runAsNonRoot, RuntimeDefault seccomp and, outside OpenShift, runAsUser and fsGroup 1001).
+	// +kubebuilder:validation:Optional
+	PodSecurityContext *v1.PodSecurityContext `json:"podSecurityContext,omitempty"`
+
+	// Security context of the migration job's containers (copy-sql and flyway). Replaces the operator's restricted
+	// default (no privilege escalation, all capabilities dropped, read-only root filesystem).
+	// +kubebuilder:validation:Optional
+	SecurityContext *v1.SecurityContext `json:"securityContext,omitempty"`
 }
 
 // MigrationSource defines the source for the flyway-migrations.

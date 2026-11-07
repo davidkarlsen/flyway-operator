@@ -99,7 +99,9 @@ var _ = BeforeSuite(func() {
 
 	By("deploying postgres")
 	ns := exec.Command("kubectl", "apply", "-f", "-")
-	ns.Stdin = strings.NewReader("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: " + namespace + "\n")
+	// Enforcing the restricted Pod Security Standard proves the operator's Job pods comply with it.
+	ns.Stdin = strings.NewReader("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: " + namespace +
+		"\n  labels:\n    pod-security.kubernetes.io/enforce: restricted\n")
 	mustRun(ns)
 	mustRun(exec.Command("kubectl", "-n", namespace, "apply", "-f", "test/e2e/testdata/postgres.yaml"))
 	mustRun(exec.Command("kubectl", "-n", namespace, "rollout", "status", "deployment/postgres", "--timeout=3m"))

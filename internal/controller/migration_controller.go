@@ -48,6 +48,8 @@ type MigrationReconciler struct {
 	util.ReconcilerBase
 	client.Client
 	Scheme *runtime.Scheme
+	// OpenShift is whether the cluster is OpenShift (see IsOpenShift); there the SCC assigns the Job pod's UID.
+	OpenShift bool
 }
 
 //+kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
@@ -234,6 +236,7 @@ func (r *MigrationReconciler) submitMigrationJob(ctx context.Context, migration 
 	}
 
 	job := createJobSpec(migration, attempt)
+	setSecurityContext(&job.Spec.Template.Spec, migration, r.OpenShift)
 	logger.Info("Creating job", "job", job.Name, "attempt", attempt)
 	if err := controllerutil.SetControllerReference(migration, job, r.GetScheme()); err != nil {
 		return r.ManageError(ctx, migration, err)

@@ -1,9 +1,11 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"math"
+	"path"
 	"strconv"
 
 	"github.com/caitlinelfring/go-env-default"
@@ -13,7 +15,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
 const (
@@ -270,4 +274,77 @@ func createJobSpec(migration *flywayv1alpha1.Migration, attempt int32) *batchv1.
 	job.Spec.ActiveDeadlineSeconds = ptr.To(int64(math.Ceil(migration.GetActiveDeadline().Seconds())))
 
 	return job
+}
+
+const (
+	// defaultRunAsUser is the UID (and fsGroup) of the Job's pod outside OpenShift: Kubernetes cannot verify
+	// runAsNonRoot for an image without a non-root USER (the Flyway image has none) unless the pod sets one.
+	// 1001 owns the Flyway launcher in the Flyway image.
+	defaultRunAsUser int64 = 1001
+	// tmpVolumeName is the writable /tmp of the Job's containers, whose root filesystem is read-only.
+	tmpVolumeName = "flyway-operator-tmp"
+	tmpPath       = "/tmp"
+)
+
+// IsOpenShift reports whether the cluster serves OpenShift's security.openshift.io API. A failed discovery of the
+// group is an error, not "not OpenShift": guessing wrong would give the Job's pod a UID the SCC rejects.
+func IsOpenShift(mapper meta.RESTMapper) (bool, error) {
+	_, err := mapper.KindFor(schema.GroupVersionResource{Group: "security.openshift.io", Resource: "securitycontextconstraints"})
+	switch {
+	case err == nil:
+		return true, nil
+	case meta.IsNoMatchError(err) && !errors.As(err, new(*apiutil.ErrResourceDiscoveryFailed)):
+		return false, nil
+	default:
+		return false, err
+	}
+}
+
+// defaultPodSecurityContext returns the restricted pod security context. On OpenShift the UID and fsGroup are left
+// to the SCC; elsewhere the pod runs as, and its volumes are owned by, defaultRunAsUser.
+func defaultPodSecurityContext(openShift bool) *corev1.PodSecurityContext {
+	sc := &corev1.PodSecurityContext{
+		RunAsNonRoot:        ptr.To(true),
+		FSGroupChangePolicy: ptr.To(corev1.FSGroupChangeOnRootMismatch),
+		SeccompProfile:      &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+	}
+	if !openShift {
+		sc.RunAsUser = ptr.To(defaultRunAsUser)
+		sc.FSGroup = ptr.To(defaultRunAsUser)
+	}
+	return sc
+}
+
+// setSecurityContext makes the pod comply with the Pod Security Standard "restricted": non-root, RuntimeDefault
+// seccomp, and every container without privilege escalation or capabilities and with a read-only root filesystem
+// plus a writable emptyDir at /tmp. spec.flywayConfiguration.podSecurityContext and securityContext replace the
+// pod's and the containers' defaults.
+func setSecurityContext(podSpec *corev1.PodSpec, migration *flywayv1alpha1.Migration, openShift bool) {
+	config := migration.Spec.FlywayConfiguration
+	podSpec.SecurityContext = config.PodSecurityContext.DeepCopy()
+	if podSpec.SecurityContext == nil {
+		podSpec.SecurityContext = defaultPodSecurityContext(openShift)
+	}
+	if !lo.ContainsBy(podSpec.Volumes, func(v corev1.Volume) bool { return v.Name == tmpVolumeName }) {
+		podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
+			Name:         tmpVolumeName,
+			VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+		})
+	}
+	for _, containers := range [][]corev1.Container{podSpec.InitContainers, podSpec.Containers} {
+		for i := range containers {
+			c := &containers[i]
+			c.SecurityContext = config.SecurityContext.DeepCopy()
+			if c.SecurityContext == nil {
+				c.SecurityContext = &corev1.SecurityContext{
+					AllowPrivilegeEscalation: ptr.To(false),
+					Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+					ReadOnlyRootFilesystem:   ptr.To(true),
+				}
+			}
+			if !lo.ContainsBy(c.VolumeMounts, func(m corev1.VolumeMount) bool { return path.Clean(m.MountPath) == tmpPath }) {
+				c.VolumeMounts = append(c.VolumeMounts, corev1.VolumeMount{Name: tmpVolumeName, MountPath: tmpPath})
+			}
+		}
+	}
 }
