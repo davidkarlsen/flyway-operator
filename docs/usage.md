@@ -38,7 +38,7 @@ spec:
     placeholders:                    # optional, Flyway placeholders
       tablespace: USERSPACE1
   flywayConfiguration:               # all fields optional
-    flywayImage: docker.io/flyway/flyway:10
+    flywayImage: docker.io/flyway/flyway:13
     commands: [info, migrate, info]  # default
     defaultSchema: MYSCHEMA
     baselineOnMigrate: true
@@ -48,7 +48,7 @@ spec:
     volumeMounts: []                 # mounted into the Flyway container
 ```
 
-The default Flyway image is `docker.io/flyway/flyway:10`. The operator's `FLYWAY_IMAGE` environment variable
+The default Flyway image is `docker.io/flyway/flyway:13`. The operator's `FLYWAY_IMAGE` environment variable
 changes the default for all migrations, and `flywayImage` changes it for one migration.
 Any Flyway setting not covered above can be set with `envVars`
 (see [Flyway environment variables](https://documentation.red-gate.com/fd/environment-variables-184127165.html)).
