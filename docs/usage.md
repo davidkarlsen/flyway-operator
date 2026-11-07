@@ -5,13 +5,16 @@ After [installing](installing.md) the operator, create `Migration` resources in 
 ## The migration source image
 
 Put your Flyway SQL files (`V1__init.sql`, ...) in a container image, by default under `/sql`.
-The image **must contain `cp`**, because an init container uses it to copy the files out.
-A minimal image:
+The Job mounts the image read-only as an [image volume](https://kubernetes.io/docs/concepts/storage/volumes/#image)
+into the Flyway container, and Flyway reads the SQL files from `migrationSource.path` inside it.
+The image needs no shell or other tools. A minimal image:
 
 ```dockerfile
-FROM busybox
+FROM scratch
 COPY sql/ /sql/
 ```
+
+The image is pulled with `pullPolicy: Always`. Image volumes need Kubernetes 1.35 or later, see [installing](installing.md#requirements).
 
 ## The `Migration` resource
 
@@ -31,7 +34,7 @@ spec:
   retryLimit: 2                      # optional, default 2: re-creations of a failed Job
   migrationSource:
     imageRef: "registry.example.com/my-app-sql:1.4.0"
-    path: /sql                       # optional, default /sql
+    path: /sql                       # optional, default /sql: SQL location inside the image, no ".."
     encoding: UTF-8                  # optional, default UTF-8
     ImagePullSecret:                 # optional
       - name: my-registry-pull
@@ -55,7 +58,14 @@ Any Flyway setting not covered above can be set with `envVars`
 
 ## What happens
 
-- The operator creates a Job with the same name as the `Migration`, owned by the `Migration`.
+- The operator creates a Job with the same name as the `Migration`, owned by the `Migration`. Its pod mounts the
+  migration source image read-only at `/flyway/migration-source` and sets
+  `FLYWAY_LOCATIONS=filesystem:/flyway/migration-source/<path>` and `FLYWAY_FAIL_ON_MISSING_LOCATIONS=true`, so a wrong
+  `path` fails the Job instead of applying nothing. Both are set before `envVars`, so an entry there replaces them
+  (for example to add more locations).
+- If the API server stores the Job without the image volume (Kubernetes older than 1.35, or the `ImageVolume` feature
+  gate off), the operator deletes the Job and the `Migration` reports `Failed=True` with reason `ImageVolumeUnsupported`.
+  Change the spec to try again.
 - The Job is annotated with the `Migration`'s generation. A spec change creates a new Job; an unchanged spec does not rerun it.
 - The Job retries its pod twice (`backoffLimit: 2`) before it fails.
 - A failed Job is re-created up to `spec.retryLimit` times (default `2`) for the same generation. After that the
@@ -74,7 +84,8 @@ that generation) are also set.
 | `Failed` | the Job for the current generation failed and `retryLimit` is exhausted |
 
 All three share one reason: `JobCreated`, `JobRunning`, `JobSucceeded`, `Retrying`, `RetryLimitExceeded`,
-`PreviousJobRunning` (a Job for an older generation is still running) or `PreviousJobReplaced`. On failure the message
+`PreviousJobRunning` (a Job for an older generation is still running), `PreviousJobReplaced` or
+`ImageVolumeUnsupported` (the cluster dropped the image volume). On failure the message
 holds the Job's own failure reason and message. `ReconcileSuccess` only means the reconcile loop ran.
 
 For an Argo CD health check, see [Argo CD](argocd.md).

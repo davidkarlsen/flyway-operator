@@ -56,6 +56,8 @@ const (
 	ReasonRetryLimitExceeded  = "RetryLimitExceeded"
 	ReasonPreviousJobRunning  = "PreviousJobRunning"
 	ReasonPreviousJobReplaced = "PreviousJobReplaced"
+	// ReasonImageVolumeUnsupported means the API server dropped the source image volume from the Job.
+	ReasonImageVolumeUnsupported = "ImageVolumeUnsupported"
 )
 
 // MigrationStatus defines the observed state of Migration
@@ -201,7 +203,8 @@ type FlywayConfiguration struct {
 // MigrationSource defines the source for the flyway-migrations.
 type MigrationSource struct {
 
-	// Reference to the image holding the SQLs to migrate
+	// Reference to the image holding the SQLs to migrate.
+	// The image is mounted read-only as an image volume, so it needs no shell or other tools and can be built FROM scratch.
 	// +kubebuilder:validation:Required
 	ImageRef string `json:"imageRef"`
 
@@ -211,6 +214,8 @@ type MigrationSource struct {
 
 	// Path within the image to the SQLs for flyway
 	// +kubebuilder:default="/sql"
+	// +kubebuilder:validation:MaxLength=1024
+	// +kubebuilder:validation:XValidation:rule="!self.matches('(^|/)[.][.](/|$)')",message="path must not contain '..'"
 	SqlPath string `json:"path"`
 
 	// The encoding of the SQL-files.
