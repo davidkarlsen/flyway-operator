@@ -28,11 +28,31 @@ spec:
       labels:
         app: postgres
     spec:
+      # restricted Pod Security: run as the image's postgres user (UID 70 in the alpine image) on a writable data dir.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+      - name: data
+        emptyDir: {}
       containers:
       - name: postgres
         image: docker.io/library/postgres:17-alpine
         imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
         env:
+        - name: PGDATA # a subdirectory: postgres cannot chmod the root-owned emptyDir itself
+          value: /var/lib/postgresql/data/pgdata
         - name: POSTGRES_USER
           value: app
         - name: POSTGRES_DB

@@ -77,10 +77,15 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
+	// envtest serves no security.openshift.io, so this exercises the real discovery path to "not OpenShift".
+	openShift, err := IsOpenShift(k8sManager.GetRESTMapper())
+	Expect(err).ToNot(HaveOccurred())
+	Expect(openShift).To(BeFalse())
 	err = (&MigrationReconciler{
 		ReconcilerBase: util.NewFromManager(k8sManager, k8sManager.GetEventRecorderFor("Migration")), //nolint:staticcheck // SA1019 - GetEventRecorderFor is deprecated
 		Client:         k8sManager.GetClient(),
 		Scheme:         k8sManager.GetScheme(),
+		OpenShift:      openShift,
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 

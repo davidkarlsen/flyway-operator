@@ -166,10 +166,17 @@ func main() {
 		}
 	}
 
+	openShift, err := controller.IsOpenShift(mgr.GetRESTMapper())
+	if err != nil {
+		setupLog.Error(err, "unable to detect whether the cluster is OpenShift")
+		os.Exit(1)
+	}
+	setupLog.Info("detected platform", "openShift", openShift)
 	if err = (&controller.MigrationReconciler{
 		ReconcilerBase: util.NewFromManager(mgr, mgr.GetEventRecorderFor("Migration")), //nolint:staticcheck // SA1019 - GetEventRecorderFor is deprecated
 		Client:         mgr.GetClient(),
 		Scheme:         mgr.GetScheme(),
+		OpenShift:      openShift,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Migration")
 		os.Exit(1)

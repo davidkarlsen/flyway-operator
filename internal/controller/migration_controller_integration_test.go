@@ -263,6 +263,21 @@ var _ = Describe("Migration controller (envtest)", func() {
 				Name:      "FLYWAY_PASSWORD",
 				ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &m.Spec.Database.Credentials},
 			}))
+
+			// The envtest namespace has no OpenShift UID range, so the pod runs as the default UID and fsGroup.
+			podSecurity := job.Spec.Template.Spec.SecurityContext
+			Expect(podSecurity).NotTo(BeNil())
+			Expect(podSecurity.RunAsNonRoot).To(Equal(ptr.To(true)))
+			Expect(podSecurity.RunAsUser).To(Equal(ptr.To(defaultRunAsUser)))
+			Expect(podSecurity.FSGroup).To(Equal(ptr.To(defaultRunAsUser)))
+			Expect(podSecurity.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
+			for _, c := range []corev1.Container{initContainer, flyway} {
+				Expect(c.SecurityContext).NotTo(BeNil(), c.Name)
+				Expect(c.SecurityContext.AllowPrivilegeEscalation).To(Equal(ptr.To(false)), c.Name)
+				Expect(c.SecurityContext.Capabilities.Drop).To(Equal([]corev1.Capability{"ALL"}), c.Name)
+				Expect(c.SecurityContext.ReadOnlyRootFilesystem).To(Equal(ptr.To(true)), c.Name)
+				Expect(c.VolumeMounts).To(ContainElement(corev1.VolumeMount{Name: tmpVolumeName, MountPath: tmpPath}), c.Name)
+			}
 		})
 
 		It("sets jobMetadata on the Job and podMetadata and the operator labels on its pod template", func(ctx SpecContext) {

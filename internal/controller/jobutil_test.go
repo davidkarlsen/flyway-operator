@@ -1,17 +1,24 @@
 package controller
 
 import (
+	"errors"
 	"maps"
+	"path"
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
 
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
+	"github.com/samber/lo"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
 func TestCreateJobSpecMetadata(t *testing.T) {
@@ -333,6 +340,147 @@ func TestCreateJobSpecActiveDeadline(t *testing.T) {
 			m := &flywayv1alpha1.Migration{Spec: flywayv1alpha1.MigrationSpec{ActiveDeadline: tt.deadline}}
 			if got := createJobSpec(m, 1).Spec.ActiveDeadlineSeconds; got == nil || *got != tt.want {
 				t.Errorf("activeDeadlineSeconds = %d (nil: %t), want %d", ptr.Deref(got, 0), got == nil, tt.want)
+			}
+		})
+	}
+}
+
+func TestSetSecurityContext(t *testing.T) {
+	restrictedContainer := &corev1.SecurityContext{
+		AllowPrivilegeEscalation: ptr.To(false),
+		Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+		ReadOnlyRootFilesystem:   ptr.To(true),
+	}
+	podOverride := &corev1.PodSecurityContext{RunAsUser: ptr.To[int64](0)}
+	containerOverride := &corev1.SecurityContext{Privileged: ptr.To(true)}
+
+	tests := []struct {
+		name          string
+		openShift     bool
+		config        flywayv1alpha1.FlywayConfiguration
+		wantPod       *corev1.PodSecurityContext
+		wantContainer *corev1.SecurityContext
+	}{
+		{
+			name: "Kubernetes runs as UID and fsGroup 1001",
+			wantPod: &corev1.PodSecurityContext{
+				RunAsNonRoot:        ptr.To(true),
+				RunAsUser:           ptr.To(defaultRunAsUser),
+				FSGroup:             ptr.To(defaultRunAsUser),
+				FSGroupChangePolicy: ptr.To(corev1.FSGroupChangeOnRootMismatch),
+				SeccompProfile:      &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+			},
+			wantContainer: restrictedContainer,
+		},
+		{
+			name:      "OpenShift leaves UID and fsGroup to the SCC",
+			openShift: true,
+			wantPod: &corev1.PodSecurityContext{
+				RunAsNonRoot:        ptr.To(true),
+				FSGroupChangePolicy: ptr.To(corev1.FSGroupChangeOnRootMismatch),
+				SeccompProfile:      &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+			},
+			wantContainer: restrictedContainer,
+		},
+		{
+			name:          "overrides replace the defaults",
+			config:        flywayv1alpha1.FlywayConfiguration{PodSecurityContext: podOverride, SecurityContext: containerOverride},
+			wantPod:       podOverride,
+			wantContainer: containerOverride,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			migration := &flywayv1alpha1.Migration{Spec: flywayv1alpha1.MigrationSpec{FlywayConfiguration: tt.config}}
+			podSpec := &createJobSpec(migration, 1).Spec.Template.Spec
+			setSecurityContext(podSpec, migration, tt.openShift)
+
+			if !reflect.DeepEqual(podSpec.SecurityContext, tt.wantPod) {
+				t.Errorf("pod securityContext = %+v, want %+v", podSpec.SecurityContext, tt.wantPod)
+			}
+			if podSpec.SecurityContext == tt.config.PodSecurityContext {
+				t.Errorf("pod securityContext shares the Migration's pointer")
+			}
+			if !lo.ContainsBy(podSpec.Volumes, func(v corev1.Volume) bool { return v.Name == tmpVolumeName && v.EmptyDir != nil }) {
+				t.Errorf("no %s emptyDir volume in %+v", tmpVolumeName, podSpec.Volumes)
+			}
+			containers := []*corev1.Container{&podSpec.InitContainers[0], &podSpec.Containers[0]}
+			for _, c := range containers {
+				if !reflect.DeepEqual(c.SecurityContext, tt.wantContainer) {
+					t.Errorf("container %s securityContext = %+v, want %+v", c.Name, c.SecurityContext, tt.wantContainer)
+				}
+				if c.SecurityContext == tt.config.SecurityContext {
+					t.Errorf("container %s securityContext shares the Migration's pointer", c.Name)
+				}
+				if !lo.ContainsBy(c.VolumeMounts, func(m corev1.VolumeMount) bool { return m.Name == tmpVolumeName && m.MountPath == tmpPath }) {
+					t.Errorf("container %s does not mount %s at %s", c.Name, tmpVolumeName, tmpPath)
+				}
+			}
+			if containers[0].SecurityContext == containers[1].SecurityContext {
+				t.Errorf("the containers share one securityContext")
+			}
+		})
+	}
+}
+
+func TestSetSecurityContextKeepsUserTmp(t *testing.T) {
+	userTmp := corev1.VolumeMount{Name: "my-tmp", MountPath: "/tmp/"}
+	userVolume := corev1.Volume{Name: tmpVolumeName, VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory}}}
+	migration := &flywayv1alpha1.Migration{Spec: flywayv1alpha1.MigrationSpec{
+		FlywayConfiguration: flywayv1alpha1.FlywayConfiguration{
+			VolumeMounts: []corev1.VolumeMount{userTmp},
+			Volumes:      []corev1.Volume{userVolume},
+		},
+	}}
+	podSpec := &createJobSpec(migration, 1).Spec.Template.Spec
+	setSecurityContext(podSpec, migration, false)
+
+	tmpMounts := lo.Filter(podSpec.Containers[0].VolumeMounts, func(m corev1.VolumeMount, _ int) bool { return path.Clean(m.MountPath) == tmpPath })
+	if !reflect.DeepEqual(tmpMounts, []corev1.VolumeMount{userTmp}) {
+		t.Errorf("flyway /tmp mounts = %+v, want only the user's %+v", tmpMounts, userTmp)
+	}
+	tmpVolumes := lo.Filter(podSpec.Volumes, func(v corev1.Volume, _ int) bool { return v.Name == tmpVolumeName })
+	if !reflect.DeepEqual(tmpVolumes, []corev1.Volume{userVolume}) {
+		t.Errorf("%s volumes = %+v, want only the user's %+v", tmpVolumeName, tmpVolumes, userVolume)
+	}
+}
+
+// failingMapper fails every lookup with err.
+type failingMapper struct {
+	meta.RESTMapper
+	err error
+}
+
+func (m failingMapper) KindFor(schema.GroupVersionResource) (schema.GroupVersionKind, error) {
+	return schema.GroupVersionKind{}, m.err
+}
+
+func TestIsOpenShift(t *testing.T) {
+	openShift := meta.NewDefaultRESTMapper(nil)
+	openShift.Add(schema.GroupVersionKind{Group: "security.openshift.io", Version: "v1", Kind: "SecurityContextConstraints"}, meta.RESTScopeRoot)
+	staleGroup := apiutil.ErrResourceDiscoveryFailed{
+		{Group: "security.openshift.io", Version: "v1"}: &meta.NoResourceMatchError{},
+	}
+
+	tests := []struct {
+		name    string
+		mapper  meta.RESTMapper
+		want    bool
+		wantErr bool
+	}{
+		{name: "group served", mapper: openShift, want: true},
+		{name: "group absent", mapper: meta.NewDefaultRESTMapper(nil), want: false},
+		{name: "group listed but its discovery failed", mapper: failingMapper{err: &staleGroup}, wantErr: true},
+		{name: "other lookup error", mapper: failingMapper{err: errors.New("connection refused")}, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := IsOpenShift(tt.mapper)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("IsOpenShift = %v, want %v", got, tt.want)
 			}
 		})
 	}
