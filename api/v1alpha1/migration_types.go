@@ -31,8 +31,7 @@ const (
 	paused     = Prefix + "/" + "paused"
 	// Attempt is the annotation on a Job holding which attempt (1-based) for its generation it is.
 	Attempt = Prefix + "/" + "attempt"
-	// MigrationLabel is the label on a Job and its pod template holding the name of the Migration
-	// (shortened with a hash suffix when longer than 63 characters).
+	// MigrationLabel is the label on a Job and its pod template holding the name of the Migration.
 	MigrationLabel = Prefix + "/" + "migration"
 
 	// DefaultRetryLimit is used when spec.retryLimit is not set.
