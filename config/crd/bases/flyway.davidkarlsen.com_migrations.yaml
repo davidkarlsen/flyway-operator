@@ -2488,6 +2488,17 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              lastAppliedGeneration:
+                description: The metadata.generation of the Migration whose Job set
+                  lastAppliedImageRef.
+                format: int64
+                type: integer
+              lastAppliedImageRef:
+                description: |-
+                  The migration source image (spec.migrationSource.imageRef) of the last Job that succeeded.
+                  This is the image the SQL files came from, not the schema version in the database.
+                  Kept when a later run fails or is in progress.
+                type: string
               observedGeneration:
                 description: The metadata.generation the status was computed for.
                 format: int64

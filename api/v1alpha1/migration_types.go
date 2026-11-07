@@ -68,6 +68,16 @@ type MigrationStatus struct {
 	// +optional
 	Attempts int32 `json:"attempts,omitempty"`
 
+	// The migration source image (spec.migrationSource.imageRef) of the last Job that succeeded.
+	// This is the image the SQL files came from, not the schema version in the database.
+	// Kept when a later run fails or is in progress.
+	// +optional
+	LastAppliedImageRef string `json:"lastAppliedImageRef,omitempty"`
+
+	// The metadata.generation of the Migration whose Job set lastAppliedImageRef.
+	// +optional
+	LastAppliedGeneration int64 `json:"lastAppliedGeneration,omitempty"`
+
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +listType=map

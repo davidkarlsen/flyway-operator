@@ -5,8 +5,56 @@ import (
 	"testing"
 
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 )
+
+func TestJobSourceImage(t *testing.T) {
+	podJob := func(spec corev1.PodSpec) *batchv1.Job {
+		return &batchv1.Job{Spec: batchv1.JobSpec{Template: corev1.PodTemplateSpec{Spec: spec}}}
+	}
+	tests := []struct {
+		name string
+		job  *batchv1.Job
+		want string
+	}{
+		{
+			name: "copy-sql init container",
+			job: podJob(corev1.PodSpec{InitContainers: []corev1.Container{
+				{Name: "other", Image: "reg.io/other:1"},
+				{Name: copySQLContainerName, Image: "reg.io/sql:1"},
+			}}),
+			want: "reg.io/sql:1",
+		},
+		{
+			name: "image volume",
+			job: podJob(corev1.PodSpec{Volumes: []corev1.Volume{
+				{Name: "tmp", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+				{Name: "other", VolumeSource: corev1.VolumeSource{Image: &corev1.ImageVolumeSource{Reference: "reg.io/other:2"}}},
+				{Name: sqlVolumeName, VolumeSource: corev1.VolumeSource{Image: &corev1.ImageVolumeSource{Reference: "reg.io/sql:2"}}},
+			}}),
+			want: "reg.io/sql:2",
+		},
+		{
+			name: "neither",
+			job: podJob(corev1.PodSpec{
+				InitContainers: []corev1.Container{{Name: "other", Image: "reg.io/other:1"}},
+				Volumes: []corev1.Volume{
+					{Name: sqlVolumeName, VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+					{Name: "other", VolumeSource: corev1.VolumeSource{Image: &corev1.ImageVolumeSource{Reference: "reg.io/other:2"}}},
+				},
+			}),
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := jobSourceImage(tt.job); got != tt.want {
+				t.Errorf("jobSourceImage() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
 
 func TestCreateJobSpec(t *testing.T) {
 	tests := []struct {
