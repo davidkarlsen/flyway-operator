@@ -281,10 +281,32 @@ endif
 endif
 
 
+# Adds to catalog-template.yaml, in the working tree only (nothing is committed):
+# the bundle of every release tag (v*, no pre-release suffix) newer than the last committed entry and not newer
+# than v$(VERSION), if its bundle image exists, and always BUNDLE_IMG. A missing bundle image is skipped; any other
+# registry error fails. Entries already present are skipped, so running it again is a no-op.
+# Needs the git tags (full clone).
 update-catalog-template:
-	yq -e '.Stable.Bundles += {"Image": "$(BUNDLE_IMG)" }' -i ./catalog-template.yaml
-	git commit -m"Bump catalog material" catalog-template.yaml
-	git push origin HEAD:main
+	@set -euo pipefail; \
+	newer() { [ "$$1" != "$$2" ] && [ "$$(printf '%s\n%s\n' "$$1" "$$2" | sort -V | tail -n 1)" = "$$1" ]; }; \
+	last="$$(yq '.Stable.Bundles[-1].Image | sub(".*:", "")' ./catalog-template.yaml)"; \
+	for tag in $$(git tag -l 'v*' --sort=v:refname | grep -v -- '-' || true); do \
+		newer "$${tag}" "$${last}" || continue; \
+		newer "$${tag}" "v$(VERSION)" && continue; \
+		img="$(IMAGE_TAG_BASE)-bundle:$${tag}"; \
+		[ "$${img}" = "$(BUNDLE_IMG)" ] && continue; \
+		IMG="$${img}" yq -e '.Stable.Bundles[] | select(.Image == strenv(IMG))' ./catalog-template.yaml >/dev/null 2>&1 && continue; \
+		if err="$$(docker buildx imagetools inspect "$${img}" 2>&1 >/dev/null)"; then \
+			IMG="$${img}" yq -i '.Stable.Bundles += [{"Image": strenv(IMG)}]' ./catalog-template.yaml; \
+			echo "added $${img}"; \
+		elif printf '%s' "$${err}" | grep -qiE 'not found|MANIFEST_UNKNOWN'; then \
+			echo "skipped $${img}: no bundle image"; \
+		else \
+			echo "error inspecting $${img}: $${err}" >&2; exit 1; \
+		fi; \
+	done; \
+	yq -e '.Stable.Bundles[] | select(.Image == "$(BUNDLE_IMG)")' ./catalog-template.yaml >/dev/null 2>&1 \
+		|| { yq -i '.Stable.Bundles += [{"Image": "$(BUNDLE_IMG)"}]' ./catalog-template.yaml; echo "added $(BUNDLE_IMG)"; }
 
 # The image tag given to the resulting catalog image (e.g. make catalog-build CATALOG_IMG=example.com/operator-catalog:v0.2.0).
 CATALOG_IMG ?= $(IMAGE_TAG_BASE)-catalog:v$(VERSION)

@@ -99,21 +99,186 @@ jobs:
         run: |
           make bundle bundle-build bundle-push VERSION=${{ env.VERSION }}
 
-      - name: catalog
+      # Hands the generated OLM bundle to the release job.
+      - name: upload bundle
         if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          make update-catalog-template catalog-build catalog-push VERSION=${{ env.VERSION }}
-
-          # re-tag as alpha, so that we can stick to a single channel
-          echo re-tagging
-          make catalog-retag VERSION=${{ env.VERSION }}
-
-      - name: createRelease
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: marvinpinto/action-automatic-releases@919008cf3f741b179569b7a6fb4d8860689ab7f0 # v1.2.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          prerelease: false
+          name: bundle
+          path: |
+            bundle/
+            bundle.Dockerfile
+          if-no-files-found: error
+
+  # Builds and pushes the OLM catalog for a v* tag, signs and attests the pushed images and creates the
+  # GitHub release. Every step can be repeated, so "Re-run failed jobs" is safe.
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      IMAGE: ghcr.io/davidkarlsen/flyway-operator
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # update-catalog-template reads the v* tags
+          persist-credentials: false
+
+      # `make opm` builds the opm download URL from `go env GOOS` / `go env GOARCH`.
+      - name: setup go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+
+      # Replace the committed bundle with the one build generated and pushed.
+      - name: remove committed bundle
+        run: rm -rf bundle bundle.Dockerfile
+
+      - name: download bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bundle
+
+      - name: 'Login to GitHub Container Registry'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # catalog-template.yaml lists the releases up to the last committed entry; the bundles of later v* tags
+      # (up to this one) are added in the workspace only. Nothing is committed, so a re-run starts from the same file.
+      - name: catalog
+        id: catalog
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          make update-catalog-template catalog-build catalog-push VERSION="${VERSION}"
+          # re-tag as alpha, so that we can stick to a single channel; only for the highest release tag,
+          # so re-running an older tag's release cannot move alpha backwards
+          highest="$(git tag -l 'v*' --sort=-v:refname | grep -v -- '-' | sed -n 1p)"
+          if [ "${GITHUB_REF_NAME}" = "${highest}" ]; then
+            make catalog-retag VERSION="${VERSION}"
+            echo "alpha=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "not retagging alpha: ${GITHUB_REF_NAME} is not the highest release tag (${highest})"
+            echo "alpha=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      # Signing and attestation use image@digest, never tags.
+      - name: resolve image digests
+        id: digests
+        env:
+          ALPHA: ${{ steps.catalog.outputs.alpha }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          digest() {
+            local d
+            d="$(docker buildx imagetools inspect "$1" --format '{{json .Manifest}}' | jq -er .digest)"
+            [[ "${d}" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::bad digest for $1: ${d}" >&2; return 1; }
+            echo "${d}"
+          }
+          operator="$(digest "${IMAGE}:${VERSION}")"
+          bundle="$(digest "${IMAGE}-bundle:v${VERSION}")"
+          catalog="$(digest "${IMAGE}-catalog:v${VERSION}")"
+          if [ "${ALPHA}" = true ]; then
+            # alpha is the versioned catalog image pushed under a second tag
+            catalog_alpha="$(digest "${IMAGE}-catalog:alpha")"
+            [ "${catalog_alpha}" = "${catalog}" ] || { echo "::error::${IMAGE}-catalog:alpha (${catalog_alpha}) != v${VERSION} (${catalog})" >&2; exit 1; }
+          fi
+          {
+            echo "version=${VERSION}"
+            echo "operator=${operator}"
+            echo "bundle=${bundle}"
+            echo "catalog=${catalog}"
+          } | tee -a "${GITHUB_OUTPUT}"
+
+      - name: install cosign
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          cosign-release: 'v3.1.4'
+
+      - name: sign images
+        env:
+          OPERATOR: ${{ steps.digests.outputs.operator }}
+          BUNDLE: ${{ steps.digests.outputs.bundle }}
+          CATALOG: ${{ steps.digests.outputs.catalog }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes --recursive "${IMAGE}@${OPERATOR}"
+          cosign sign --yes "${IMAGE}-bundle@${BUNDLE}"
+          cosign sign --yes "${IMAGE}-catalog@${CATALOG}"
+
+      - name: attest operator image
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.digests.outputs.operator }}
+          push-to-registry: true
+
+      - name: attest bundle image
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}-bundle
+          subject-digest: ${{ steps.digests.outputs.bundle }}
+          push-to-registry: true
+
+      - name: attest catalog image
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}-catalog
+          subject-digest: ${{ steps.digests.outputs.catalog }}
+          push-to-registry: true
+
+      # Release assets: OLM bundle manifests, the pushed image digests and a checksums file,
+      # with a Sigstore signature and SLSA build provenance (read by OpenSSF Scorecard Signed-Releases).
+      - name: prepare release assets
+        env:
+          VERSION: ${{ steps.digests.outputs.version }}
+          OPERATOR: ${{ steps.digests.outputs.operator }}
+          BUNDLE: ${{ steps.digests.outputs.bundle }}
+          CATALOG: ${{ steps.digests.outputs.catalog }}
+          ALPHA: ${{ steps.catalog.outputs.alpha }}
+        run: |
+          set -euo pipefail
+          rm -rf dist && mkdir dist
+          tar -czf "dist/flyway-operator-bundle-${GITHUB_REF_NAME}.tar.gz" bundle bundle.Dockerfile
+          {
+            echo "${IMAGE}:${VERSION}@${OPERATOR}"
+            echo "${IMAGE}-bundle:v${VERSION}@${BUNDLE}"
+            echo "${IMAGE}-catalog:v${VERSION}@${CATALOG}"
+            if [ "${ALPHA}" = true ]; then echo "${IMAGE}-catalog:alpha@${CATALOG}"; fi
+          } > "dist/images-${GITHUB_REF_NAME}.txt"
+          (cd dist && sha256sum "flyway-operator-bundle-${GITHUB_REF_NAME}.tar.gz" "images-${GITHUB_REF_NAME}.txt" > checksums.txt)
+          cosign sign-blob --yes --bundle dist/checksums.txt.sigstore.json dist/checksums.txt
+
+      - name: attest release assets
+        id: attest-assets
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist/checksums.txt
+
+      # Tolerates an existing release so the job can be re-run.
+      - name: create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUNDLE_PATH: ${{ steps.attest-assets.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          cp "${BUNDLE_PATH}" "dist/flyway-operator-${GITHUB_REF_NAME}.intoto.jsonl"
+          # notes start at the previous release tag, not at a chart-* release
+          previous="$(git tag -l 'v*' --sort=-v:refname | grep -v -- '-' \
+            | while read -r t; do [ "$(printf '%s\n%s\n' "${t}" "${GITHUB_REF_NAME}" | sort -V | head -n 1)" = "${t}" ] && [ "${t}" != "${GITHUB_REF_NAME}" ] && { echo "${t}"; break; }; done || true)"
+          notes=(--generate-notes)
+          if [ -n "${previous}" ]; then notes+=(--notes-start-tag "${previous}"); fi
+          gh release create "${GITHUB_REF_NAME}" dist/* -R "${GITHUB_REPOSITORY}" --title "${GITHUB_REF_NAME}" "${notes[@]}" --verify-tag \
+            || gh release upload "${GITHUB_REF_NAME}" dist/* -R "${GITHUB_REPOSITORY}" --clobber
 
   # Runs real Flyway Jobs against Postgres on kind (test/e2e). Runs in parallel with build.
   e2e:
@@ -163,7 +328,7 @@ jobs:
   # The single required status check: passes when build and e2e succeeded or were skipped
   # for a non-build change, so docs-only PRs can still auto-merge.
   ci-success:
-    needs: [changes, build, e2e, govulncheck]
+    needs: [changes, build, e2e, govulncheck, release]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -173,9 +338,11 @@ jobs:
           BUILD: ${{ needs.build.result }}
           E2E: ${{ needs.e2e.result }}
           VULN: ${{ needs.govulncheck.result }}
+          RELEASE: ${{ needs.release.result }}
         run: |
-          echo "changes=${CHANGES} build=${BUILD} e2e=${E2E} govulncheck=${VULN}"
+          echo "changes=${CHANGES} build=${BUILD} e2e=${E2E} govulncheck=${VULN} release=${RELEASE}"
           [ "${CHANGES}" = success ] \
             && { [ "${BUILD}" = success ] || [ "${BUILD}" = skipped ]; } \
             && { [ "${E2E}" = success ] || [ "${E2E}" = skipped ]; } \
-            && { [ "${VULN}" = success ] || [ "${VULN}" = skipped ]; }
+            && { [ "${VULN}" = success ] || [ "${VULN}" = skipped ]; } \
+            && { [ "${RELEASE}" = success ] || [ "${RELEASE}" = skipped ]; }
