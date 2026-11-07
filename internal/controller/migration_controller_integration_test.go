@@ -222,7 +222,7 @@ var _ = Describe("Migration controller (envtest)", func() {
 	})
 
 	Context("when a Migration is created", func() {
-		It("creates a Job owned by the Migration that copies the SQL and runs Flyway with the configured env", func(ctx SpecContext) {
+		It("creates a Job owned by the Migration that mounts the SQL image and runs Flyway with the configured env", func(ctx SpecContext) {
 			m := newMigration(ns, key.Name)
 			m.Spec.FlywayConfiguration.BaselineOnMigrate = ptr.To(true)
 			m.Spec.FlywayConfiguration.JdbcProperties = map[string]string{"sslMode": "require"}
@@ -244,10 +244,14 @@ var _ = Describe("Migration controller (envtest)", func() {
 			Expect(job.Annotations).To(HaveKeyWithValue(flywayv1alpha1.Generation, "1"))
 			Expect(job.Annotations).To(HaveKeyWithValue(flywayv1alpha1.Attempt, "1"))
 
-			Expect(job.Spec.Template.Spec.InitContainers).To(HaveLen(1))
-			initContainer := job.Spec.Template.Spec.InitContainers[0]
-			Expect(initContainer.Image).To(Equal(m.Spec.MigrationSource.ImageRef))
-			Expect(strings.Join(initContainer.Args, " ")).To(ContainSubstring("cd /migrations && cp -rp * /mnt/target/"))
+			Expect(job.Spec.Template.Spec.InitContainers).To(BeEmpty())
+			// the API server kept the image volume (it drops it when the ImageVolume feature gate is off)
+			Expect(job.Spec.Template.Spec.Volumes).To(ContainElement(corev1.Volume{
+				Name: sqlVolumeName,
+				VolumeSource: corev1.VolumeSource{Image: &corev1.ImageVolumeSource{
+					Reference: m.Spec.MigrationSource.ImageRef, PullPolicy: corev1.PullAlways,
+				}},
+			}))
 
 			Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 			flyway := job.Spec.Template.Spec.Containers[0]
@@ -255,6 +259,11 @@ var _ = Describe("Migration controller (envtest)", func() {
 			Expect(envValue(flyway.Env, "FLYWAY_USER")).To(Equal("someUser"))
 			Expect(envValue(flyway.Env, "FLYWAY_URL")).To(Equal("jdbc:db2://somehost:50000/SOME_DB"))
 			Expect(envValue(flyway.Env, "FLYWAY_ENCODING")).To(Equal("ISO-8859-1"))
+			Expect(envValue(flyway.Env, "FLYWAY_LOCATIONS")).To(Equal("filesystem:/flyway/migration-source/migrations"))
+			Expect(envValue(flyway.Env, "FLYWAY_FAIL_ON_MISSING_LOCATIONS")).To(Equal("true"))
+			Expect(flyway.VolumeMounts).To(ContainElement(corev1.VolumeMount{
+				Name: sqlVolumeName, MountPath: "/flyway/migration-source", ReadOnly: true,
+			}))
 			Expect(envValue(flyway.Env, "FLYWAY_DEFAULT_SCHEMA")).To(Equal("someSchema"))
 			Expect(envValue(flyway.Env, "FLYWAY_BASELINE_ON_MIGRATE")).To(Equal("true"))
 			Expect(envValue(flyway.Env, "FLYWAY_CLEAN_DISABLED")).To(Equal("true"))
@@ -271,7 +280,7 @@ var _ = Describe("Migration controller (envtest)", func() {
 			Expect(podSecurity.RunAsUser).To(Equal(ptr.To(defaultRunAsUser)))
 			Expect(podSecurity.FSGroup).To(Equal(ptr.To(defaultRunAsUser)))
 			Expect(podSecurity.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
-			for _, c := range []corev1.Container{initContainer, flyway} {
+			for _, c := range []corev1.Container{flyway} {
 				Expect(c.SecurityContext).NotTo(BeNil(), c.Name)
 				Expect(c.SecurityContext.AllowPrivilegeEscalation).To(Equal(ptr.To(false)), c.Name)
 				Expect(c.SecurityContext.Capabilities.Drop).To(Equal([]corev1.Capability{"ALL"}), c.Name)
@@ -456,7 +465,7 @@ var _ = Describe("Migration controller (envtest)", func() {
 			second := waitForJob(ctx, key, first.UID)
 			Expect(second.Annotations).To(HaveKeyWithValue(flywayv1alpha1.Generation, "2"))
 			Expect(second.Annotations).To(HaveKeyWithValue(flywayv1alpha1.Attempt, "1"))
-			Expect(second.Spec.Template.Spec.InitContainers[0].Image).To(Equal("ghcr.io/davidkarlsen/testmigration:v2"))
+			Expect(second.Spec.Template.Spec.Volumes[0].Image.Reference).To(Equal("ghcr.io/davidkarlsen/testmigration:v2"))
 		})
 	})
 
@@ -636,6 +645,23 @@ var _ = Describe("Migration controller (envtest)", func() {
 			Entry("activeDeadline not a duration", func(spec map[string]any) {
 				spec["activeDeadline"] = "abc"
 			}, "spec.activeDeadline"),
+			Entry("path with a .. segment", func(spec map[string]any) {
+				spec["migrationSource"].(map[string]any)["path"] = "/sql/../etc"
+			}, "spec.migrationSource.path"),
+			Entry("path that is ..", func(spec map[string]any) {
+				spec["migrationSource"].(map[string]any)["path"] = ".."
+			}, "spec.migrationSource.path"),
+		)
+
+		DescribeTable("accepts a path whose segments only contain dots",
+			func(ctx SpecContext, path string) {
+				u := validMigration(ns)
+				u.Object["spec"].(map[string]any)["migrationSource"].(map[string]any)["path"] = path
+				Expect(k8sClient.Create(ctx, u)).To(Succeed())
+			},
+			Entry("dots inside a segment", "/a..b"),
+			Entry("hidden directory", "/.hidden"),
+			Entry("trailing dots in a name", "/sql../x"),
 		)
 
 		It("rejects a name longer than 63 characters and accepts one of 63", func(ctx SpecContext) {

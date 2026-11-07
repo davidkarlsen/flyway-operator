@@ -5,7 +5,9 @@ import (
 	"maps"
 	"path"
 	"reflect"
+	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -186,14 +188,18 @@ func TestCreateJobSpec(t *testing.T) {
 					},
 					FlywayConfiguration: flywayv1alpha1.FlywayConfiguration{},
 					MigrationSource: flywayv1alpha1.MigrationSource{
+						ImageRef: "registry.example.com/sql:1",
+						SqlPath:  "/sql",
 						Encoding: "UTF-8",
 					},
 				},
 			},
 			envAssertions: map[string]string{
-				"FLYWAY_USER":     "testuser",
-				"FLYWAY_URL":      "jdbc:testurl",
-				"FLYWAY_ENCODING": "UTF-8",
+				"FLYWAY_USER":                      "testuser",
+				"FLYWAY_URL":                       "jdbc:testurl",
+				"FLYWAY_ENCODING":                  "UTF-8",
+				"FLYWAY_LOCATIONS":                 "filesystem:/flyway/migration-source/sql",
+				"FLYWAY_FAIL_ON_MISSING_LOCATIONS": "true",
 			},
 		},
 		{
@@ -292,6 +298,29 @@ func TestCreateJobSpec(t *testing.T) {
 				if !found {
 					t.Errorf("env var %s=%s not found in job spec", k, v)
 				}
+			}
+			if n := len(job.Spec.Template.Spec.InitContainers); n != 0 {
+				t.Errorf("expected no init containers, got %d", n)
+			}
+			sqlVol := job.Spec.Template.Spec.Volumes[0]
+			if sqlVol.Name != sqlVolumeName || sqlVol.Image == nil {
+				t.Fatalf("expected image volume %q first, got %+v", sqlVolumeName, sqlVol)
+			}
+			if sqlVol.Image.Reference != tt.migration.Spec.MigrationSource.ImageRef {
+				t.Errorf("image volume reference = %q, want %q", sqlVol.Image.Reference, tt.migration.Spec.MigrationSource.ImageRef)
+			}
+			if sqlVol.Image.PullPolicy != corev1.PullAlways {
+				t.Errorf("image volume pullPolicy = %q, want Always", sqlVol.Image.PullPolicy)
+			}
+			sqlMount := container[0].VolumeMounts[0]
+			if sqlMount.Name != sqlVolumeName || sqlMount.MountPath != sqlMountPath || !sqlMount.ReadOnly {
+				t.Errorf("expected read-only mount of %q at %s, got %+v", sqlVolumeName, sqlMountPath, sqlMount)
+			}
+			if slices.ContainsFunc(container[0].Args, func(a string) bool { return strings.HasPrefix(a, "-locations") }) {
+				t.Errorf("args %v must not force -locations", container[0].Args)
+			}
+			if !hasSourceImageVolume(job) {
+				t.Errorf("hasSourceImageVolume = false for the created job")
 			}
 			if tt.name == "volume and volumemount" {
 				// Assert volume mount
@@ -393,6 +422,8 @@ func TestSetSecurityContext(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			migration := &flywayv1alpha1.Migration{Spec: flywayv1alpha1.MigrationSpec{FlywayConfiguration: tt.config}}
 			podSpec := &createJobSpec(migration, 1).Spec.Template.Spec
+			// the Job has no init container; one is added to check that every container is covered
+			podSpec.InitContainers = []corev1.Container{{Name: "extra"}}
 			setSecurityContext(podSpec, migration, tt.openShift)
 
 			if !reflect.DeepEqual(podSpec.SecurityContext, tt.wantPod) {
@@ -418,6 +449,11 @@ func TestSetSecurityContext(t *testing.T) {
 			}
 			if containers[0].SecurityContext == containers[1].SecurityContext {
 				t.Errorf("the containers share one securityContext")
+			}
+			if !lo.ContainsBy(podSpec.Containers[0].VolumeMounts, func(m corev1.VolumeMount) bool {
+				return m.Name == sqlVolumeName && m.MountPath == sqlMountPath && m.ReadOnly
+			}) {
+				t.Errorf("flyway container lost the read-only %s mount: %+v", sqlVolumeName, podSpec.Containers[0].VolumeMounts)
 			}
 		})
 	}
@@ -483,5 +519,72 @@ func TestIsOpenShift(t *testing.T) {
 				t.Errorf("IsOpenShift = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSqlLocation(t *testing.T) {
+	for _, tt := range []struct{ path, want string }{
+		{"/sql", "filesystem:/flyway/migration-source/sql"},
+		{"sql", "filesystem:/flyway/migration-source/sql"},
+		{"/sql/", "filesystem:/flyway/migration-source/sql"},
+		{"", "filesystem:/flyway/migration-source"},
+		{"/", "filesystem:/flyway/migration-source"},
+		{"/a/b/", "filesystem:/flyway/migration-source/a/b"},
+	} {
+		m := &flywayv1alpha1.Migration{Spec: flywayv1alpha1.MigrationSpec{MigrationSource: flywayv1alpha1.MigrationSource{SqlPath: tt.path}}}
+		if got := sqlLocation(m); got != tt.want {
+			t.Errorf("sqlLocation(%q) = %q, want %q", tt.path, got, tt.want)
+		}
+	}
+}
+
+// A user FLYWAY_LOCATIONS replaces the operator's: the operator does not set its own, so there is no duplicate.
+func TestUserLocationsOverride(t *testing.T) {
+	m := &flywayv1alpha1.Migration{Spec: flywayv1alpha1.MigrationSpec{
+		FlywayConfiguration: flywayv1alpha1.FlywayConfiguration{
+			EnvVars: []corev1.EnvVar{{Name: "FLYWAY_LOCATIONS", Value: "filesystem:/flyway/migration-source/sql,filesystem:/extra"}},
+		},
+		MigrationSource: flywayv1alpha1.MigrationSource{ImageRef: "r/i:1", SqlPath: "/sql"},
+	}}
+	env := createJobSpec(m, 1).Spec.Template.Spec.Containers[0].Env
+	var values []string
+	for _, e := range env {
+		if e.Name == "FLYWAY_LOCATIONS" {
+			values = append(values, e.Value)
+		}
+	}
+	if !slices.Equal(values, []string{"filesystem:/flyway/migration-source/sql,filesystem:/extra"}) {
+		t.Errorf("FLYWAY_LOCATIONS entries = %q, want only the user value", values)
+	}
+	if !slices.ContainsFunc(env, func(e corev1.EnvVar) bool { return e.Name == "FLYWAY_FAIL_ON_MISSING_LOCATIONS" && e.Value == "true" }) {
+		t.Errorf("FLYWAY_FAIL_ON_MISSING_LOCATIONS=true missing when only FLYWAY_LOCATIONS is user-set")
+	}
+}
+
+func TestGetFlywayArgsDoesNotAliasCommands(t *testing.T) {
+	commands := make([]string, 1, 4)
+	commands[0] = "migrate"
+	m := &flywayv1alpha1.Migration{Spec: flywayv1alpha1.MigrationSpec{FlywayConfiguration: flywayv1alpha1.FlywayConfiguration{Commands: commands}}}
+	_ = getFlywayArgs(m)
+	if got := commands[:cap(commands)][1]; got != "" {
+		t.Errorf("getFlywayArgs wrote %q into the spec's Commands backing array", got)
+	}
+}
+
+// An admission webhook may rewrite the reference (digest, mirror); only a missing image volume counts as dropped.
+func TestHasSourceImageVolume(t *testing.T) {
+	m := &flywayv1alpha1.Migration{Spec: flywayv1alpha1.MigrationSpec{MigrationSource: flywayv1alpha1.MigrationSource{ImageRef: "r/i:1"}}}
+	job := createJobSpec(m, 1)
+	job.Spec.Template.Spec.Volumes[0].Image.Reference = "mirror.example.com/r/i@sha256:0123"
+	if !hasSourceImageVolume(job) {
+		t.Error("rewritten reference treated as a dropped volume")
+	}
+	job.Spec.Template.Spec.Volumes[0].Image = nil
+	if hasSourceImageVolume(job) {
+		t.Error("volume without an image source not detected")
+	}
+	job.Spec.Template.Spec.Volumes = nil
+	if hasSourceImageVolume(job) {
+		t.Error("missing volume not detected")
 	}
 }

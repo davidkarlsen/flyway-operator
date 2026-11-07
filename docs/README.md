@@ -6,7 +6,7 @@ The operator adds a `Migration` custom resource (`flyway.davidkarlsen.com/v1alph
 For each `Migration` it runs a Kubernetes [Job](https://kubernetes.io/docs/concepts/workloads/controllers/job/)
 that applies your SQL with the [Flyway](https://documentation.red-gate.com/fd) container image:
 
-- SQL scripts ship as a container image. An init container copies them into the Flyway container.
+- SQL scripts ship as a container image, mounted read-only into the Flyway container as an image volume (Kubernetes 1.35 or later).
 - Database credentials come from a Kubernetes `Secret`.
 - Changing the `Migration` spec starts a new Job. The result is reported as conditions on the `Migration` status.
 - Deleting a `Migration` also deletes its Job.

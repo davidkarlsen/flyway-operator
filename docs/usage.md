@@ -5,13 +5,16 @@ After [installing](installing.md) the operator, create `Migration` resources in 
 ## The migration source image
 
 Put your Flyway SQL files (`V1__init.sql`, ...) in a container image, by default under `/sql`.
-The image **must contain `cp`**, because an init container uses it to copy the files out.
-A minimal image:
+The Job mounts the image read-only as an [image volume](https://kubernetes.io/docs/concepts/storage/volumes/#image)
+into the Flyway container, and Flyway reads the SQL files from `migrationSource.path` inside it.
+The image needs no shell or other tools. A minimal image:
 
 ```dockerfile
-FROM busybox
+FROM scratch
 COPY sql/ /sql/
 ```
+
+The image is pulled with `pullPolicy: Always`. Image volumes need Kubernetes 1.35 or later, see [installing](installing.md#requirements).
 
 ## The `Migration` resource
 
@@ -40,7 +43,7 @@ spec:
       sidecar.istio.io/inject: "false"
   migrationSource:
     imageRef: "registry.example.com/my-app-sql:1.4.0"
-    path: /sql                       # optional, default /sql
+    path: /sql                       # optional, default /sql: SQL location inside the image, no ".."
     encoding: UTF-8                  # optional, default UTF-8
     ImagePullSecret:                 # optional
       - name: my-registry-pull
@@ -56,7 +59,7 @@ spec:
     volumes: []                      # extra volumes for the Job
     volumeMounts: []                 # mounted into the Flyway container
     # podSecurityContext: {}         # optional: replaces the default as a whole, see Security context
-    # securityContext: {}            # optional: replaces the default as a whole, for both containers
+    # securityContext: {}            # optional: replaces the default as a whole, for the Flyway container
 ```
 
 The default Flyway image is `docker.io/flyway/flyway:13`. The operator's `FLYWAY_IMAGE` environment variable
@@ -115,6 +118,14 @@ kubectl delete job my-app
 
 - The operator creates a Job with the same name as the `Migration`, owned by the `Migration`. A `Migration` name
   longer than 63 characters is rejected, because the name is used as the Job name and as a pod label value.
+- The Job's pod mounts the
+  migration source image read-only at `/flyway/migration-source` and sets
+  `FLYWAY_LOCATIONS=filesystem:/flyway/migration-source/<path>` and `FLYWAY_FAIL_ON_MISSING_LOCATIONS=true`, so a wrong
+  `path` fails the Job instead of applying nothing. An entry with the same name in `envVars` replaces either one
+  (for example to add more locations).
+- If the API server stores the Job without the image volume (Kubernetes older than 1.35, or the `ImageVolume` feature
+  gate off), the operator deletes the Job and the `Migration` reports `Failed=True` with reason `ImageVolumeUnsupported`.
+  Change the spec to try again.
 - The Job is annotated with the `Migration`'s generation. A spec change creates a new Job; an unchanged spec does not rerun it.
   This includes `jobMetadata` and `podMetadata`: changing them re-runs the migration, which is a no-op for `migrate` when
   nothing is pending. Existing Jobs are never patched in place.
@@ -160,16 +171,17 @@ namespaces labelled `pod-security.kubernetes.io/enforce=restricted`:
   - On OpenShift (detected once at operator startup from the `security.openshift.io` API), the SCC assigns the UID and
     fsGroup.
   - Elsewhere the pod sets `runAsUser: 1001` and `fsGroup: 1001`.
-- Both containers (`copy-sql` and `flyway`): `allowPrivilegeEscalation: false`, all capabilities dropped,
-  `readOnlyRootFilesystem: true`.
-- An `emptyDir` volume named `flyway-operator-tmp` is mounted at `/tmp` in both containers, because JDBC drivers such as
+- The `flyway` container: `allowPrivilegeEscalation: false`, all capabilities dropped, `readOnlyRootFilesystem: true`.
+  The migration source image volume is read-only either way: image volumes are always mounted read-only.
+- An `emptyDir` volume named `flyway-operator-tmp` is mounted at `/tmp` in the `flyway` container, because JDBC drivers such as
   SQLite unpack native libraries into it. The name is reserved: if `volumes` already defines `flyway-operator-tmp`,
   that volume is used instead. A container that already mounts something at `/tmp` keeps its own mount.
 
 What your images and volumes must allow:
 
-- The images must run as a UID that does not own their files, with group `0` (OpenShift) or `1001` as fsGroup, and
-  write only to `/tmp` or mounted volumes. Their files must be world-readable. The Flyway image meets this.
+- The Flyway image must run as a UID that does not own its files, with group `0` (OpenShift) or `1001` as fsGroup, and
+  write only to `/tmp` or mounted volumes. Its files must be world-readable. The Flyway image meets this.
+- The SQL files in the migration source image must be readable by that UID, for example world-readable.
 - Volumes in `volumes`/`volumeMounts` must be readable, or writable where needed, by that user. Kubernetes gives the
   fsGroup group access to Secret, ConfigMap, emptyDir and most persistent volumes (including a Secret with
   `defaultMode: 0400`); volume types that ignore fsGroup, such as `hostPath` or some NFS servers, must allow the UID.
@@ -177,7 +189,7 @@ What your images and volumes must allow:
 ### Overriding
 
 `flywayConfiguration.podSecurityContext` replaces the pod default and `flywayConfiguration.securityContext` the default
-of both containers. Each replaces its default as a whole, so repeat every field you still want. For example, for a
+of the Flyway container. Each replaces its default as a whole, so repeat every field you still want. For example, for a
 Flyway image that needs a writable root filesystem, keep the rest of the restricted container context:
 
 ```yaml
@@ -229,11 +241,11 @@ that generation) are also set.
 | --- | --- |
 | `Applied` | the Job for the current generation succeeded |
 | `Progressing` | a Job for the current generation is created, running, or being retried |
-| `Failed` | the Job for the current generation failed and `retryLimit` is exhausted |
+| `Failed` | the Job for the current generation failed and `retryLimit` is exhausted, or the cluster dropped its image volume |
 
 All three share one reason: `JobCreated`, `JobRunning`, `JobSucceeded`, `Retrying`, `RetryLimitExceeded`, `TimedOut`
 (the last attempt exceeded `spec.activeDeadline`), `PreviousJobRunning` (a Job for an older generation is still
-running) or `PreviousJobReplaced`. On failure the message
+running), `PreviousJobReplaced` or `ImageVolumeUnsupported` (the cluster dropped the image volume). On failure the message
 holds the Job's own failure reason and message. `ReconcileSuccess` only means the reconcile loop ran.
 
 `status.lastAppliedImageRef` holds the `migrationSource.imageRef` of the last Job that succeeded, taken from that Job, and

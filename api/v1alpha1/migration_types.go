@@ -49,7 +49,8 @@ const (
 	// ConditionProgressing is True while a Job for the current generation is created, running or being retried.
 	ConditionProgressing = "Progressing"
 	// ConditionFailed is True when the Job for the current generation failed and retryLimit is exhausted,
-	// with reason TimedOut when that last attempt exceeded spec.activeDeadline, else RetryLimitExceeded.
+	// with reason TimedOut when that last attempt exceeded spec.activeDeadline, else RetryLimitExceeded;
+	// or with reason ImageVolumeUnsupported when the API server dropped the source image volume from the Job.
 	ConditionFailed = "Failed"
 )
 
@@ -65,6 +66,8 @@ const (
 	ReasonTimedOut            = "TimedOut"
 	ReasonPreviousJobRunning  = "PreviousJobRunning"
 	ReasonPreviousJobReplaced = "PreviousJobReplaced"
+	// ReasonImageVolumeUnsupported means the API server dropped the source image volume from the Job.
+	ReasonImageVolumeUnsupported = "ImageVolumeUnsupported"
 )
 
 // MigrationStatus defines the observed state of Migration
@@ -293,7 +296,7 @@ type FlywayConfiguration struct {
 	// +kubebuilder:validation:Optional
 	PodSecurityContext *v1.PodSecurityContext `json:"podSecurityContext,omitempty"`
 
-	// Security context of the migration job's containers (copy-sql and flyway). Replaces the operator's restricted
+	// Security context of the migration job's flyway container. Replaces the operator's restricted
 	// default (no privilege escalation, all capabilities dropped, read-only root filesystem).
 	// +kubebuilder:validation:Optional
 	SecurityContext *v1.SecurityContext `json:"securityContext,omitempty"`
@@ -302,7 +305,8 @@ type FlywayConfiguration struct {
 // MigrationSource defines the source for the flyway-migrations.
 type MigrationSource struct {
 
-	// Reference to the image holding the SQLs to migrate
+	// Reference to the image holding the SQLs to migrate.
+	// The image is mounted read-only as an image volume, so it needs no shell or other tools and can be built FROM scratch.
 	// +kubebuilder:validation:Required
 	ImageRef string `json:"imageRef"`
 
@@ -312,6 +316,8 @@ type MigrationSource struct {
 
 	// Path within the image to the SQLs for flyway
 	// +kubebuilder:default="/sql"
+	// +kubebuilder:validation:MaxLength=1024
+	// +kubebuilder:validation:XValidation:rule="!self.matches('(^|/)[.][.](/|$)')",message="path must not contain '..'"
 	SqlPath string `json:"path"`
 
 	// The encoding of the SQL-files.

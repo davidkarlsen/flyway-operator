@@ -31,16 +31,17 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // newMetricsHarness returns a status harness with no run series left over for statusKey.
-func newMetricsHarness(t *testing.T, retryLimit *int32) *statusHarness {
+func newMetricsHarness(t *testing.T, retryLimit *int32, extra ...interceptor.Funcs) *statusHarness {
 	t.Helper()
 	deleteRunMetrics(statusKey)
 	t.Cleanup(func() { deleteRunMetrics(statusKey) })
-	return newStatusHarness(t, retryLimit)
+	return newStatusHarness(t, retryLimit, extra...)
 }
 
 func runs(result string) float64 {
@@ -175,6 +176,15 @@ func TestMetricsTimedOutCountedOnceAsFailed(t *testing.T) {
 	deleteRunMetrics(statusKey)
 	h.reconcile()
 	h.reconcile()
+	h.expectRuns(0, 0, 0)
+}
+
+// ImageVolumeUnsupported is not a Job attempt outcome: the Job is deleted before any pod runs.
+func TestMetricsImageVolumeUnsupportedNotCounted(t *testing.T) {
+	h := newMetricsHarness(t, nil, dropImageVolumes)
+	for range 3 {
+		h.expect(h.reconcile(), flywayv1alpha1.ReasonImageVolumeUnsupported, metav1.ConditionFalse, metav1.ConditionFalse, metav1.ConditionTrue)
+	}
 	h.expectRuns(0, 0, 0)
 }
 

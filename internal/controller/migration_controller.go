@@ -38,7 +38,7 @@ import (
 )
 
 const (
-	sqlVolumeName    = "sql"
+	sqlVolumeName    = "flyway-operator-migration-source"
 	clientContextKey = "client"
 	deletionRequeue  = 2 * time.Second
 )
@@ -101,12 +101,20 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if existingJob == nil {
+		if imageVolumeUnsupported(migration) {
+			return r.ManageSuccess(ctx, migration)
+		}
 		return r.submitMigrationJob(ctx, migration)
 	}
 
 	if existingJob.DeletionTimestamp != nil {
 		logger.Info("Previous job is being deleted, requeueing", "job", existingJob.Name)
 		return r.ManageSuccessWithRequeue(ctx, migration, deletionRequeue)
+	}
+
+	if imageVolumeUnsupported(migration) && jobIsCurrent(existingJob, migration) && !hasSourceImageVolume(existingJob) {
+		// the cache still holds the rejected Job; delete it (again) and keep reporting Failed
+		return r.rejectJobWithoutImageVolume(ctx, migration, existingJob)
 	}
 
 	state, failureReason, failure := jobState(existingJob)
@@ -248,11 +256,35 @@ func (r *MigrationReconciler) submitMigrationJob(ctx context.Context, migration 
 		return r.ManageError(ctx, migration, err)
 	}
 
+	if !hasSourceImageVolume(job) {
+		return r.rejectJobWithoutImageVolume(ctx, migration, job)
+	}
+
 	migration.Status.Attempts = attempt
 	setConditions(migration, flywayv1alpha1.ReasonJobCreated,
 		fmt.Sprintf("Created job %s attempt %d of %d", job.Name, attempt, migration.GetRetryLimit()+1),
 		metav1.ConditionTrue, metav1.ConditionFalse)
 	return r.ManageSuccess(ctx, migration)
+}
+
+// rejectJobWithoutImageVolume deletes a Job the API server stored without the source image volume,
+// and reports Failed until the spec changes: Flyway would otherwise find no SQL.
+func (r *MigrationReconciler) rejectJobWithoutImageVolume(ctx context.Context, migration *flywayv1alpha1.Migration, job *batchv1.Job) (reconcile.Result, error) {
+	opts := metav1.DeletePropagationBackground
+	if err := r.GetClient().Delete(ctx, job, &client.DeleteOptions{PropagationPolicy: &opts}); err != nil && !apierrors.IsNotFound(err) {
+		return r.ManageError(ctx, migration, err)
+	}
+	message := fmt.Sprintf("Job %s was stored without its image volume: the cluster does not support image volumes (needs Kubernetes 1.35 or later with the ImageVolume feature gate on)", job.Name)
+	r.GetRecorder().Event(migration, corev1.EventTypeWarning, flywayv1alpha1.ReasonImageVolumeUnsupported, message)
+	setAll(migration, flywayv1alpha1.ReasonImageVolumeUnsupported, message, metav1.ConditionFalse, metav1.ConditionFalse, metav1.ConditionTrue)
+	return r.ManageSuccess(ctx, migration)
+}
+
+// imageVolumeUnsupported reports whether the current generation already failed because image volumes are unsupported.
+func imageVolumeUnsupported(migration *flywayv1alpha1.Migration) bool {
+	failed := meta.FindStatusCondition(migration.Status.Conditions, flywayv1alpha1.ConditionFailed)
+	return failed != nil && failed.Status == metav1.ConditionTrue &&
+		failed.Reason == flywayv1alpha1.ReasonImageVolumeUnsupported && failed.ObservedGeneration == migration.Generation
 }
 
 // deleteJob deletes a finished Job; the next reconcile, triggered by the deletion, creates its successor.
