@@ -221,3 +221,24 @@ func TestStatusSpecChangeReruns(t *testing.T) {
 	h.finishJob(batchv1.JobComplete, 0)
 	h.expect(h.reconcile(), flywayv1alpha1.ReasonJobSucceeded, metav1.ConditionTrue, metav1.ConditionFalse, metav1.ConditionFalse)
 }
+
+func TestStatusCreateConflictDoesNotCountAnAttempt(t *testing.T) {
+	h := newStatusHarness(t, nil)
+	h.reconcile()
+
+	// a stale read: status says no Job was started yet, but the Job exists
+	m := h.migration()
+	m.Status.Attempts = 0
+	if err := h.c.Status().Update(context.TODO(), m); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.r.Create(context.TODO(), createJobSpec(m, 1)); !apierrors.IsAlreadyExists(err) {
+		t.Fatalf("expected the Job to exist, got %v", err)
+	}
+	if _, err := h.r.submitMigrationJob(context.TODO(), m); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.migration().Status.Attempts; got != 0 {
+		t.Errorf("attempts = %d after a create that found the Job existing, want 0", got)
+	}
+}

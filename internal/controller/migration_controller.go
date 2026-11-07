@@ -24,7 +24,6 @@ import (
 
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	"github.com/redhat-cop/operator-utils/pkg/util"
-	"github.com/redhat-cop/operator-utils/pkg/util/crud"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -33,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -186,7 +186,13 @@ func (r *MigrationReconciler) submitMigrationJob(ctx context.Context, migration 
 
 	job := createJobSpec(migration, attempt)
 	logger.Info("Creating job", "job", job.Name, "attempt", attempt)
-	if err := crud.CreateResourceIfNotExists(ctx, migration, migration.Namespace, job); err != nil {
+	if err := controllerutil.SetControllerReference(migration, job, r.GetScheme()); err != nil {
+		return r.ManageError(ctx, migration, err)
+	}
+	if err := r.GetClient().Create(ctx, job); err != nil {
+		if apierrors.IsAlreadyExists(err) { // the cache has not seen our Job yet; status already describes it
+			return ctrl.Result{RequeueAfter: deletionRequeue}, nil
+		}
 		return r.ManageError(ctx, migration, err)
 	}
 
