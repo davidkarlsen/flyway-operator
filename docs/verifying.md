@@ -8,10 +8,12 @@ signing identity is the `build.yaml` workflow running on the release tag.
 |----------|-----------|------------|
 | `ghcr.io/davidkarlsen/flyway-operator:<version>` (index and every platform image) | cosign, in the registry | attestation of the index, in the registry |
 | `ghcr.io/davidkarlsen/flyway-operator-bundle:v<version>` | cosign, in the registry | attestation, in the registry |
-| `ghcr.io/davidkarlsen/flyway-operator-catalog:v<version>` (same image as `:alpha`) | cosign, in the registry | attestation, in the registry |
+| `ghcr.io/davidkarlsen/flyway-operator-catalog:v<version>` | cosign, in the registry | attestation, in the registry |
 | `checksums.txt` release asset | `checksums.txt.sigstore.json` | - |
 | `flyway-operator-bundle-<tag>.tar.gz` and `images-<tag>.txt` release assets (listed in `checksums.txt`) | via `checksums.txt` | `flyway-operator-<tag>.intoto.jsonl` |
 | Helm chart releases (`flyway-operator-<chart version>.tgz`) | `<chart>.tgz.sigstore.json`, made by `chart-release.yaml` | `flyway-operator-<chart version>.intoto.jsonl` |
+
+`:alpha` points at the catalog of the newest release, so it has the same signature and attestation as that release's `-catalog:v<version>`.
 
 Releases made before signing was added are not signed.
 
