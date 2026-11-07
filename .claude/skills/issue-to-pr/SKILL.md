@@ -32,7 +32,7 @@ Pass `model` explicitly when delegating (tier aliases):
 Delegate to `operator-developer` (or `oh-my-claudecode:executor`) with `isolation: worktree`, branch off the latest `origin/main`. The brief must include the issue number and these repo rules:
 
 - API changes: kubebuilder markers, then `make manifests generate`. Commit the regenerated `config/crd/bases`; CI fails on drift (the drift check comes from #498).
-- CEL rules need Kubernetes 1.25 or later (they're silently ignored before that) and must install on the oldest supported version (`minKubeVersion` in `config/manifests/bases/*.clusterserviceversion.yaml`). Adding the first CEL means raising `minKubeVersion` to at least 1.25; test the CRD with envtest at that version (`bin/setup-envtest use <version>`). Avoid `lowerAscii()` and other cost-heavy CEL; prefer schema markers (`MaxLength`, `Pattern`) where they suffice.
+- CEL rules need Kubernetes 1.25 or later (they're silently ignored before that) and must install on the oldest supported version (`minKubeVersion` in `config/manifests/bases/*.clusterserviceversion.yaml`). `minKubeVersion` is 1.25, so new CEL must install there; test the CRD with envtest at that version (`bin/setup-envtest use <version>`). Avoid `lowerAscii()` and other cost-heavy CEL; prefer schema markers (`MaxLength`, `Pattern`) where they suffice.
 - Docs live in `docs/`: user-facing behaviour in `docs/usage.md`, install/requirements in `docs/installing.md`, metrics in `docs/metrics.md`. The docs-examples envtest strictly validates every `Migration` in `docs/` and requires `config/samples/` to stay a subset of the `docs/usage.md` example.
 - Don't touch `config/helm-chart/` in feature PRs: merging chart changes publishes the chart. Chart changes go in the post-release chart PR (see the `operator-release` skill).
 - Don't hand-regenerate `bundle/manifests` in feature PRs; CI regenerates the bundle on main pushes and tags. Tooling bumps may update `bundle/` labels and scorecard image tags.
@@ -63,7 +63,8 @@ Kind e2e when the change affects the Job, reconcile behaviour or anything a real
 L=/tmp/flyway-e2e.lock
 until mkdir "$L" 2>/dev/null; do
   # break a stale lock whose owner process is gone
-  if [ -f "$L/pid" ] && ! kill -0 "$(cat "$L/pid")" 2>/dev/null; then rm -rf "$L"; continue; fi
+  p=$(cat "$L/pid" 2>/dev/null)
+  if [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null && [ "$(cat "$L/pid" 2>/dev/null)" = "$p" ] && mv "$L" "$L.stale.$$" 2>/dev/null; then rm -rf "$L.stale.$$"; continue; fi
   sleep 15
 done
 echo $$ > "$L/pid"; trap 'rm -rf "$L"' EXIT

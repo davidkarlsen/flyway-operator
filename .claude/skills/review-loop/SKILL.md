@@ -14,7 +14,7 @@ Run in parallel, as separate background agents, each **independently** (never pa
 | Feature or behaviour change | `oh-my-claudecode:critic` + `oh-my-claudecode:code-reviewer` (+ `oh-my-claudecode:architect` for design-heavy changes) |
 | Bug fix, CI/workflow, dependency, chart | `oh-my-claudecode:critic` + `oh-my-claudecode:code-reviewer` |
 | Docs-only (`docs/`, `README.md`, `CONTRIBUTING.md`, `SECURITY.md`) | none required; for `docs/` changes run `make test` locally first (the docs-examples envtest doesn't run in CI for docs-only PRs) |
-| Agent policy (`.claude/**`, `CLAUDE.md`, `AGENTS.md`, `.github/copilot-instructions.md`) | `oh-my-claudecode:critic` |
+| Agent policy (`.claude/**`, `CLAUDE.md`, `**/AGENTS.md`, `.github/copilot-instructions.md`) | `oh-my-claudecode:critic` |
 | Dependabot | `oh-my-claudecode:code-reviewer` (light model); the critic only for major-version bumps |
 
 **Fork PRs from other contributors**: review statically only. Reviewers must not run `make`, `go test`, `docker` or any script from the PR on this machine, and the merge is the user's decision.
@@ -38,7 +38,7 @@ Re-review rounds reuse the same reviewer agents (SendMessage) so they keep their
 1. Collect every reviewer's verdict (two, or three with the architect), then send the combined findings to the PR's author agent (or a new `operator-developer` with the PR branch). Critical/major/medium: fix. Minor/low: fix if cheap, otherwise say why not.
 2. Findings that change scope or a user decision (API shape, defaults, release order): ask the user, with a recommendation.
 3. After the author pushes, send each reviewer a round-N message listing what changed; re-review the current head.
-4. Repeat until both approve. A rewrite (rebase into a new commit, conflict resolution) after approval gets a short final delta review.
+4. Repeat until every assigned reviewer approves. A rewrite (rebase into a new commit, conflict resolution) after approval gets a short final delta review.
 
 ## Merge
 

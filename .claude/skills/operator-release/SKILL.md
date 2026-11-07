@@ -10,7 +10,7 @@ The maintainer pushes tags; this skill prepares, watches and verifies. Don't pus
 ## 1. Ready check
 
 - Everything planned for the release is merged; drafts that wait for this release stay drafts.
-- `main` CI is green on the commit to be tagged, including `e2e` and `govulncheck` (`gh run list --branch main -L 3`, `gh run view <id>`). The tag's `release` job only waits for `build`, so these must be green beforehand.
+- `main` CI is green on the latest code-changing commit up to the one to be tagged (docs-only commits skip them), including `e2e` and `govulncheck` (`gh run list --branch main -L 3`, `gh run view <id>`). The tag's `release` job only waits for `build`, so these must be green beforehand.
 - `make manifests generate` leaves no diff on `main`.
 - Note the previous tag and summarise what's in the release (merged PRs since it). Call out behaviour changes and breaking changes (defaults, minimum Kubernetes, renamed labels/RBAC, Helm CRD step) for the release notes.
 
@@ -20,7 +20,7 @@ The maintainer pushes tags; this skill prepares, watches and verifies. Don't pus
 
 Watch it: `gh run watch` / `gh run view --log-failed`. The `release` job is re-runnable: on a transient failure, "Re-run failed jobs".
 
-Verify afterwards by running **every block in `docs/verifying.md`** for the new tag: `cosign verify` for the operator, bundle and catalog images; `gh attestation verify` for all three; `cosign verify-blob` on `checksums.txt` plus `sha256sum -c` and the asset attestation. Then:
+Verify afterwards by running **every block in `docs/verifying.md`** for the new tag: `cosign verify` for the operator image; `gh attestation verify` for the operator, bundle and catalog images; `cosign verify-blob` on `checksums.txt` plus `sha256sum -c` and the asset attestation. Then:
 
 ```sh
 gh release view v<version>      # assets: bundle tarball, images list, checksums + .sigstore.json, .intoto.jsonl
