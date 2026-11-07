@@ -62,7 +62,10 @@ User documentation lives in [`docs/`](docs/README.md). Put examples there, not i
 ```sh
 make install run                                     # install the CRD and run the controller from your machine
 make docker-build deploy IMG=<registry>/flyway-operator:<tag>   # build and deploy in-cluster
+make docker-build IMG=<registry>/flyway-operator:<tag> PLATFORM=linux/amd64   # x86 cluster from an Apple Silicon Mac
 ```
+
+`docker-build` targets the host platform unless `PLATFORM` is set. The Dockerfile builds on the host platform and cross-compiles the Go binary, so building `linux/amd64` on Apple Silicon does not run the compiler under emulation.
 
 ## Releasing (maintainers)
 

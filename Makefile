@@ -149,9 +149,11 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
+# PLATFORM optionally sets the target platform of docker-build (i.e. make docker-build PLATFORM=linux/amd64); defaults to the host platform.
+PLATFORM ?=
 .PHONY: docker-build
 docker-build: test ## Build docker image with the manager.
-	docker build --platform linux/amd64 -t ${IMG} .
+	docker build $(if $(PLATFORM),--platform $(PLATFORM)) -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
@@ -166,13 +168,10 @@ docker-push: ## Push docker image with the manager.
 PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
 .PHONY: docker-buildx
 docker-buildx: test ## Build and push docker image for the manager for cross-platform support
-	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
 	- docker buildx create --name project-v3-builder
 	docker buildx use project-v3-builder
-	- docker buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
-	- docker buildx rm project-v3-builder
-	rm Dockerfile.cross
+	docker buildx build --push --platform=$(PLATFORMS) --tag ${IMG} . ; status=$$?; \
+	docker buildx rm project-v3-builder; exit $$status
 
 ##@ Deployment
 
@@ -326,7 +325,10 @@ catalog-build: opm
 	mkdir catalog
 	$(OPM) alpha render-template semver -o yaml < catalog-template.yaml > catalog/catalog.yaml
 	$(OPM) validate catalog
-	docker build --platform=linux/amd64 -f Dockerfile.catalog -t $(CATALOG_IMG) .
+	docker build --platform=$(CATALOG_PLATFORM) -f Dockerfile.catalog -t $(CATALOG_IMG) .
+
+# The catalog image is consumed by amd64 clusters, so it stays amd64 regardless of the host; override with CATALOG_PLATFORM.
+CATALOG_PLATFORM ?= linux/amd64
 
 # Push the catalog image.
 .PHONY: catalog-push
