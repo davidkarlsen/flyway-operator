@@ -24,6 +24,7 @@ startup, or hold DDL privileges. The SQL is versioned and promoted as an immutab
 - [Usage](usage.md): the `Migration` resource, status, pausing
 - [Argo CD](argocd.md): health check and sync order
 - [Metrics](metrics.md): secured `/metrics` endpoint, Prometheus scraping, RBAC
+- [Verifying releases](verifying.md): cosign signatures and build provenance of images and release assets
 - Examples
   - [DB2 with username and password](examples/db2-password.md)
   - [Azure SQL with a service principal and certificate](examples/mssql-sp-cert.md)

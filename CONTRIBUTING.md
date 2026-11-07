@@ -66,7 +66,11 @@ make docker-build deploy IMG=<registry>/flyway-operator:<tag>   # build and depl
 
 ## Releasing (maintainers)
 
-1. Push a `vX.Y.Z` tag on `main`. CI builds and pushes the operator image and the OLM bundle and catalog.
+1. Push a `vX.Y.Z` tag on `main`. CI builds and pushes the operator image and the OLM bundle and catalog,
+   signs and attests them, and creates the GitHub release (see [Verifying releases](docs/verifying.md)).
+   CI does not commit anything back to `main`: the catalog is built from the committed `catalog-template.yaml`
+   plus the bundles of all later `v*` tags up to the new one, so `catalog-template.yaml` does not need updating
+   per release.
 2. Open a pull request that updates the Helm chart: `image.tag` and `appVersion` to the new release, a new chart
    `version`, and the chart's copy of the CRD if it changed. The chart is published when that pull request merges.
 
