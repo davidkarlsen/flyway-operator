@@ -4,12 +4,13 @@
 
 ## Badges
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/davidkarlsen/flyway-operator)
-[![Go Report Card](https://goreportcard.com/badge/github.com/davidkarlsen/flyway-operator)](https://goreportcard.com/report/github.com/davidkarlsen/flyway-operator)
-![build](https://github.com/davidkarlsen/flyway-operator/workflows/build/badge.svg?branch=main)
+[![build](https://github.com/davidkarlsen/flyway-operator/actions/workflows/build.yaml/badge.svg?branch=main)](https://github.com/davidkarlsen/flyway-operator/actions/workflows/build.yaml)
+[![CodeQL](https://github.com/davidkarlsen/flyway-operator/actions/workflows/codeql.yaml/badge.svg?branch=main)](https://github.com/davidkarlsen/flyway-operator/actions/workflows/codeql.yaml)
 [![codecov](https://codecov.io/gh/davidkarlsen/flyway-operator/branch/main/graph/badge.svg)](https://codecov.io/gh/davidkarlsen/flyway-operator)
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/davidkarlsen/flyway-operator?sort=semver)
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/flyway-operator)](https://artifacthub.io/packages/search?repo=flyway-operator)
 [![CRD Docs](https://img.shields.io/badge/CRD-Docs-brightgreen)](https://doc.crds.dev/github.com/davidkarlsen/flyway-operator)
+[![License](https://img.shields.io/github/license/davidkarlsen/flyway-operator)](https://github.com/davidkarlsen/flyway-operator/blob/main/LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/davidkarlsen/flyway-operator?style=social)](https://github.com/davidkarlsen/flyway-operator)
 
 
