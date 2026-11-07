@@ -143,7 +143,12 @@ Create `$TOKEN` with `kubectl create token <serviceaccount> -n <namespace>`.
   attempt, when deleting its Job fails: the status already records `Retrying` for that attempt, so the
   reconcile that then deletes the Job does not count it. Attempts of a superseded generation are not counted.
 - Counters start at zero when the operator restarts. Alert on the state gauges, and use `increase()` or
-  `rate()` on counters.
+  `rate()` on counters. An attempt that fails while the operator is down is counted before the first scrape
+  after the restart, so `increase()` misses it.
+- `last_run_duration_seconds` is held in memory: after an operator restart or failover it is missing until the
+  next run of that Migration finishes, and `FlywayMigrationSlow` resolves meanwhile.
+- When the operator cannot list Migrations from its cache during a scrape, it logs the error and serves no
+  state series for that scrape, so open alerts on them can resolve and fire again.
 
 See [Alerting](#alerting) for rules built on these metrics.
 
@@ -189,9 +194,10 @@ The rules come in two groups with different audiences, set in the `alert_audienc
 
 The `namespace` label of the `flyway_operator_migration_*` series is the Migration's namespace. Prometheus
 attaches its own `namespace` label to targets discovered through a `ServiceMonitor` (and to custom scrape configs
-that map it), and without honoring the series' labels it renames theirs to `exported_namespace`. The
-kustomize and OLM `ServiceMonitor` sets `honorLabels: true`; a custom scrape config needs `honor_labels: true`,
-as in the example [above](#prometheus-without-the-prometheus-operator).
+that map it), and without honoring the series' labels it renames theirs to `exported_namespace`. The shipped
+`ServiceMonitor` sets `honorLabels: true` in every install path; for the Helm chart, from the chart version that
+ships operator 0.5.0. Your own `ServiceMonitor` or scrape config needs `honorLabels: true` or
+`honor_labels: true`, as in the example [above](#prometheus-without-the-prometheus-operator).
 
 `FlywayOperatorMetricsAbsent` matches the scrape target's `job` label, which depends on how it is scraped:
 the Service name with a `ServiceMonitor` (`flyway-operator-controller-manager-metrics-service` for kustomize
@@ -258,6 +264,7 @@ spec:
             time() - max by (namespace, migration) (
               flyway_operator_migration_status_condition_last_transition_timestamp_seconds{condition="Progressing"}
             ) > 3600
+            unless on (namespace, migration) max by (namespace, migration) (flyway_operator_migration_paused) == 1
           for: 5m
           labels:
             severity: warning
@@ -339,6 +346,7 @@ groups:
           time() - max by (namespace, migration) (
             flyway_operator_migration_status_condition_last_transition_timestamp_seconds{condition="Progressing"}
           ) > 3600
+          unless on (namespace, migration) max by (namespace, migration) (flyway_operator_migration_paused) == 1
         for: 5m
         labels:
           severity: warning
@@ -409,6 +417,7 @@ spec:
             time() - max by (namespace, migration) (
               flyway_operator_migration_status_condition_last_transition_timestamp_seconds{namespace="team-a", condition="Progressing"}
             ) > 3600
+            unless on (namespace, migration) max by (namespace, migration) (flyway_operator_migration_paused{namespace="team-a"}) == 1
           for: 5m
           labels:
             severity: warning
