@@ -1,7 +1,10 @@
 package controller
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"maps"
 	"strconv"
 
 	"github.com/caitlinelfring/go-env-default"
@@ -140,6 +143,34 @@ func getFlywayArgs(migration *flywayv1alpha1.Migration) []string {
 	return args
 }
 
+// operatorLabels returns the labels the operator sets on the Job and its pod template.
+// They avoid app.kubernetes.io/name and instance, which application selectors (Helm release name) match on.
+func operatorLabels(migration *flywayv1alpha1.Migration) map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/managed-by": "flyway-operator",
+		flywayv1alpha1.MigrationLabel:  migrationLabelValue(migration.Name),
+	}
+}
+
+// migrationLabelValue returns name, or for names longer than a label value's 63 characters,
+// its first 54 characters, "-" and the first 8 hex characters of the name's SHA-256.
+func migrationLabelValue(name string) string {
+	const maxLabelValue, keep = 63, 54
+	if len(name) <= maxLabelValue {
+		return name
+	}
+	sum := sha256.Sum256([]byte(name))
+	return name[:keep] + "-" + hex.EncodeToString(sum[:])[:8]
+}
+
+// withOperatorKeys returns the user-set entries with the operator's entries set over them, so the operator's keys win.
+func withOperatorKeys(user, operator map[string]string) map[string]string {
+	out := make(map[string]string, len(user)+len(operator))
+	maps.Copy(out, user)
+	maps.Copy(out, operator)
+	return out
+}
+
 func createJobSpec(migration *flywayv1alpha1.Migration, attempt int32) *batchv1.Job {
 	const targetPath = "/mnt/target/"
 	envVars := []corev1.EnvVar{
@@ -187,19 +218,19 @@ func createJobSpec(migration *flywayv1alpha1.Migration, attempt int32) *batchv1.
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      migration.Name,
 			Namespace: migration.Namespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "flyway-operator",
-				"app.kubernetes.io/name":       "flyway",
-				"app.kubernetes.io/instance":   migration.Name,
-			},
-			Annotations: map[string]string{
+			Labels:    withOperatorKeys(migration.Spec.JobMetadata.GetLabels(), operatorLabels(migration)),
+			Annotations: withOperatorKeys(migration.Spec.JobMetadata.GetAnnotations(), map[string]string{
 				flywayv1alpha1.Generation: migration.GenerationAsString(),
 				flywayv1alpha1.Attempt:    strconv.Itoa(int(attempt)),
-			},
+			}),
 		},
 		Spec: batchv1.JobSpec{
 			BackoffLimit: ptr.To[int32](2),
 			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      withOperatorKeys(migration.Spec.PodMetadata.GetLabels(), operatorLabels(migration)),
+					Annotations: maps.Clone(migration.Spec.PodMetadata.GetAnnotations()),
+				},
 				Spec: corev1.PodSpec{
 					InitContainers: []corev1.Container{
 						{

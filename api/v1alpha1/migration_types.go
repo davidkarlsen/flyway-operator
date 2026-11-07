@@ -31,6 +31,9 @@ const (
 	paused     = Prefix + "/" + "paused"
 	// Attempt is the annotation on a Job holding which attempt (1-based) for its generation it is.
 	Attempt = Prefix + "/" + "attempt"
+	// MigrationLabel is the label on a Job and its pod template holding the name of the Migration
+	// (shortened with a hash suffix when longer than 63 characters).
+	MigrationLabel = Prefix + "/" + "migration"
 
 	// DefaultRetryLimit is used when spec.retryLimit is not set.
 	DefaultRetryLimit int32 = 2
@@ -114,6 +117,7 @@ func (m *Migration) GetRetryLimit() int32 {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 63",message="metadata.name must be at most 63 characters (it is used as the Job name and as a pod label value)"
 
 // Migration is the Schema for the migrations API
 type Migration struct {
@@ -145,6 +149,60 @@ type MigrationSpec struct {
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:default=2
 	RetryLimit *int32 `json:"retryLimit,omitempty"`
+
+	// Labels and annotations to set on the Job. Nothing is copied from the Migration's own metadata.
+	// A change creates a new Job, re-running the migration.
+	// +kubebuilder:validation:Optional
+	JobMetadata *ObjectMetadata `json:"jobMetadata,omitempty"`
+
+	// Labels and annotations to set on the Job's pod template, e.g. sidecar.istio.io/inject: "false".
+	// Nothing is copied from the Migration's own metadata.
+	// A change creates a new Job, re-running the migration.
+	// +kubebuilder:validation:Optional
+	PodMetadata *ObjectMetadata `json:"podMetadata,omitempty"`
+}
+
+// ObjectMetadata holds labels and annotations the operator sets on an object it creates.
+// The operator's own keys are reserved: keys under flyway-operator.davidkarlsen.com/ and batch.kubernetes.io/,
+// controller-uid, job-name and app.kubernetes.io/managed-by.
+type ObjectMetadata struct {
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxProperties=64
+	// +kubebuilder:validation:XValidation:rule="self.all(k, !k.startsWith('flyway-operator.davidkarlsen.com/') && !k.startsWith('batch.kubernetes.io/') && !(k in ['controller-uid', 'job-name', 'app.kubernetes.io/managed-by']))",message="must not contain a reserved key: flyway-operator.davidkarlsen.com/*, batch.kubernetes.io/*, controller-uid, job-name or app.kubernetes.io/managed-by"
+	// +kubebuilder:validation:XValidation:rule="self.all(k, size(k) <= 317 && k.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$') && (!k.contains('/') || k.indexOf('/') <= 253))",message="keys must be valid label keys: an optional DNS subdomain prefix of at most 253 characters and '/', then a name of at most 63 alphanumeric characters, '-', '_' or '.', starting and ending with an alphanumeric character"
+	Labels map[string]LabelValue `json:"labels,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxProperties=64
+	// +kubebuilder:validation:XValidation:rule="self.all(k, !k.startsWith('flyway-operator.davidkarlsen.com/') && !k.startsWith('batch.kubernetes.io/') && !(k in ['controller-uid', 'job-name', 'app.kubernetes.io/managed-by']))",message="must not contain a reserved key: flyway-operator.davidkarlsen.com/*, batch.kubernetes.io/*, controller-uid, job-name or app.kubernetes.io/managed-by"
+	// +kubebuilder:validation:XValidation:rule="self.all(k, size(k) <= 317 && k.matches('^([A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?([.][A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$') && (!k.contains('/') || k.indexOf('/') <= 253))",message="keys must be valid annotation keys: an optional DNS subdomain prefix of at most 253 characters and '/', then a name of at most 63 alphanumeric characters, '-', '_' or '.', starting and ending with an alphanumeric character"
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+// LabelValue is a Kubernetes label value: empty, or at most 63 alphanumeric characters, '-', '_' or '.',
+// starting and ending with an alphanumeric character.
+// +kubebuilder:validation:MaxLength=63
+// +kubebuilder:validation:Pattern=`^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$`
+type LabelValue string
+
+// GetLabels returns the labels as plain strings, or nil when o or its labels are nil.
+func (o *ObjectMetadata) GetLabels() map[string]string {
+	if o == nil || o.Labels == nil {
+		return nil
+	}
+	labels := make(map[string]string, len(o.Labels))
+	for k, v := range o.Labels {
+		labels[k] = string(v)
+	}
+	return labels
+}
+
+// GetAnnotations returns the annotations, or nil when o is nil.
+func (o *ObjectMetadata) GetAnnotations() map[string]string {
+	if o == nil {
+		return nil
+	}
+	return o.Annotations
 }
 
 // Database defines the database-settings

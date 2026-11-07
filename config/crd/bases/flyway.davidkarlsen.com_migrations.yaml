@@ -2362,6 +2362,51 @@ spec:
                 required:
                 - commands
                 type: object
+              jobMetadata:
+                description: |-
+                  Labels and annotations to set on the Job. Nothing is copied from the Migration's own metadata.
+                  A change creates a new Job, re-running the migration.
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    maxProperties: 64
+                    type: object
+                    x-kubernetes-validations:
+                    - message: 'must not contain a reserved key: flyway-operator.davidkarlsen.com/*,
+                        batch.kubernetes.io/*, controller-uid, job-name or app.kubernetes.io/managed-by'
+                      rule: self.all(k, !k.startsWith('flyway-operator.davidkarlsen.com/')
+                        && !k.startsWith('batch.kubernetes.io/') && !(k in ['controller-uid',
+                        'job-name', 'app.kubernetes.io/managed-by']))
+                    - message: 'keys must be valid annotation keys: an optional DNS
+                        subdomain prefix of at most 253 characters and ''/'', then
+                        a name of at most 63 alphanumeric characters, ''-'', ''_''
+                        or ''.'', starting and ending with an alphanumeric character'
+                      rule: self.all(k, size(k) <= 317 && k.matches('^([A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?([.][A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$')
+                        && (!k.contains('/') || k.indexOf('/') <= 253))
+                  labels:
+                    additionalProperties:
+                      description: |-
+                        LabelValue is a Kubernetes label value: empty, or at most 63 alphanumeric characters, '-', '_' or '.',
+                        starting and ending with an alphanumeric character.
+                      maxLength: 63
+                      pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
+                      type: string
+                    maxProperties: 64
+                    type: object
+                    x-kubernetes-validations:
+                    - message: 'must not contain a reserved key: flyway-operator.davidkarlsen.com/*,
+                        batch.kubernetes.io/*, controller-uid, job-name or app.kubernetes.io/managed-by'
+                      rule: self.all(k, !k.startsWith('flyway-operator.davidkarlsen.com/')
+                        && !k.startsWith('batch.kubernetes.io/') && !(k in ['controller-uid',
+                        'job-name', 'app.kubernetes.io/managed-by']))
+                    - message: 'keys must be valid label keys: an optional DNS subdomain
+                        prefix of at most 253 characters and ''/'', then a name of
+                        at most 63 alphanumeric characters, ''-'', ''_'' or ''.'',
+                        starting and ending with an alphanumeric character'
+                      rule: self.all(k, size(k) <= 317 && k.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$')
+                        && (!k.contains('/') || k.indexOf('/') <= 253))
+                type: object
               migrationSource:
                 description: settings defining the SQL migrations
                 properties:
@@ -2407,6 +2452,52 @@ spec:
                 - encoding
                 - imageRef
                 - path
+                type: object
+              podMetadata:
+                description: |-
+                  Labels and annotations to set on the Job's pod template, e.g. sidecar.istio.io/inject: "false".
+                  Nothing is copied from the Migration's own metadata.
+                  A change creates a new Job, re-running the migration.
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    maxProperties: 64
+                    type: object
+                    x-kubernetes-validations:
+                    - message: 'must not contain a reserved key: flyway-operator.davidkarlsen.com/*,
+                        batch.kubernetes.io/*, controller-uid, job-name or app.kubernetes.io/managed-by'
+                      rule: self.all(k, !k.startsWith('flyway-operator.davidkarlsen.com/')
+                        && !k.startsWith('batch.kubernetes.io/') && !(k in ['controller-uid',
+                        'job-name', 'app.kubernetes.io/managed-by']))
+                    - message: 'keys must be valid annotation keys: an optional DNS
+                        subdomain prefix of at most 253 characters and ''/'', then
+                        a name of at most 63 alphanumeric characters, ''-'', ''_''
+                        or ''.'', starting and ending with an alphanumeric character'
+                      rule: self.all(k, size(k) <= 317 && k.matches('^([A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?([.][A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$')
+                        && (!k.contains('/') || k.indexOf('/') <= 253))
+                  labels:
+                    additionalProperties:
+                      description: |-
+                        LabelValue is a Kubernetes label value: empty, or at most 63 alphanumeric characters, '-', '_' or '.',
+                        starting and ending with an alphanumeric character.
+                      maxLength: 63
+                      pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
+                      type: string
+                    maxProperties: 64
+                    type: object
+                    x-kubernetes-validations:
+                    - message: 'must not contain a reserved key: flyway-operator.davidkarlsen.com/*,
+                        batch.kubernetes.io/*, controller-uid, job-name or app.kubernetes.io/managed-by'
+                      rule: self.all(k, !k.startsWith('flyway-operator.davidkarlsen.com/')
+                        && !k.startsWith('batch.kubernetes.io/') && !(k in ['controller-uid',
+                        'job-name', 'app.kubernetes.io/managed-by']))
+                    - message: 'keys must be valid label keys: an optional DNS subdomain
+                        prefix of at most 253 characters and ''/'', then a name of
+                        at most 63 alphanumeric characters, ''-'', ''_'' or ''.'',
+                        starting and ending with an alphanumeric character'
+                      rule: self.all(k, size(k) <= 317 && k.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$')
+                        && (!k.contains('/') || k.indexOf('/') <= 253))
                 type: object
               retryLimit:
                 default: 2
@@ -2507,6 +2598,10 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: metadata.name must be at most 63 characters (it is used as the
+            Job name and as a pod label value)
+          rule: size(self.metadata.name) <= 63
     served: true
     storage: true
     subresources:

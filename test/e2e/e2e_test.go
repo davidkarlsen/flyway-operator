@@ -103,6 +103,52 @@ var _ = Describe("Migration", func() {
 			"-c", "flyway", "--tail=-1"))).To(ContainSubstring("password authentication failed"))
 		Expect(psql("SELECT to_regclass('wrongpw.flyway_schema_history')")).To(BeEmpty())
 	})
+
+	It("sets podMetadata and the operator labels on the Job's pod", func() {
+		cmd := exec.Command("kubectl", "-n", namespace, "apply", "-f", "-")
+		cmd.Stdin = strings.NewReader(fmt.Sprintf(`apiVersion: flyway.davidkarlsen.com/v1alpha1
+kind: Migration
+metadata:
+  name: pod-metadata
+spec:
+  database:
+    username: app
+    jdbcUrl: jdbc:postgresql://postgres:5432/app
+    credentials:
+      name: postgres
+      key: password
+  migrationSource:
+    imageRef: %s
+  flywayConfiguration:
+    defaultSchema: podmetadata
+  podMetadata:
+    labels:
+      example.com/team: payments
+    annotations:
+      example.com/injected: "false"
+`, sqlImage("v1")))
+		mustRun(cmd)
+
+		// Any phase will do: the metadata is on the pod from creation.
+		Eventually(func(g Gomega) {
+			out, err := utils.Run(exec.Command("kubectl", "-n", namespace, "get", "pods",
+				"-l", "batch.kubernetes.io/job-name=pod-metadata", "-o", "json"))
+			g.Expect(err).NotTo(HaveOccurred())
+			var pods struct {
+				Items []struct {
+					Metadata metav1.ObjectMeta `json:"metadata"`
+				} `json:"items"`
+			}
+			g.Expect(json.Unmarshal([]byte(out), &pods)).To(Succeed())
+			g.Expect(pods.Items).NotTo(BeEmpty())
+			pod := pods.Items[0].Metadata
+			g.Expect(pod.Annotations).To(HaveKeyWithValue("example.com/injected", "false"))
+			g.Expect(pod.Labels).To(HaveKeyWithValue("example.com/team", "payments"))
+			g.Expect(pod.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "flyway-operator"))
+			g.Expect(pod.Labels).To(HaveKeyWithValue(flywayv1alpha1.MigrationLabel, "pod-metadata"))
+			g.Expect(pod.Labels).NotTo(HaveKey("app.kubernetes.io/instance"))
+		}, jobTimeout, pollInterval).Should(Succeed())
+	})
 })
 
 // applyMigration creates or updates a Migration against the in-cluster postgres, migrating the given schema.
