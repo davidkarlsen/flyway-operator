@@ -68,16 +68,25 @@ and injector annotations, or for cost, team and NetworkPolicy labels. Nothing is
 labels or annotations: an `app` label shared with your Deployment would let its Services, PodDisruptionBudgets and
 NetworkPolicies select the migration pod, and GitOps tracking metadata would leak onto the Job.
 
-The operator sets `app.kubernetes.io/managed-by: flyway-operator`, `app.kubernetes.io/name: flyway` and
-`app.kubernetes.io/instance: <Migration name>` on both the Job and its pod template, and its own annotations on the Job.
+The operator sets these labels on both the Job and its pod template, and its own annotations on the Job:
+
+| Label | Value |
+| --- | --- |
+| `app.kubernetes.io/managed-by` | `flyway-operator` |
+| `flyway-operator.davidkarlsen.com/migration` | the `Migration`'s name; if longer than 63 characters, its first 54 characters, `-` and an 8-character hash |
+
+Select migration pods, e.g. in a NetworkPolicy, on these labels. The operator does not set `app.kubernetes.io/name` or
+`app.kubernetes.io/instance`, so selectors on a Helm release name don't match migration pods; you can set them yourself.
+
 These keys are reserved and a `Migration` using them in either map is rejected:
 
 - keys under `flyway-operator.davidkarlsen.com/` and `batch.kubernetes.io/`
 - `controller-uid` and `job-name`, which Kubernetes sets on Job pods
-- `app.kubernetes.io/managed-by`, `app.kubernetes.io/name` and `app.kubernetes.io/instance`
+- `app.kubernetes.io/managed-by`
 
 Keys must be valid label or annotation keys, and label values valid label values (at most 63 characters).
-Each map holds at most 64 entries.
+Each map holds at most 64 entries. Kubernetes limits all annotations on an object to 256 KiB in total; the CRD does not
+check this, and a Job rejected for it shows up in the `Migration`'s status and events.
 
 ### Istio
 
@@ -101,7 +110,8 @@ kubectl delete job my-app
 
 ## What happens
 
-- The operator creates a Job with the same name as the `Migration`, owned by the `Migration`.
+- The operator creates a Job with the same name as the `Migration`, owned by the `Migration`. Kubernetes rejects Jobs
+  with names longer than 63 characters, so keep `Migration` names within that.
 - The Job is annotated with the `Migration`'s generation. A spec change creates a new Job; an unchanged spec does not rerun it.
   This includes `jobMetadata` and `podMetadata`: changing them re-runs the migration, which is a no-op for `migrate` when
   nothing is pending. Existing Jobs are never patched in place.

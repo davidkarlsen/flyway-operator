@@ -2374,17 +2374,15 @@ spec:
                     type: object
                     x-kubernetes-validations:
                     - message: 'must not contain a reserved key: flyway-operator.davidkarlsen.com/*,
-                        batch.kubernetes.io/*, controller-uid, job-name, app.kubernetes.io/managed-by,
-                        app.kubernetes.io/name or app.kubernetes.io/instance'
+                        batch.kubernetes.io/*, controller-uid, job-name or app.kubernetes.io/managed-by'
                       rule: self.all(k, !k.startsWith('flyway-operator.davidkarlsen.com/')
                         && !k.startsWith('batch.kubernetes.io/') && !(k in ['controller-uid',
-                        'job-name', 'app.kubernetes.io/managed-by', 'app.kubernetes.io/name',
-                        'app.kubernetes.io/instance']))
+                        'job-name', 'app.kubernetes.io/managed-by']))
                     - message: 'keys must be valid annotation keys: an optional DNS
                         subdomain prefix of at most 253 characters and ''/'', then
                         a name of at most 63 alphanumeric characters, ''-'', ''_''
                         or ''.'', starting and ending with an alphanumeric character'
-                      rule: self.all(k, size(k) <= 317 && k.lowerAscii().matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[a-z0-9]([-a-z0-9_.]{0,61}[a-z0-9])?$')
+                      rule: self.all(k, size(k) <= 317 && k.matches('^([A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?([.][A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$')
                         && (!k.contains('/') || k.indexOf('/') <= 253))
                   labels:
                     additionalProperties:
@@ -2398,12 +2396,10 @@ spec:
                     type: object
                     x-kubernetes-validations:
                     - message: 'must not contain a reserved key: flyway-operator.davidkarlsen.com/*,
-                        batch.kubernetes.io/*, controller-uid, job-name, app.kubernetes.io/managed-by,
-                        app.kubernetes.io/name or app.kubernetes.io/instance'
+                        batch.kubernetes.io/*, controller-uid, job-name or app.kubernetes.io/managed-by'
                       rule: self.all(k, !k.startsWith('flyway-operator.davidkarlsen.com/')
                         && !k.startsWith('batch.kubernetes.io/') && !(k in ['controller-uid',
-                        'job-name', 'app.kubernetes.io/managed-by', 'app.kubernetes.io/name',
-                        'app.kubernetes.io/instance']))
+                        'job-name', 'app.kubernetes.io/managed-by']))
                     - message: 'keys must be valid label keys: an optional DNS subdomain
                         prefix of at most 253 characters and ''/'', then a name of
                         at most 63 alphanumeric characters, ''-'', ''_'' or ''.'',
@@ -2470,17 +2466,15 @@ spec:
                     type: object
                     x-kubernetes-validations:
                     - message: 'must not contain a reserved key: flyway-operator.davidkarlsen.com/*,
-                        batch.kubernetes.io/*, controller-uid, job-name, app.kubernetes.io/managed-by,
-                        app.kubernetes.io/name or app.kubernetes.io/instance'
+                        batch.kubernetes.io/*, controller-uid, job-name or app.kubernetes.io/managed-by'
                       rule: self.all(k, !k.startsWith('flyway-operator.davidkarlsen.com/')
                         && !k.startsWith('batch.kubernetes.io/') && !(k in ['controller-uid',
-                        'job-name', 'app.kubernetes.io/managed-by', 'app.kubernetes.io/name',
-                        'app.kubernetes.io/instance']))
+                        'job-name', 'app.kubernetes.io/managed-by']))
                     - message: 'keys must be valid annotation keys: an optional DNS
                         subdomain prefix of at most 253 characters and ''/'', then
                         a name of at most 63 alphanumeric characters, ''-'', ''_''
                         or ''.'', starting and ending with an alphanumeric character'
-                      rule: self.all(k, size(k) <= 317 && k.lowerAscii().matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[a-z0-9]([-a-z0-9_.]{0,61}[a-z0-9])?$')
+                      rule: self.all(k, size(k) <= 317 && k.matches('^([A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?([.][A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$')
                         && (!k.contains('/') || k.indexOf('/') <= 253))
                   labels:
                     additionalProperties:
@@ -2494,12 +2488,10 @@ spec:
                     type: object
                     x-kubernetes-validations:
                     - message: 'must not contain a reserved key: flyway-operator.davidkarlsen.com/*,
-                        batch.kubernetes.io/*, controller-uid, job-name, app.kubernetes.io/managed-by,
-                        app.kubernetes.io/name or app.kubernetes.io/instance'
+                        batch.kubernetes.io/*, controller-uid, job-name or app.kubernetes.io/managed-by'
                       rule: self.all(k, !k.startsWith('flyway-operator.davidkarlsen.com/')
                         && !k.startsWith('batch.kubernetes.io/') && !(k in ['controller-uid',
-                        'job-name', 'app.kubernetes.io/managed-by', 'app.kubernetes.io/name',
-                        'app.kubernetes.io/instance']))
+                        'job-name', 'app.kubernetes.io/managed-by']))
                     - message: 'keys must be valid label keys: an optional DNS subdomain
                         prefix of at most 253 characters and ''/'', then a name of
                         at most 63 alphanumeric characters, ''-'', ''_'' or ''.'',

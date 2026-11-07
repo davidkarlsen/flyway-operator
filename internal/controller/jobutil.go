@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"maps"
 	"strconv"
@@ -142,12 +144,23 @@ func getFlywayArgs(migration *flywayv1alpha1.Migration) []string {
 }
 
 // operatorLabels returns the labels the operator sets on the Job and its pod template.
+// They avoid app.kubernetes.io/name and instance, which application selectors (Helm release name) match on.
 func operatorLabels(migration *flywayv1alpha1.Migration) map[string]string {
 	return map[string]string{
 		"app.kubernetes.io/managed-by": "flyway-operator",
-		"app.kubernetes.io/name":       "flyway",
-		"app.kubernetes.io/instance":   migration.Name,
+		flywayv1alpha1.MigrationLabel:  migrationLabelValue(migration.Name),
 	}
+}
+
+// migrationLabelValue returns name, or for names longer than a label value's 63 characters,
+// its first 54 characters, "-" and the first 8 hex characters of the name's SHA-256.
+func migrationLabelValue(name string) string {
+	const maxLabelValue, keep = 63, 54
+	if len(name) <= maxLabelValue {
+		return name
+	}
+	sum := sha256.Sum256([]byte(name))
+	return name[:keep] + "-" + hex.EncodeToString(sum[:])[:8]
 }
 
 // withOperatorKeys returns the user-set entries with the operator's entries set over them, so the operator's keys win.

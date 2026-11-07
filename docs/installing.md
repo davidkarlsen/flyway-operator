@@ -2,6 +2,8 @@
 
 The operator watches all namespaces. Choose one of the methods below, then continue with [usage](usage.md).
 
+Requires Kubernetes 1.25 or later: the CRD validates `jobMetadata` and `podMetadata` with CEL rules.
+
 ## OpenShift (OLM)
 
 1. Add the catalog source:

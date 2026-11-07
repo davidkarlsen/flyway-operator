@@ -31,6 +31,9 @@ const (
 	paused     = Prefix + "/" + "paused"
 	// Attempt is the annotation on a Job holding which attempt (1-based) for its generation it is.
 	Attempt = Prefix + "/" + "attempt"
+	// MigrationLabel is the label on a Job and its pod template holding the name of the Migration
+	// (shortened with a hash suffix when longer than 63 characters).
+	MigrationLabel = Prefix + "/" + "migration"
 
 	// DefaultRetryLimit is used when spec.retryLimit is not set.
 	DefaultRetryLimit int32 = 2
@@ -160,18 +163,18 @@ type MigrationSpec struct {
 
 // ObjectMetadata holds labels and annotations the operator sets on an object it creates.
 // The operator's own keys are reserved: keys under flyway-operator.davidkarlsen.com/ and batch.kubernetes.io/,
-// controller-uid, job-name, app.kubernetes.io/managed-by, app.kubernetes.io/name and app.kubernetes.io/instance.
+// controller-uid, job-name and app.kubernetes.io/managed-by.
 type ObjectMetadata struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxProperties=64
-	// +kubebuilder:validation:XValidation:rule="self.all(k, !k.startsWith('flyway-operator.davidkarlsen.com/') && !k.startsWith('batch.kubernetes.io/') && !(k in ['controller-uid', 'job-name', 'app.kubernetes.io/managed-by', 'app.kubernetes.io/name', 'app.kubernetes.io/instance']))",message="must not contain a reserved key: flyway-operator.davidkarlsen.com/*, batch.kubernetes.io/*, controller-uid, job-name, app.kubernetes.io/managed-by, app.kubernetes.io/name or app.kubernetes.io/instance"
+	// +kubebuilder:validation:XValidation:rule="self.all(k, !k.startsWith('flyway-operator.davidkarlsen.com/') && !k.startsWith('batch.kubernetes.io/') && !(k in ['controller-uid', 'job-name', 'app.kubernetes.io/managed-by']))",message="must not contain a reserved key: flyway-operator.davidkarlsen.com/*, batch.kubernetes.io/*, controller-uid, job-name or app.kubernetes.io/managed-by"
 	// +kubebuilder:validation:XValidation:rule="self.all(k, size(k) <= 317 && k.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$') && (!k.contains('/') || k.indexOf('/') <= 253))",message="keys must be valid label keys: an optional DNS subdomain prefix of at most 253 characters and '/', then a name of at most 63 alphanumeric characters, '-', '_' or '.', starting and ending with an alphanumeric character"
 	Labels map[string]LabelValue `json:"labels,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxProperties=64
-	// +kubebuilder:validation:XValidation:rule="self.all(k, !k.startsWith('flyway-operator.davidkarlsen.com/') && !k.startsWith('batch.kubernetes.io/') && !(k in ['controller-uid', 'job-name', 'app.kubernetes.io/managed-by', 'app.kubernetes.io/name', 'app.kubernetes.io/instance']))",message="must not contain a reserved key: flyway-operator.davidkarlsen.com/*, batch.kubernetes.io/*, controller-uid, job-name, app.kubernetes.io/managed-by, app.kubernetes.io/name or app.kubernetes.io/instance"
-	// +kubebuilder:validation:XValidation:rule="self.all(k, size(k) <= 317 && k.lowerAscii().matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[a-z0-9]([-a-z0-9_.]{0,61}[a-z0-9])?$') && (!k.contains('/') || k.indexOf('/') <= 253))",message="keys must be valid annotation keys: an optional DNS subdomain prefix of at most 253 characters and '/', then a name of at most 63 alphanumeric characters, '-', '_' or '.', starting and ending with an alphanumeric character"
+	// +kubebuilder:validation:XValidation:rule="self.all(k, !k.startsWith('flyway-operator.davidkarlsen.com/') && !k.startsWith('batch.kubernetes.io/') && !(k in ['controller-uid', 'job-name', 'app.kubernetes.io/managed-by']))",message="must not contain a reserved key: flyway-operator.davidkarlsen.com/*, batch.kubernetes.io/*, controller-uid, job-name or app.kubernetes.io/managed-by"
+	// +kubebuilder:validation:XValidation:rule="self.all(k, size(k) <= 317 && k.matches('^([A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?([.][A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$') && (!k.contains('/') || k.indexOf('/') <= 253))",message="keys must be valid annotation keys: an optional DNS subdomain prefix of at most 253 characters and '/', then a name of at most 63 alphanumeric characters, '-', '_' or '.', starting and ending with an alphanumeric character"
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
