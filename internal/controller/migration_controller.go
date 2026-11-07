@@ -111,6 +111,9 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			migration.Status.Attempts = 0
 			return r.ManageSuccess(ctx, migration)
 		}
+		if state == jobSucceeded && !setLastApplied(migration, existingJob) {
+			r.warnLastAppliedUnknown(ctx, migration, existingJob)
+		}
 		setConditions(migration, flywayv1alpha1.ReasonPreviousJobReplaced,
 			fmt.Sprintf("Replacing job of generation %s", existingJob.Annotations[flywayv1alpha1.Generation]),
 			metav1.ConditionTrue, metav1.ConditionFalse)
@@ -130,14 +133,16 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.ManageSuccess(ctx, migration)
 
 	case jobSucceeded:
+		recorded := setLastApplied(migration, existingJob)
 		if !meta.IsStatusConditionTrue(migration.Status.Conditions, flywayv1alpha1.ConditionApplied) {
 			logger.Info("Migration succeeded")
 			r.GetRecorder().Event(migration, corev1.EventTypeNormal, "Succeeded",
-				fmt.Sprintf("Migration Succeeded: %s, source: %s", req.NamespacedName, migration.Spec.MigrationSource.ImageRef))
+				fmt.Sprintf("Migration Succeeded: %s, source: %s", req.NamespacedName, jobSourceImage(existingJob)))
+			if !recorded {
+				r.warnLastAppliedUnknown(ctx, migration, existingJob)
+			}
 		}
 		setApplied(migration, fmt.Sprintf("Job %s succeeded on attempt %d", existingJob.Name, attempt))
-		migration.Status.LastAppliedImageRef = jobSourceImage(existingJob)
-		migration.Status.LastAppliedGeneration = migration.Generation
 		return r.ManageSuccess(ctx, migration)
 
 	default: // jobFailed
@@ -154,6 +159,13 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			metav1.ConditionTrue, metav1.ConditionFalse)
 		return r.deleteJob(ctx, migration, existingJob)
 	}
+}
+
+// warnLastAppliedUnknown reports a succeeded Job whose source image or generation could not be read.
+func (r *MigrationReconciler) warnLastAppliedUnknown(ctx context.Context, migration *flywayv1alpha1.Migration, job *batchv1.Job) {
+	log.FromContext(ctx).Info("Succeeded job has no readable source image or generation, keeping last applied image", "job", job.Name)
+	r.GetRecorder().Event(migration, corev1.EventTypeWarning, "LastAppliedUnknown",
+		fmt.Sprintf("Job %s succeeded but its source image or generation could not be read; status.lastAppliedImageRef not updated", job.Name))
 }
 
 // IsValid does validation of the CR
