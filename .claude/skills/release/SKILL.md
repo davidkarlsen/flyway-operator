@@ -34,7 +34,7 @@ Also check the catalog contains the new bundle and `:alpha` moved (only for the 
 
 A separate PR, merged after the tag build succeeded (merging any `config/helm-chart/` change publishes the chart immediately):
 
-- `make helm-crds` (sync the chart CRD; chart-test fails if it's stale).
+- `make helm-crds` (sync the chart CRD; chart-test fails if it's stale). The target and the chart-test gate come from #498.
 - `values.yaml` `image.tag` and `Chart.yaml` `appVersion` to the new version; bump the chart `version` (minor if anything user-visible changed).
 - `kubeVersion` in `Chart.yaml` if the minimum Kubernetes changed.
 - Fold in any draft chart-fix PRs that were waiting for this release.

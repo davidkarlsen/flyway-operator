@@ -106,6 +106,8 @@ Repo workflows live in `.claude/skills/` and build on the oh-my-claudecode agent
 
 Agents in `.claude/agents/`: `operator-developer` (implements issues) and `operator-release-manager` (releases, upgrades, security). Reviews reuse the OMC `critic`, `code-reviewer` and `architect` agents.
 
+## CI
+
 
 
 GitHub Actions in `.github/workflows/`:

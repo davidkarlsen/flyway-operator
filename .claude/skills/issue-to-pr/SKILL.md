@@ -50,6 +50,8 @@ For a large, well-specified feature (reviewed issue, clear acceptance criteria),
 
 Don't use autopilot for chores, dependency bumps or docs; a single agent is cheaper.
 
+## 3. Verify locally
+
 
 
 ```sh
