@@ -3,7 +3,6 @@ package controller
 import (
 	"maps"
 	"strconv"
-	"strings"
 	"testing"
 
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
@@ -11,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 func TestCreateJobSpecMetadata(t *testing.T) {
@@ -89,27 +87,6 @@ func TestCreateJobSpecDoesNotAliasSpecMetadata(t *testing.T) {
 
 	if !equality.Semantic.DeepEqual(&migration.Spec, want) {
 		t.Errorf("mutating the Job changed the Migration spec: got %+v, want %+v", migration.Spec, *want)
-	}
-}
-
-func TestMigrationLabelValue(t *testing.T) {
-	short := strings.Repeat("a", 63)
-	if got := migrationLabelValue(short); got != short {
-		t.Errorf("migrationLabelValue(63 chars) = %q, want it unchanged", got)
-	}
-	long1 := strings.Repeat("a", 60) + "-one"
-	long2 := strings.Repeat("a", 60) + "-two"
-	got1, got2 := migrationLabelValue(long1), migrationLabelValue(long2)
-	if got1 == got2 {
-		t.Errorf("names sharing their first 54 characters got the same label value %q", got1)
-	}
-	for _, got := range []string{got1, got2} {
-		if len(got) != 63 || !strings.HasPrefix(got, strings.Repeat("a", 54)+"-") {
-			t.Errorf("migrationLabelValue = %q (len %d), want 54 name characters, '-' and an 8-character hash", got, len(got))
-		}
-		if errs := validation.IsValidLabelValue(got); len(errs) > 0 {
-			t.Errorf("migrationLabelValue = %q is not a valid label value: %v", got, errs)
-		}
 	}
 }
 

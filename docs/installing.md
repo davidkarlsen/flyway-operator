@@ -71,4 +71,13 @@ make deploy IMG=<some-registry>/flyway-operator:tag
 
 Remove it again with `make undeploy` (controller) and `make uninstall` (CRDs).
 
+## Upgrading to 0.5.0
+
+- Jobs and their pods no longer carry `app.kubernetes.io/name: flyway` and `app.kubernetes.io/instance: <migration>`.
+  Selectors on those labels (NetworkPolicies, monitoring, `kubectl -l`) must switch to
+  `flyway-operator.davidkarlsen.com/migration: <migration>`; see [Labels on the Job](usage.md).
+- A `Migration` name longer than 63 characters is now rejected. Such a `Migration` never got a Job, since the Job
+  takes its name. On Kubernetes before 1.30, which lacks CRD validation ratcheting, an existing one can no longer be
+  updated either: delete it and recreate it with a shorter name.
+
 Metrics are on by default in every install path; see [Metrics](metrics.md) for scraping, RBAC and verification.

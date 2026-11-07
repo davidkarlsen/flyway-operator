@@ -73,7 +73,7 @@ The operator sets these labels on both the Job and its pod template, and its own
 | Label | Value |
 | --- | --- |
 | `app.kubernetes.io/managed-by` | `flyway-operator` |
-| `flyway-operator.davidkarlsen.com/migration` | the `Migration`'s name; if longer than 63 characters, its first 54 characters, `-` and an 8-character hash |
+| `flyway-operator.davidkarlsen.com/migration` | the `Migration`'s name |
 
 Select migration pods, e.g. in a NetworkPolicy, on these labels. The operator does not set `app.kubernetes.io/name` or
 `app.kubernetes.io/instance`, so selectors on a Helm release name don't match migration pods; you can set them yourself.
