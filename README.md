@@ -11,7 +11,6 @@
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/flyway-operator)](https://artifacthub.io/packages/search?repo=flyway-operator)
 [![CRD Docs](https://img.shields.io/badge/CRD-Docs-brightgreen)](https://doc.crds.dev/github.com/davidkarlsen/flyway-operator)
 [![GitHub stars](https://img.shields.io/github/stars/davidkarlsen/flyway-operator?style=social)](https://github.com/davidkarlsen/flyway-operator)
-[![Star History Chart](https://api.star-history.com/svg?repos=davidkarlsen/flyway-operator&type=Date)](https://star-history.com/#davidkarlsen/flyway-operator&Date)
 
 
 ## Description
@@ -37,3 +36,7 @@ See [docs/installing.md](docs/installing.md)
 ## Contributing
 
 See the [contribution guide](CONTRIBUTING.md)
+
+## Star history
+
+[![Star history of davidkarlsen/flyway-operator](https://next.ossinsight.io/widgets/official/analyze-repo-stars-history/thumbnail.png?repo_id=688360587&image_size=auto&color_scheme=light)](https://ossinsight.io/analyze/davidkarlsen/flyway-operator)
