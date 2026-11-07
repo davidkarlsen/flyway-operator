@@ -30,7 +30,8 @@ func TestJobSourceImage(t *testing.T) {
 			name: "image volume",
 			job: podJob(corev1.PodSpec{Volumes: []corev1.Volume{
 				{Name: "tmp", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
-				{Name: "sql", VolumeSource: corev1.VolumeSource{Image: &corev1.ImageVolumeSource{Reference: "reg.io/sql:2"}}},
+				{Name: "other", VolumeSource: corev1.VolumeSource{Image: &corev1.ImageVolumeSource{Reference: "reg.io/other:2"}}},
+				{Name: sqlVolumeName, VolumeSource: corev1.VolumeSource{Image: &corev1.ImageVolumeSource{Reference: "reg.io/sql:2"}}},
 			}}),
 			want: "reg.io/sql:2",
 		},
@@ -38,7 +39,10 @@ func TestJobSourceImage(t *testing.T) {
 			name: "neither",
 			job: podJob(corev1.PodSpec{
 				InitContainers: []corev1.Container{{Name: "other", Image: "reg.io/other:1"}},
-				Volumes:        []corev1.Volume{{Name: "tmp", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}}},
+				Volumes: []corev1.Volume{
+					{Name: sqlVolumeName, VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+					{Name: "other", VolumeSource: corev1.VolumeSource{Image: &corev1.ImageVolumeSource{Reference: "reg.io/other:2"}}},
+				},
 			}),
 			want: "",
 		},
