@@ -119,8 +119,44 @@ Create `$TOKEN` with `kubectl create token <serviceaccount> -n <namespace>`.
 
 ## Available metrics
 
-The operator does not register metrics of its own. It serves the standard controller-runtime and Go client
-metrics, for example:
+### Migration metrics
+
+| Metric | Type | Labels | Meaning |
+|--------|------|--------|---------|
+| `flyway_operator_migration_runs_total` | counter | `namespace`, `migration`, `result` | Finished migration Jobs. `result` is `succeeded`, `retrying` (the attempt failed and another follows) or `failed` (the attempt failed and `retryLimit` is exhausted). |
+| `flyway_operator_migration_duration_seconds` | histogram | `namespace`, `migration`, `result` | Job run time, from the Job's `status.startTime` to its `status.completionTime`, or to the time of its `Failed` condition. Buckets 1s to 1h. Same `result` values. |
+| `flyway_operator_migration_status` | gauge | `namespace`, `migration`, `condition` | `1` when the `Applied`, `Progressing` or `Failed` condition is `True`, else `0`. |
+
+- A Job outcome is counted, and its duration observed, once: when a reconcile moves the Migration's status to
+  that outcome for the current generation and attempt, and the status write succeeds. Further reconciles of the
+  same finished Job, and reconciles after an operator restart, do not count it again. A Job of a superseded
+  generation is not counted.
+- Counters start at zero when the operator restarts. Use `increase()` or `rate()` on them, and alert on the
+  gauge.
+- The gauge is set from the Migration's status on every reconcile, so it is back for every Migration shortly
+  after a restart.
+- All series of a Migration are removed when it is deleted.
+
+Example alerts:
+
+```yaml
+groups:
+  - name: flyway-operator
+    rules:
+      - alert: FlywayMigrationFailed
+        expr: flyway_operator_migration_status{condition="Failed"} == 1
+        for: 5m
+        annotations:
+          summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} failed and is not retried.
+      - alert: FlywayMigrationRetrying
+        expr: increase(flyway_operator_migration_runs_total{result="retrying"}[1h]) > 0
+        annotations:
+          summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} had a failed attempt in the last hour.
+```
+
+### Standard metrics
+
+The operator also serves the standard controller-runtime and Go client metrics, for example:
 
 - **Reconciles:** `controller_runtime_reconcile_total`, `controller_runtime_reconcile_errors_total`,
   `controller_runtime_terminal_reconcile_errors_total`, `controller_runtime_reconcile_panics_total`,
