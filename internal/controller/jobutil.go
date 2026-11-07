@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	defaultFlywayImage = "docker.io/flyway/flyway:10"
+	defaultFlywayImage = "docker.io/flyway/flyway:13"
 	envNameFlywayImage = "FLYWAY_IMAGE"
 )
 

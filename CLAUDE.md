@@ -47,7 +47,7 @@ A `Migration` carries three sub-specs:
 
 - `Database` — `username` + `credentials` (Kubernetes `SecretKeySelector`) + `jdbcUrl` (validated by regex `^jdbc:.*`).
 - `FlywayConfiguration` — Flyway-specific knobs (baseline, default schema, placeholders, etc.) propagated to the Job as env vars.
-- `MigrationSource` — an `imageRef` that **must contain `cp`**: an init container `cp`s the SQL files out of that image into a shared volume which the Flyway container then reads. Optional `flywayImage` override (defaults to a v9 Flyway image), `path` (default `/sql`), and `encoding`.
+- `MigrationSource` — an `imageRef` that **must contain `cp`**: an init container `cp`s the SQL files out of that image into a shared volume which the Flyway container then reads. Optional `flywayImage` override (defaults to `docker.io/flyway/flyway:13`), `path` (default `/sql`), and `encoding`.
 
 Status is tracked entirely through `metav1.Condition`s on `MigrationStatus.Conditions`. Helper methods `GetConditions` / `SetConditions` satisfy the `redhat-cop/operator-utils` `ReconcilerBase` interface.
 
