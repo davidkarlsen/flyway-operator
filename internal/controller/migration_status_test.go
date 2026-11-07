@@ -620,3 +620,118 @@ func TestStatusLegacyCopySQLJobIsFollowed(t *testing.T) {
 		})
 	}
 }
+
+// holdJob adds a finalizer to the Job, so a delete leaves it terminating.
+func (h *statusHarness) holdJob() {
+	h.t.Helper()
+	j := h.job()
+	j.Finalizers = append(j.Finalizers, "test/hold")
+	if err := h.c.Update(context.TODO(), j); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+// releaseJob removes the finalizers, so a terminating Job goes away.
+func (h *statusHarness) releaseJob() {
+	h.t.Helper()
+	j := h.job()
+	j.Finalizers = nil
+	if err := h.c.Update(context.TODO(), j); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+// reconcileExpectingConflict runs a reconcile whose status write, after the Job delete, fails with a conflict.
+func (h *statusHarness) reconcileExpectingConflict() {
+	h.t.Helper()
+	h.failStatusUpdates = 1
+	if _, err := h.r.Reconcile(context.TODO(), reconcile.Request{NamespacedName: statusKey}); !apierrors.IsConflict(err) {
+		h.t.Fatalf("reconcile err = %v, want a conflict", err)
+	}
+	if j := h.job(); j == nil || j.DeletionTimestamp == nil {
+		h.t.Fatal("job is not terminating after the reconcile")
+	}
+}
+
+// The reconcile that deletes a failed Job can lose its Retrying status write. While the Job terminates, later
+// reconciles report Retrying again, count the attempt once, and do not create a successor.
+func TestStatusRetryingSurvivesLostWriteWhileJobTerminates(t *testing.T) {
+	h := newMetricsHarness(t, nil)
+	h.reconcile()
+	h.reconcile()
+	h.holdJob()
+	h.finishJob(batchv1.JobFailed, 3)
+	uid := h.job().UID
+
+	h.reconcileExpectingConflict()
+	h.expect(h.migration(), flywayv1alpha1.ReasonJobRunning, metav1.ConditionFalse, metav1.ConditionTrue, metav1.ConditionFalse)
+
+	for range 2 {
+		m := h.reconcile()
+		h.expect(m, flywayv1alpha1.ReasonRetrying, metav1.ConditionFalse, metav1.ConditionTrue, metav1.ConditionFalse)
+		if m.Status.Attempts != 1 {
+			t.Errorf("attempts = %d, want 1", m.Status.Attempts)
+		}
+		if j := h.job(); j == nil || j.UID != uid {
+			t.Fatal("terminating job was replaced")
+		}
+	}
+	h.expectRuns(0, 1, 0)
+
+	h.releaseJob()
+	if h.job() != nil {
+		t.Fatal("released job still exists")
+	}
+	m := h.reconcile()
+	h.expect(m, flywayv1alpha1.ReasonJobCreated, metav1.ConditionFalse, metav1.ConditionTrue, metav1.ConditionFalse)
+	if j := h.job(); j == nil || j.Annotations[flywayv1alpha1.Attempt] != "2" {
+		t.Errorf("successor = %+v, want attempt 2", j)
+	}
+	h.expectRuns(0, 1, 0)
+}
+
+// The same for a Job of an older generation: PreviousJobReplaced is reported again while it terminates.
+func TestStatusReplacedSurvivesLostWriteWhileJobTerminates(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		finish func(h *statusHarness)
+	}{
+		{name: "succeeded", finish: func(h *statusHarness) { h.finishJob(batchv1.JobComplete, 0) }},
+		{name: "failed", finish: func(h *statusHarness) { h.finishJob(batchv1.JobFailed, 3) }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newStatusHarness(t, ptr.To[int32](0))
+			h.reconcile()
+			h.holdJob()
+			tt.finish(h)
+			h.reconcile() // records the outcome of generation 1
+			uid := h.job().UID
+
+			m := h.migration()
+			m.Spec.MigrationSource.ImageRef = "somereg.io/someimage:2"
+			m.Generation = 2
+			if err := h.c.Update(context.TODO(), m); err != nil {
+				t.Fatal(err)
+			}
+
+			h.reconcileExpectingConflict()
+			for range 2 {
+				m := h.reconcile()
+				h.expect(m, flywayv1alpha1.ReasonPreviousJobReplaced, metav1.ConditionFalse, metav1.ConditionTrue, metav1.ConditionFalse)
+				if m.Status.Attempts != 0 {
+					t.Errorf("attempts = %d, want 0", m.Status.Attempts)
+				}
+				if j := h.job(); j == nil || j.UID != uid {
+					t.Fatal("terminating job was replaced")
+				}
+			}
+
+			h.releaseJob()
+			m = h.reconcile()
+			h.expect(m, flywayv1alpha1.ReasonJobCreated, metav1.ConditionFalse, metav1.ConditionTrue, metav1.ConditionFalse)
+			if j := h.job(); j == nil || j.Annotations[flywayv1alpha1.Generation] != "2" || j.Annotations[flywayv1alpha1.Attempt] != "1" {
+				t.Errorf("successor annotations = %v, want generation 2 attempt 1", j.Annotations)
+			}
+		})
+	}
+}
