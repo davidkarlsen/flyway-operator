@@ -4,11 +4,20 @@ updates:
   directory: /
   schedule:
     interval: daily
+  groups:
+    kubernetes:
+      patterns:
+      - "k8s.io/*"
+      - "sigs.k8s.io/*"
 - package-ecosystem: docker
   directory: "/"
   schedule:
     interval: daily
-- package-ecosystem: github-actions 
+- package-ecosystem: github-actions
   directory: /
   schedule:
     interval: daily
+  groups:
+    actions:
+      patterns:
+      - "*"
