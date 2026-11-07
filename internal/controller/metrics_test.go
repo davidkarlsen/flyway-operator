@@ -18,6 +18,8 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,17 +28,18 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
 	batchv1 "k8s.io/api/batch/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-// newMetricsHarness returns a status harness with no metric series left over for statusKey.
+// newMetricsHarness returns a status harness with no run series left over for statusKey.
 func newMetricsHarness(t *testing.T, retryLimit *int32) *statusHarness {
 	t.Helper()
-	deleteMetrics(statusKey)
-	t.Cleanup(func() { deleteMetrics(statusKey) })
+	deleteRunMetrics(statusKey)
+	t.Cleanup(func() { deleteRunMetrics(statusKey) })
 	return newStatusHarness(t, retryLimit)
 }
 
@@ -44,18 +47,17 @@ func runs(result string) float64 {
 	return testutil.ToFloat64(migrationRuns.WithLabelValues(statusKey.Namespace, statusKey.Name, result))
 }
 
-func status(condition string) float64 {
-	return testutil.ToFloat64(migrationStatus.WithLabelValues(statusKey.Namespace, statusKey.Name, condition))
+func lastDuration(result string) float64 {
+	return testutil.ToFloat64(migrationLastRunDuration.WithLabelValues(statusKey.Namespace, statusKey.Name, result))
 }
 
-// durations returns the sample count and sum of the duration histogram for result.
-func durations(t *testing.T, result string) (uint64, float64) {
-	t.Helper()
-	m := &dto.Metric{}
-	if err := migrationDuration.WithLabelValues(statusKey.Namespace, statusKey.Name, result).(prometheus.Histogram).Write(m); err != nil {
-		t.Fatal(err)
+func (h *statusHarness) expectRuns(succeeded, retrying, failed float64) {
+	h.t.Helper()
+	for result, want := range map[string]float64{resultSucceeded: succeeded, resultRetrying: retrying, resultFailed: failed} {
+		if got := runs(result); got != want {
+			h.t.Errorf("runs{result=%q} = %v, want %v", result, got, want)
+		}
 	}
-	return m.GetHistogram().GetSampleCount(), m.GetHistogram().GetSampleSum()
 }
 
 // seriesOf counts the series of c that belong to statusKey.
@@ -95,42 +97,29 @@ func (h *statusHarness) timeJob(d time.Duration) {
 	}
 }
 
-func (h *statusHarness) expectStatusGauge(applied, progressing, failed float64) {
-	h.t.Helper()
-	for cond, want := range map[string]float64{
-		flywayv1alpha1.ConditionApplied:     applied,
-		flywayv1alpha1.ConditionProgressing: progressing,
-		flywayv1alpha1.ConditionFailed:      failed,
-	} {
-		if got := status(cond); got != want {
-			h.t.Errorf("status gauge %s = %v, want %v", cond, got, want)
-		}
+func TestMetricsRunsCreatedAtZero(t *testing.T) {
+	h := newMetricsHarness(t, nil)
+	h.reconcile()
+	if n := seriesOf(migrationRuns); n != 3 {
+		t.Errorf("runs series after the first reconcile = %d, want 3", n)
 	}
+	h.expectRuns(0, 0, 0)
 }
 
 func TestMetricsSucceededCountedOnce(t *testing.T) {
 	h := newMetricsHarness(t, nil)
-
 	h.reconcile()
-	h.expectStatusGauge(0, 1, 0)
 	h.reconcile()
-	h.expectStatusGauge(0, 1, 0)
 
 	h.finishJob(batchv1.JobComplete, 0)
 	h.timeJob(42 * time.Second)
 	for range 3 {
 		h.reconcile()
 	}
-	if got := runs(resultSucceeded); got != 1 {
-		t.Errorf("succeeded runs = %v, want 1", got)
+	h.expectRuns(1, 0, 0)
+	if got := lastDuration(resultSucceeded); got != 42 {
+		t.Errorf("last succeeded duration = %v, want 42", got)
 	}
-	if count, sum := durations(t, resultSucceeded); count != 1 || sum != 42 {
-		t.Errorf("succeeded duration samples = %d sum %v, want 1 sum 42", count, sum)
-	}
-	if got := runs(resultFailed) + runs(resultRetrying); got != 0 {
-		t.Errorf("failed+retrying runs = %v, want 0", got)
-	}
-	h.expectStatusGauge(1, 0, 0)
 }
 
 func TestMetricsRetryingThenFailedCountedOnceEach(t *testing.T) {
@@ -143,10 +132,7 @@ func TestMetricsRetryingThenFailedCountedOnceEach(t *testing.T) {
 	h.reconcile() // Retrying, Job deleted
 	h.reconcile() // attempt 2 created
 	h.reconcile() // attempt 2 running
-	if got := runs(resultRetrying); got != 1 {
-		t.Errorf("retrying runs = %v, want 1", got)
-	}
-	h.expectStatusGauge(0, 1, 0)
+	h.expectRuns(0, 1, 0)
 
 	// attempt 2 fails at the limit: failed, kept across reconciles
 	h.finishJob(batchv1.JobFailed, 3)
@@ -154,19 +140,13 @@ func TestMetricsRetryingThenFailedCountedOnceEach(t *testing.T) {
 	for range 3 {
 		h.reconcile()
 	}
-	if got := runs(resultFailed); got != 1 {
-		t.Errorf("failed runs = %v, want 1", got)
+	h.expectRuns(0, 1, 1)
+	if got := lastDuration(resultRetrying); got != 10 {
+		t.Errorf("last retrying duration = %v, want 10", got)
 	}
-	if got := runs(resultRetrying); got != 1 {
-		t.Errorf("retrying runs = %v after the final failure, want 1", got)
+	if got := lastDuration(resultFailed); got != 20 {
+		t.Errorf("last failed duration = %v, want 20", got)
 	}
-	if count, sum := durations(t, resultRetrying); count != 1 || sum != 10 {
-		t.Errorf("retrying duration samples = %d sum %v, want 1 sum 10", count, sum)
-	}
-	if count, sum := durations(t, resultFailed); count != 1 || sum != 20 {
-		t.Errorf("failed duration samples = %d sum %v, want 1 sum 20", count, sum)
-	}
-	h.expectStatusGauge(0, 0, 1)
 }
 
 func TestMetricsNewGenerationCountsAgain(t *testing.T) {
@@ -177,14 +157,11 @@ func TestMetricsNewGenerationCountsAgain(t *testing.T) {
 
 	h.updateImage("somereg.io/someimage:2", 2)
 	h.reconcile() // previous job replaced
-	h.expectStatusGauge(0, 1, 0)
 	h.reconcile() // job created
 	h.finishJob(batchv1.JobComplete, 0)
 	h.reconcile()
 	h.reconcile()
-	if got := runs(resultSucceeded); got != 2 {
-		t.Errorf("succeeded runs = %v, want 2 (one per generation)", got)
-	}
+	h.expectRuns(2, 0, 0)
 }
 
 func TestMetricsNotCountedWhenStatusWriteFails(t *testing.T) {
@@ -196,29 +173,33 @@ func TestMetricsNotCountedWhenStatusWriteFails(t *testing.T) {
 	if _, err := h.r.Reconcile(context.TODO(), reconcile.Request{NamespacedName: statusKey}); err == nil {
 		t.Fatal("expected the injected status conflict to be returned")
 	}
-	if got := runs(resultSucceeded); got != 0 {
-		t.Errorf("succeeded runs = %v after a failed status write, want 0", got)
-	}
+	h.expectRuns(0, 0, 0)
 	h.reconcile()
 	h.reconcile()
-	if got := runs(resultSucceeded); got != 1 {
-		t.Errorf("succeeded runs = %v, want 1", got)
-	}
+	h.expectRuns(1, 0, 0)
 }
 
-func TestMetricsAfterRestart(t *testing.T) {
-	h := newMetricsHarness(t, ptr.To[int32](0))
-	h.reconcile()
-	h.finishJob(batchv1.JobFailed, 3)
-	h.reconcile()
+func TestMetricsNotCountedAgainAfterRestart(t *testing.T) {
+	for name, tc := range map[string]struct {
+		retryLimit *int32
+		finish     batchv1.JobConditionType
+	}{
+		"succeeded": {nil, batchv1.JobComplete},
+		"failed":    {ptr.To[int32](0), batchv1.JobFailed},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newMetricsHarness(t, tc.retryLimit)
+			h.reconcile()
+			h.finishJob(tc.finish, 3)
+			h.reconcile()
 
-	// a restart loses all series; the persisted status restores the gauge but does not count the outcome again
-	deleteMetrics(statusKey)
-	h.reconcile()
-	if got := seriesOf(migrationRuns); got != 0 {
-		t.Errorf("runs series after restart = %d, want 0", got)
+			// a restart loses all series; the persisted status records the outcome, so it is not counted again
+			deleteRunMetrics(statusKey)
+			h.reconcile()
+			h.reconcile()
+			h.expectRuns(0, 0, 0)
+		})
 	}
-	h.expectStatusGauge(0, 0, 1)
 }
 
 func TestMetricsRemovedOnDelete(t *testing.T) {
@@ -227,8 +208,9 @@ func TestMetricsRemovedOnDelete(t *testing.T) {
 			h := newMetricsHarness(t, nil)
 			h.reconcile()
 			h.finishJob(batchv1.JobComplete, 0)
+			h.timeJob(time.Second)
 			h.reconcile()
-			if seriesOf(migrationRuns) == 0 || seriesOf(migrationStatus) == 0 {
+			if seriesOf(migrationRuns) == 0 || seriesOf(migrationLastRunDuration) == 0 {
 				t.Fatal("expected series before delete")
 			}
 
@@ -245,7 +227,7 @@ func TestMetricsRemovedOnDelete(t *testing.T) {
 			if _, err := h.r.Reconcile(context.TODO(), reconcile.Request{NamespacedName: statusKey}); err != nil {
 				t.Fatal(err)
 			}
-			for _, c := range []prometheus.Collector{migrationRuns, migrationDuration, migrationStatus} {
+			for _, c := range []prometheus.Collector{migrationRuns, migrationLastRunDuration} {
 				if n := seriesOf(c); n != 0 {
 					t.Errorf("%d series left after delete", n)
 				}
@@ -261,14 +243,85 @@ func TestMetricsRegistered(t *testing.T) {
 	h.timeJob(time.Second)
 	h.reconcile()
 
-	// other tests in the package may leave series of their own Migrations, so only presence is checked here
-	for _, name := range []string{
-		"flyway_operator_migration_runs_total",
-		"flyway_operator_migration_duration_seconds",
-		"flyway_operator_migration_status",
-	} {
+	for _, name := range []string{"flyway_operator_migration_runs_total", "flyway_operator_migration_last_run_duration_seconds"} {
 		if n, err := testutil.GatherAndCount(metrics.Registry, name); err != nil || n == 0 {
 			t.Errorf("%s: %d series in the controller-runtime registry (%v), want > 0", name, n, err)
 		}
+	}
+}
+
+// expectedState renders the collector's series for statusKey, with the given status per condition and the
+// LastTransitionTime of each condition in m.
+func expectedState(m *flywayv1alpha1.Migration, paused int, applied, progressing, failed string) string {
+	var b strings.Builder
+	b.WriteString("# HELP flyway_operator_migration_paused 1 when the Migration is paused, else 0.\n" +
+		"# TYPE flyway_operator_migration_paused gauge\n")
+	fmt.Fprintf(&b, "flyway_operator_migration_paused{migration=%q,namespace=%q} %d\n", statusKey.Name, statusKey.Namespace, paused)
+	b.WriteString("# HELP flyway_operator_migration_status_condition 1 for the current status (true, false, unknown) of each Migration condition, 0 for the others.\n" +
+		"# TYPE flyway_operator_migration_status_condition gauge\n")
+	want := map[string]string{
+		flywayv1alpha1.ConditionApplied: applied, flywayv1alpha1.ConditionProgressing: progressing, flywayv1alpha1.ConditionFailed: failed,
+	}
+	for _, cond := range []string{flywayv1alpha1.ConditionApplied, flywayv1alpha1.ConditionFailed, flywayv1alpha1.ConditionProgressing} {
+		for _, s := range []string{"false", "true", "unknown"} {
+			v := 0
+			if want[cond] == s {
+				v = 1
+			}
+			fmt.Fprintf(&b, "flyway_operator_migration_status_condition{condition=%q,migration=%q,namespace=%q,status=%q} %d\n",
+				cond, statusKey.Name, statusKey.Namespace, s, v)
+		}
+	}
+	b.WriteString("# HELP flyway_operator_migration_status_condition_last_transition_timestamp_seconds Unix time of the last status change of the Migration condition.\n" +
+		"# TYPE flyway_operator_migration_status_condition_last_transition_timestamp_seconds gauge\n")
+	for _, cond := range []string{flywayv1alpha1.ConditionApplied, flywayv1alpha1.ConditionFailed, flywayv1alpha1.ConditionProgressing} {
+		if c := meta.FindStatusCondition(m.Status.Conditions, cond); c != nil {
+			fmt.Fprintf(&b, "flyway_operator_migration_status_condition_last_transition_timestamp_seconds{condition=%q,migration=%q,namespace=%q} %d\n",
+				cond, statusKey.Name, statusKey.Namespace, c.LastTransitionTime.Unix())
+		}
+	}
+	return b.String()
+}
+
+func TestMigrationCollector(t *testing.T) {
+	h := newStatusHarness(t, ptr.To[int32](0))
+	elected := make(chan struct{})
+	collector := NewMigrationCollector(h.c, elected)
+
+	if n := testutil.CollectAndCount(collector); n != 0 {
+		t.Fatalf("collector reported %d series before election, want 0", n)
+	}
+	close(elected)
+
+	// no status yet: every condition unknown, no transition times
+	if err := testutil.CollectAndCompare(collector, strings.NewReader(expectedState(h.migration(), 0, "unknown", "unknown", "unknown"))); err != nil {
+		t.Error(err)
+	}
+
+	m := h.reconcile()
+	if err := testutil.CollectAndCompare(collector, strings.NewReader(expectedState(m, 0, "false", "true", "false"))); err != nil {
+		t.Error(err)
+	}
+
+	h.finishJob(batchv1.JobFailed, 3)
+	m = h.reconcile()
+	if err := testutil.CollectAndCompare(collector, strings.NewReader(expectedState(m, 0, "false", "false", "true"))); err != nil {
+		t.Error(err)
+	}
+
+	m.Annotations = map[string]string{flywayv1alpha1.Prefix + "/paused": "true"}
+	if err := h.c.Update(context.TODO(), m); err != nil {
+		t.Fatal(err)
+	}
+	if err := testutil.CollectAndCompare(collector, strings.NewReader(expectedState(m, 1, "false", "false", "true"))); err != nil {
+		t.Error(err)
+	}
+
+	// a deleted Migration has no series
+	if err := h.c.Delete(context.TODO(), m); err != nil {
+		t.Fatal(err)
+	}
+	if n := testutil.CollectAndCount(collector); n != 0 {
+		t.Errorf("collector reported %d series after delete, want 0", n)
 	}
 }

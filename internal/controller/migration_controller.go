@@ -68,7 +68,7 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if err := r.Get(ctx, req.NamespacedName, migration); err != nil {
 		if apierrors.IsNotFound(err) {
-			deleteMetrics(req.NamespacedName)
+			deleteRunMetrics(req.NamespacedName)
 		}
 		logger.Error(err, err.Error())
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -76,12 +76,12 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	prev := migration.Status.DeepCopy()
 
 	if util.IsBeingDeleted(migration) {
-		deleteMetrics(req.NamespacedName)
+		deleteRunMetrics(req.NamespacedName)
 		logger.Info("Migration deleted, returning")
 		r.GetRecorder().Event(migration, corev1.EventTypeWarning, "Deleting", fmt.Sprintf("Migration deleted: %s", req.NamespacedName))
 		return r.ManageSuccess(ctx, migration)
 	}
-	defer recordStatus(migration)
+	initRunMetrics(req.NamespacedName)
 
 	valid, err := r.IsValid(migration)
 	if !valid || err != nil {

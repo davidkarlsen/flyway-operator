@@ -16,6 +16,8 @@ metadata:
 spec:
   endpoints:
     - path: /metrics
+      # keep the namespace label of the flyway_operator_migration_* series (the Migration's namespace)
+      honorLabels: true
       port: https # Ensure this is the name of the port that exposes HTTPS metrics
       scheme: https
       bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token

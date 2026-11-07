@@ -17,12 +17,19 @@ limitations under the License.
 package controller
 
 import (
+	"context"
+	"strings"
+	"time"
+
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	"github.com/prometheus/client_golang/prometheus"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
@@ -31,28 +38,45 @@ const (
 	resultSucceeded = "succeeded"
 	resultRetrying  = "retrying"
 	resultFailed    = "failed"
+
+	collectTimeout = 10 * time.Second
 )
 
 var (
+	results    = []string{resultSucceeded, resultRetrying, resultFailed}
+	conditions = []string{flywayv1alpha1.ConditionApplied, flywayv1alpha1.ConditionProgressing, flywayv1alpha1.ConditionFailed}
+
 	migrationRuns = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "flyway_operator_migration_runs_total",
-		Help: "Finished migration Jobs by result: succeeded, retrying (another attempt follows) or failed (retryLimit exhausted).",
+		Help: "Finished migration Job attempts by result: succeeded, retrying (failed, another attempt follows) " +
+			"or failed (failed, retryLimit exhausted). Failed attempts are retrying + failed.",
 	}, []string{"namespace", "migration", "result"})
 
-	migrationDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "flyway_operator_migration_duration_seconds",
-		Help:    "Run time of finished migration Jobs, from Job start to completion or failure.",
-		Buckets: []float64{1, 5, 15, 30, 60, 120, 300, 600, 1800, 3600},
+	migrationLastRunDuration = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "flyway_operator_migration_last_run_duration_seconds",
+		Help: "Run time of the last finished migration Job attempt with this result, from Job start to completion or failure.",
 	}, []string{"namespace", "migration", "result"})
 
-	migrationStatus = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "flyway_operator_migration_status",
-		Help: "1 when the Migration condition (Applied, Progressing, Failed) is True, else 0.",
-	}, []string{"namespace", "migration", "condition"})
+	statusConditionDesc = prometheus.NewDesc("flyway_operator_migration_status_condition",
+		"1 for the current status (true, false, unknown) of each Migration condition, 0 for the others.",
+		[]string{"namespace", "migration", "condition", "status"}, nil)
+	lastTransitionDesc = prometheus.NewDesc("flyway_operator_migration_status_condition_last_transition_timestamp_seconds",
+		"Unix time of the last status change of the Migration condition.",
+		[]string{"namespace", "migration", "condition"}, nil)
+	pausedDesc = prometheus.NewDesc("flyway_operator_migration_paused",
+		"1 when the Migration is paused, else 0.",
+		[]string{"namespace", "migration"}, nil)
 )
 
 func init() {
-	metrics.Registry.MustRegister(migrationRuns, migrationDuration, migrationStatus)
+	metrics.Registry.MustRegister(migrationRuns, migrationLastRunDuration)
+}
+
+// initRunMetrics creates the run counters of a Migration at 0, so increase() also sees its first outcome.
+func initRunMetrics(key types.NamespacedName) {
+	for _, result := range results {
+		migrationRuns.WithLabelValues(key.Namespace, key.Name, result)
+	}
 }
 
 // outcomeIsNew reports whether the outcome with the given reason was not yet recorded in the previous status
@@ -62,7 +86,7 @@ func outcomeIsNew(prev *flywayv1alpha1.MigrationStatus, generation int64, attemp
 	return c == nil || c.Reason != reason || c.ObservedGeneration != generation || prev.Attempts != attempt
 }
 
-// recordOutcome counts a finished Job and observes its run time.
+// recordOutcome counts a finished Job attempt and records its run time.
 func recordOutcome(migration *flywayv1alpha1.Migration, job *batchv1.Job, result string) {
 	migrationRuns.WithLabelValues(migration.Namespace, migration.Name, result).Inc()
 	if job.Status.StartTime == nil {
@@ -80,25 +104,73 @@ func recordOutcome(migration *flywayv1alpha1.Migration, job *batchv1.Job, result
 	if end == nil || end.IsZero() || end.Before(job.Status.StartTime) {
 		return
 	}
-	migrationDuration.WithLabelValues(migration.Namespace, migration.Name, result).
-		Observe(end.Sub(job.Status.StartTime.Time).Seconds())
+	migrationLastRunDuration.WithLabelValues(migration.Namespace, migration.Name, result).
+		Set(end.Sub(job.Status.StartTime.Time).Seconds())
 }
 
-// recordStatus sets the status gauge from the Migration's conditions.
-func recordStatus(migration *flywayv1alpha1.Migration) {
-	for _, condType := range []string{flywayv1alpha1.ConditionApplied, flywayv1alpha1.ConditionProgressing, flywayv1alpha1.ConditionFailed} {
-		value := 0.0
-		if meta.IsStatusConditionTrue(migration.Status.Conditions, condType) {
-			value = 1
+// deleteRunMetrics removes the run series of a deleted Migration.
+func deleteRunMetrics(key types.NamespacedName) {
+	labels := prometheus.Labels{"namespace": key.Namespace, "migration": key.Name}
+	migrationRuns.DeletePartialMatch(labels)
+	migrationLastRunDuration.DeletePartialMatch(labels)
+}
+
+// MigrationCollector reports the state of every Migration at scrape time, read from the reader (the manager's
+// cache). It reports nothing until elected is closed, so only the leader serves state series, and a deleted
+// Migration has no series to clean up.
+type MigrationCollector struct {
+	reader  client.Reader
+	elected <-chan struct{}
+}
+
+// NewMigrationCollector returns a collector reading Migrations from reader once elected is closed.
+func NewMigrationCollector(reader client.Reader, elected <-chan struct{}) *MigrationCollector {
+	return &MigrationCollector{reader: reader, elected: elected}
+}
+
+// Describe implements prometheus.Collector.
+func (c *MigrationCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- statusConditionDesc
+	ch <- lastTransitionDesc
+	ch <- pausedDesc
+}
+
+// Collect implements prometheus.Collector.
+func (c *MigrationCollector) Collect(ch chan<- prometheus.Metric) {
+	select {
+	case <-c.elected:
+	default:
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), collectTimeout)
+	defer cancel()
+	list := &flywayv1alpha1.MigrationList{}
+	if err := c.reader.List(ctx, list); err != nil {
+		log.Log.Error(err, "listing Migrations for metrics")
+		return
+	}
+	for i := range list.Items {
+		m := &list.Items[i]
+		for _, condType := range conditions {
+			status := metav1.ConditionUnknown
+			cond := meta.FindStatusCondition(m.Status.Conditions, condType)
+			if cond != nil {
+				status = cond.Status
+				ch <- prometheus.MustNewConstMetric(lastTransitionDesc, prometheus.GaugeValue,
+					float64(cond.LastTransitionTime.Unix()), m.Namespace, m.Name, condType)
+			}
+			for _, s := range []metav1.ConditionStatus{metav1.ConditionTrue, metav1.ConditionFalse, metav1.ConditionUnknown} {
+				ch <- prometheus.MustNewConstMetric(statusConditionDesc, prometheus.GaugeValue,
+					boolValue(status == s), m.Namespace, m.Name, condType, strings.ToLower(string(s)))
+			}
 		}
-		migrationStatus.WithLabelValues(migration.Namespace, migration.Name, condType).Set(value)
+		ch <- prometheus.MustNewConstMetric(pausedDesc, prometheus.GaugeValue, boolValue(m.IsPaused()), m.Namespace, m.Name)
 	}
 }
 
-// deleteMetrics removes all series of a Migration.
-func deleteMetrics(key types.NamespacedName) {
-	labels := prometheus.Labels{"namespace": key.Namespace, "migration": key.Name}
-	migrationRuns.DeletePartialMatch(labels)
-	migrationDuration.DeletePartialMatch(labels)
-	migrationStatus.DeletePartialMatch(labels)
+func boolValue(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
 }

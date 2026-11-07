@@ -24,6 +24,7 @@ import (
 
 	"github.com/redhat-cop/operator-utils/pkg/util"
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -173,6 +174,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Migration")
 		os.Exit(1)
 	}
+	metrics.Registry.MustRegister(controller.NewMigrationCollector(mgr.GetCache(), mgr.Elected()))
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
