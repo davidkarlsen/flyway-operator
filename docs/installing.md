@@ -6,6 +6,8 @@ The operator watches all namespaces. Choose one of the methods below, then conti
 
 **Breaking (v0.6.0):** requires Kubernetes 1.35 or later and containerd 2.1 or later / CRI-O 1.31 or later.
 v0.5.x is the last release for older clusters.
+The SQL files are now mounted at `/flyway/migration-source`, not `/flyway/sql`: if you set `FLYWAY_LOCATIONS` yourself,
+update it. A location that does not exist fails the Job (`FLYWAY_FAIL_ON_MISSING_LOCATIONS=true`).
 
 - Kubernetes 1.35 or later; on OpenShift, 4.22 or later. Migration Jobs mount the SQL image as an
   [image volume](https://kubernetes.io/docs/tasks/configure-pod-container/image-volumes/); the `ImageVolume`

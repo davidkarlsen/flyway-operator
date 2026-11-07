@@ -569,3 +569,54 @@ func TestStatusStaleCachedJobWithoutImageVolumeKeepsFailed(t *testing.T) {
 		t.Fatal("cached job without the image volume was not deleted")
 	}
 }
+
+// A current-generation Job created by an operator before 0.6.0 has a copy-sql init container and an emptyDir named
+// sql instead of the image volume. It is still followed to its outcome, not rejected as ImageVolumeUnsupported.
+func TestStatusLegacyCopySQLJobIsFollowed(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		succeeded   bool
+		reason      string
+		applied     metav1.ConditionStatus
+		progressing metav1.ConditionStatus
+	}{
+		{name: "succeeded", succeeded: true, reason: flywayv1alpha1.ReasonJobSucceeded, applied: metav1.ConditionTrue, progressing: metav1.ConditionFalse},
+		{name: "running", reason: flywayv1alpha1.ReasonJobRunning, applied: metav1.ConditionFalse, progressing: metav1.ConditionTrue},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newStatusHarness(t, nil)
+			sqlMount := []corev1.VolumeMount{{Name: "sql", MountPath: "/flyway/sql"}}
+			legacy := &batchv1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: statusKey.Name, Namespace: statusKey.Namespace,
+					Annotations: map[string]string{flywayv1alpha1.Generation: "1", flywayv1alpha1.Attempt: "1"},
+				},
+				Spec: batchv1.JobSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
+					InitContainers: []corev1.Container{{Name: copySQLContainerName, Image: "somereg.io/someimage:1", VolumeMounts: sqlMount}},
+					Containers:     []corev1.Container{{Name: "flyway", Image: defaultFlywayImage, VolumeMounts: sqlMount}},
+					Volumes:        []corev1.Volume{{Name: "sql", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}}},
+				}}},
+			}
+			if err := h.c.Create(context.TODO(), legacy); err != nil {
+				t.Fatal(err)
+			}
+			if tt.succeeded {
+				h.finishJob(batchv1.JobComplete, 0)
+			}
+			uid := h.job().UID
+
+			for range 2 {
+				h.expect(h.reconcile(), tt.reason, tt.applied, tt.progressing, metav1.ConditionFalse)
+			}
+			if j := h.job(); j == nil || j.UID != uid {
+				t.Error("legacy job was deleted or replaced")
+			}
+			if n := countContaining(h.events(), flywayv1alpha1.ReasonImageVolumeUnsupported); n != 0 {
+				t.Errorf("%s events = %d, want 0", flywayv1alpha1.ReasonImageVolumeUnsupported, n)
+			}
+			if m := h.migration(); tt.succeeded && m.Status.LastAppliedImageRef != "somereg.io/someimage:1" {
+				t.Errorf("lastAppliedImageRef = %q, want the copy-sql image", m.Status.LastAppliedImageRef)
+			}
+		})
+	}
+}
