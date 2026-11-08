@@ -91,11 +91,14 @@ When the cluster serves `grafana.integreatly.org/v1beta1` (grafana-operator v5),
 `GrafanaDashboard`s of [grafana-operator v5](#grafana-operator-v5) in the release namespace, with
 `configMapRef` pointing at the ConfigMap. If the API is not served they are skipped, not failed, and the install
 notes say so; for `helm template` or GitOps rendering without a cluster pass
-`--api-versions grafana.integreatly.org/v1beta1`. `instanceSelector` and `allowCrossNamespaceImport` are immutable
-once the `GrafanaDashboard` exists, see below.
+`--api-versions grafana.integreatly.org/v1beta1`. `instanceSelector` is immutable once the `GrafanaDashboard` exists, and so is
+`allowCrossNamespaceImport` from `true` to `false`, see below.
 
 Use one import path per Grafana. With the sidecar, set `grafana.dashboards.grafanaDashboard.enabled=false` so
-only the ConfigMap is created. The chart's copy of the JSON is kept in sync with `config/grafana/dashboards/` by
+only the ConfigMap is created. If you use grafana-operator in a cluster that also runs a sidecar watching the
+release namespace, set `grafana.dashboards.labels: {}` so the sidecar does not import the ConfigMap a second time.
+The dashboard uids are fixed, so two releases, or two clusters, feeding the same Grafana overwrite each other's
+dashboards: install the dashboards once per Grafana. The chart's copy of the JSON is kept in sync with `config/grafana/dashboards/` by
 `make helm-dashboards`.
 
 ## grafana-operator v5
@@ -142,7 +145,8 @@ remove it if your `Grafana` resource is in the operator's namespace. grafana-ope
 operator's namespace (its `WATCH_NAMESPACE` or cluster-wide mode).
 
 Choose both fields before the first apply. `instanceSelector` is immutable, and changing `allowCrossNamespaceImport`
-from `true` to `false` is rejected as well: to change either, delete and recreate the `GrafanaDashboard`.
+from `true` to `false` is rejected as well: to make either change, delete and recreate the `GrafanaDashboard`.
+Changing it from `false` to `true` is allowed.
 
 The dashboard's `datasource` variable lists the Prometheus datasources of that Grafana and defaults to its default
 one.

@@ -1,11 +1,12 @@
 {{- if and .Values.grafana.dashboards.enabled .Values.grafana.dashboards.grafanaDashboard.enabled (.Capabilities.APIVersions.Has "grafana.integreatly.org/v1beta1") }}
 {{- $gd := .Values.grafana.dashboards.grafanaDashboard }}
-{{- range $suffix, $key := dict "operator-dashboard" "flyway-operator" "migrations-dashboard" "flyway-migrations" }}
+{{- range $path, $_ := .Files.Glob "dashboards/*.json" }}
+{{- $stem := base $path | trimSuffix ".json" }}
 ---
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
-  name: {{ include "flyway-operator.fullname" $ }}-{{ $suffix }}
+  name: {{ include "flyway-operator.fullname" $ }}-{{ trimPrefix "flyway-" $stem }}-dashboard
   labels: {{- include "common.labels.standard" $ | nindent 4 }}
 spec:
   instanceSelector: {{- toYaml $gd.instanceSelector | nindent 4 }}
@@ -15,6 +16,6 @@ spec:
   {{- end }}
   configMapRef:
     name: {{ include "flyway-operator.fullname" $ }}-dashboards
-    key: {{ $key }}.json
+    key: {{ base $path }}
 {{- end }}
 {{- end }}
