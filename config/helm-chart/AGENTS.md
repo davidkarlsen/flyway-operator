@@ -12,6 +12,12 @@ Container for the published Helm chart distribution.
 |-----------|---------|
 | `flyway-operator/` | Chart source (see `flyway-operator/AGENTS.md`) |
 
+## Key Files
+
+| File | Description |
+|------|-------------|
+| `test-values.sh` | `helm template` cases that must pass or fail `values.schema.json`, run by chart-test. Add a case when a value's type or shape changes |
+
 ## For AI Agents
 
 ### Working In This Directory

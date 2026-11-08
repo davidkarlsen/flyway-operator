@@ -11,7 +11,7 @@ Kustomize component adding a `ServiceMonitor` so Prometheus Operator scrapes the
 | File | Description |
 |------|-------------|
 | `monitor.yaml` | `ServiceMonitor` targeting the metrics Service from `config/default/metrics_service.yaml` |
-| `rules.yaml` | `PrometheusRule` with the operator and Migration alerts |
+| `rules.yaml` | `PrometheusRule` with the operator and Migration alerts; the chart's `files/rules.yaml` is a copy of its groups, refreshed with `make helm-rules` in the chart release PR (not in the alert change, since merging a chart change publishes the chart); chart CI fails on chart PRs if it is stale |
 | `tests/rules_test.yaml` | `promtool test rules` unit tests for the alerts; run with `make test-rules` |
 | `kustomization.yaml` | Kustomize wiring |
 

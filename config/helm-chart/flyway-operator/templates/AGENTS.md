@@ -1,10 +1,10 @@
 # templates
 
 **Parent context:** `../AGENTS.md`
-**Generated:** 2026-05-09 · **Updated:** 2026-11-07
+**Generated:** 2026-05-09 · **Updated:** 2026-11-08
 
 ## Purpose
-Helm templates for the operator workload and its RBAC. Equivalent to `config/manager/` + `config/rbac/` rendered through Go templating with `values.yaml` overrides.
+Helm templates for the operator workload, its RBAC, and the optional metrics (`ServiceMonitor`) and Grafana dashboards objects. Equivalent to `config/manager/` + `config/rbac/` rendered through Go templating with `values.yaml` overrides.
 
 ## Key Files
 
@@ -16,10 +16,13 @@ Helm templates for the operator workload and its RBAC. Equivalent to `config/man
 | `metrics-service.yaml` | `<fullname>-metrics` Service (`https` → metrics port), gated on `metrics.enabled` |
 | `metrics-auth-rbac.yaml` | Metrics authn/authz ClusterRole + binding and the `metrics-reader` ClusterRole, gated on `metrics.enabled` |
 | `servicemonitor.yaml` | Prometheus Operator `ServiceMonitor`, gated on `metrics.enabled` and `metrics.serviceMonitor.enabled` |
+| `prometheusrule.yaml` | Opt-in `PrometheusRule` (`prometheusRule.enabled`) rendering `files/rules.yaml`, guarded by `.Capabilities.APIVersions` |
 | `serviceaccount.yaml` | Manager ServiceAccount |
 | `role.yaml` / `role_binding.yaml` | Reconciler RBAC |
 | `leader_election_role.yaml` / `leader_election_role_binding.yaml` | Leader-election lease RBAC |
 | `migration_editor_role.yaml` / `migration_viewer_role.yaml` | User-facing aggregated roles; names are per-release (`<fullname>-migration-editor/-viewer`) and intentionally differ from `config/rbac/` (kustomize/OLM is a single install) |
+| `grafana-dashboards-configmap.yaml` | Dashboards ConfigMap, gated on `grafana.dashboards.enabled`; one key per file in `dashboards/` |
+| `grafana-dashboards.yaml` | One grafana-operator `GrafanaDashboard` per file in `dashboards/`, also gated on `grafana.dashboards.grafanaDashboard.enabled` and the `grafana.integreatly.org/v1beta1` API |
 | `NOTES.txt` | Post-install message rendered by `helm install` |
 
 ## For AI Agents

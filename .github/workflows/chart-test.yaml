@@ -36,11 +36,43 @@ jobs:
             exit 1
           fi
 
+      - name: check chart dashboards are up to date
+        run: |
+          make helm-dashboards
+          if [ -n "$(git status --porcelain -- config/helm-chart)" ]; then
+            git diff -- config/helm-chart
+            echo "::error::chart dashboards are stale; run make helm-dashboards and commit"
+            exit 1
+          fi
+
+      - name: check chart alert rules are up to date
+        run: |
+          make helm-rules
+          if [ -n "$(git status --porcelain -- config/helm-chart)" ]; then
+            git diff -- config/helm-chart
+            echo "::error::chart alert rules are stale; run make helm-rules and commit"
+            exit 1
+          fi
+
+      - name: check chart values schema is up to date
+        run: |
+          make helm-schema
+          if [ -n "$(git status --porcelain -- config/helm-chart)" ]; then
+            git diff -- config/helm-chart
+            echo "::error::values.schema.json is stale; run make helm-schema and commit"
+            exit 1
+          fi
+
       - name: Shellcheck
         uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
 
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+      - name: check values that must pass and fail the values schema
+        run: |
+          helm dependency build config/helm-chart/flyway-operator
+          config/helm-chart/test-values.sh
 
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:

@@ -17,3 +17,29 @@ is not available, so no ServiceMonitor was created. Install the Prometheus Opera
 upgrade, or disable it.
 {{- end }}
 {{- end }}
+{{- if .Values.grafana.dashboards.enabled }}
+
+The Grafana dashboards are in the ConfigMap {{ include "flyway-operator.fullname" . }}-dashboards in namespace {{ .Release.Namespace }}.
+{{- $sidecar := hasKey (.Values.grafana.dashboards.labels | default dict) "grafana_dashboard" }}
+{{- if not .Values.grafana.dashboards.grafanaDashboard.enabled }}
+{{- if $sidecar }}
+The Grafana sidecar loads it by the label grafana_dashboard.
+{{- end }}
+{{- else if not (.Capabilities.APIVersions.Has "grafana.integreatly.org/v1beta1") }}
+
+WARNING: grafana.dashboards.grafanaDashboard.enabled=true but the grafana.integreatly.org/v1beta1 API
+is not available, so no GrafanaDashboard was created. The ConfigMap was created.
+{{- if $sidecar }}
+The Grafana sidecar loads it by the label grafana_dashboard, or import the JSON from it manually
+{{- else }}
+Import the JSON from it manually
+{{- end }} (see docs/dashboards.md).
+Install grafana-operator and upgrade to have GrafanaDashboards created.
+{{- end }}
+{{- end }}
+{{- if and .Values.prometheusRule.enabled (not (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/PrometheusRule")) }}
+
+WARNING: prometheusRule.enabled=true but the monitoring.coreos.com/v1 PrometheusRule API
+is not available, so no PrometheusRule was created. Install the Prometheus Operator CRDs and
+upgrade, or disable it.
+{{- end }}

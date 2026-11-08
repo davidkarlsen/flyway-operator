@@ -75,6 +75,8 @@ make docker-build IMG=<registry>/flyway-operator:<tag> PLATFORM=linux/amd64   # 
    plus the bundles of all later `v*` tags up to the new one, so `catalog-template.yaml` does not need updating
    per release.
 2. Open a pull request that updates the Helm chart: `image.tag` and `appVersion` to the new release, a new chart
-   `version`, and the chart's copy of the CRD (run `make helm-crds`; chart CI fails if it is stale). The chart is published when that pull request merges.
+   `version`, and the chart's copies of the CRD (`make helm-crds`), the Grafana dashboards (`make helm-dashboards`)
+   and the alert rules (`make helm-rules`), plus `values.schema.json` (`make helm-schema`) when `values.yaml`
+   changed. Chart CI fails if any of them is stale. The chart is published when that pull request merges.
 
 More background: the [Kubebuilder book](https://book.kubebuilder.io/introduction.html).
