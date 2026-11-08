@@ -139,7 +139,19 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": []
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "no reconciles",
+                  "color": "text",
+                  "index": 0
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -541,7 +553,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Reconcile error ratio (15m)",
+      "title": "Reconcile error ratio (15m) over time",
       "description": "The FlywayOperatorReconcileErrors expression over time; the line marks its 10% threshold.",
       "datasource": {
         "type": "prometheus",
@@ -594,7 +606,20 @@
                 "value": 0.1
               }
             ]
-          }
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "no reconciles",
+                  "color": "text",
+                  "index": 0
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -804,7 +829,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Migrations by condition",
+      "title": "Migrations by condition over time",
       "description": "Migrations whose condition is True, over time.",
       "datasource": {
         "type": "prometheus",
@@ -951,7 +976,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Scrape targets up",
+      "title": "Scrape targets up over time",
       "description": "Operator metrics targets scraped successfully, over time.",
       "datasource": {
         "type": "prometheus",

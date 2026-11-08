@@ -18,7 +18,8 @@ datasource from the dropdown at the top of the dashboard.
 - **Scrape targets up**: operator targets with `up == 1`, matched by the `job` variable (default
   `.*flyway-operator.*`). `0` is what `FlywayOperatorMetricsAbsent` fires on; change the variable if your scrape
   job is named differently.
-- **Reconcile error ratio (15m)**: the `FlywayOperatorReconcileErrors` expression, with its 10% threshold.
+- **Reconcile error ratio (15m)**: the `FlywayOperatorReconcileErrors` expression, with its 10% threshold. With no
+  reconciles in the last 15m the ratio has no value, shown as "no reconciles".
 - **Reconcile rate** by result, with reconcile errors, and **reconcile latency** (p50, p90, p99), from
   `controller_runtime_reconcile_*{controller="migration"}`.
 - **Work queue depth**: `workqueue_depth{controller="migration"}`.
@@ -44,6 +45,11 @@ namespaces).
   fires above 1h.
 - **Paused Migrations**: Migrations with the `flyway-operator.davidkarlsen.com/paused` annotation set to `true`.
 
+Runs by result and Last run duration come from series the operator holds in memory. They start over after an
+operator restart or a leader change: the run counters restart at zero, so attempts that finished on the previous
+leader or while the operator was down are not shown, and durations are missing until the next run of each Migration
+finishes. The condition and paused panels are read from the Migrations themselves and are back right away.
+
 ## The ConfigMap
 
 The kustomize install (`config/default`) and the OLM bundle create a ConfigMap `flyway-operator-dashboards` in the
@@ -51,6 +57,15 @@ operator's namespace (`flyway-operator-system` for kustomize, the install namesp
 dashboard, `flyway-operator.json` and `flyway-migrations.json`, and the label `grafana_dashboard: "1"`.
 
 The Helm chart does not ship the dashboards yet.
+
+The ConfigMap is about 70 KB. `make deploy` applies with client-side `kubectl apply`, which stores a copy of each
+object in the `kubectl.kubernetes.io/last-applied-configuration` annotation; annotations of an object are capped at
+256 KiB in total, so the dashboards fit with room to grow. Server-side apply (`kubectl apply --server-side`) and OLM
+do not use that annotation.
+
+Use one import path per Grafana: the grafana-operator, the sidecar, or a manual import. The dashboard uids
+(`flyway-operator`, `flyway-migrations`) are fixed, so a second path imports the same uids and the two overwrite
+each other.
 
 ## grafana-operator v5
 
@@ -95,13 +110,17 @@ grafana-operator only imports a `GrafanaDashboard` into `Grafana` instances in t
 remove it if your `Grafana` resource is in the operator's namespace. grafana-operator must also watch the
 operator's namespace (its `WATCH_NAMESPACE` or cluster-wide mode).
 
+Choose both fields before the first apply. `instanceSelector` is immutable, and changing `allowCrossNamespaceImport`
+from `true` to `false` is rejected as well: to change either, delete and recreate the `GrafanaDashboard`.
+
 The dashboard's `datasource` variable lists the Prometheus datasources of that Grafana and defaults to its default
 one.
 
 ## Grafana sidecar
 
-The Grafana Helm chart and kube-prometheus-stack can run a sidecar that loads dashboards from ConfigMaps with a
-label. Its defaults are the label `grafana_dashboard` with value `"1"`, so the ConfigMap is picked up when the
+The Grafana Helm chart and kube-prometheus-stack can run a sidecar that loads dashboards from ConfigMaps with the
+label `grafana_dashboard`. The defaults differ: kube-prometheus-stack matches the label value `"1"`, while the
+upstream grafana chart sets no `labelValue` and matches any value. Either way the ConfigMap is picked up when the
 sidecar watches the operator's namespace:
 
 ```yaml

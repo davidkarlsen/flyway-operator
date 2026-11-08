@@ -819,7 +819,7 @@ data:
                 "uid": "${datasource}"
               },
               "refId": "A",
-              "expr": "sum by (result) (increase(flyway_operator_migration_runs_total{namespace=~\"$namespace\", migration=~\"$migration\"}[$__interval]))",
+              "expr": "sum by (result) (increase(flyway_operator_migration_runs_total{namespace=~\"$namespace\", migration=~\"$migration\"}[$__rate_interval]))",
               "legendFormat": "{{result}}",
               "format": "time_series",
               "instant": false,
@@ -1375,7 +1375,19 @@ data:
               "color": {
                 "mode": "thresholds"
               },
-              "mappings": []
+              "mappings": [
+                {
+                  "type": "special",
+                  "options": {
+                    "match": "nan",
+                    "result": {
+                      "text": "no reconciles",
+                      "color": "text",
+                      "index": 0
+                    }
+                  }
+                }
+              ]
             },
             "overrides": []
           },
@@ -1777,7 +1789,7 @@ data:
         },
         {
           "type": "timeseries",
-          "title": "Reconcile error ratio (15m)",
+          "title": "Reconcile error ratio (15m) over time",
           "description": "The FlywayOperatorReconcileErrors expression over time; the line marks its 10% threshold.",
           "datasource": {
             "type": "prometheus",
@@ -1830,7 +1842,20 @@ data:
                     "value": 0.1
                   }
                 ]
-              }
+              },
+              "mappings": [
+                {
+                  "type": "special",
+                  "options": {
+                    "match": "nan",
+                    "result": {
+                      "text": "no reconciles",
+                      "color": "text",
+                      "index": 0
+                    }
+                  }
+                }
+              ]
             },
             "overrides": []
           },
@@ -2040,7 +2065,7 @@ data:
         },
         {
           "type": "timeseries",
-          "title": "Migrations by condition",
+          "title": "Migrations by condition over time",
           "description": "Migrations whose condition is True, over time.",
           "datasource": {
             "type": "prometheus",
@@ -2187,7 +2212,7 @@ data:
         },
         {
           "type": "timeseries",
-          "title": "Scrape targets up",
+          "title": "Scrape targets up over time",
           "description": "Operator metrics targets scraped successfully, over time.",
           "datasource": {
             "type": "prometheus",

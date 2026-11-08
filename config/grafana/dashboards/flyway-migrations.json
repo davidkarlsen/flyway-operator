@@ -816,7 +816,7 @@
             "uid": "${datasource}"
           },
           "refId": "A",
-          "expr": "sum by (result) (increase(flyway_operator_migration_runs_total{namespace=~\"$namespace\", migration=~\"$migration\"}[$__interval]))",
+          "expr": "sum by (result) (increase(flyway_operator_migration_runs_total{namespace=~\"$namespace\", migration=~\"$migration\"}[$__rate_interval]))",
           "legendFormat": "{{result}}",
           "format": "time_series",
           "instant": false,

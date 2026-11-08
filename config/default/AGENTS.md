@@ -4,7 +4,7 @@
 **Generated:** 2026-05-09 · **Updated:** 2026-11-07
 
 ## Purpose
-The default kustomize overlay rendered by `make deploy`. Composes the CRD, manager Deployment, RBAC, `config/prometheus` (the `ServiceMonitor`) and metrics service into a single applyable bundle, applying the `IMG` substitution.
+The default kustomize overlay rendered by `make deploy`. Composes the CRD, manager Deployment, RBAC, `config/prometheus` (the `ServiceMonitor`), `config/grafana` (the dashboards ConfigMap) and metrics service into a single applyable bundle, applying the `IMG` substitution.
 
 ## Key Files
 
