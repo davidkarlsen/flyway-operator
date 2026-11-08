@@ -9,7 +9,6 @@ import (
 	"time"
 
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
-	"github.com/redhat-cop/operator-utils/pkg/util"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -39,6 +38,8 @@ type statusHarness struct {
 	failJobDeletes int
 	// jobDeletes counts the Job deletes that reached the client.
 	jobDeletes int
+	// statusUpdates counts the status writes that reached the client.
+	statusUpdates int
 }
 
 func newStatusHarness(t *testing.T, retryLimit *int32, extra ...interceptor.Funcs) *statusHarness {
@@ -80,6 +81,7 @@ func newStatusHarness(t *testing.T, retryLimit *int32, extra ...interceptor.Func
 				h.failStatusUpdates--
 				return apierrors.NewConflict(schema.GroupResource{Resource: "migrations"}, obj.GetName(), errors.New("injected"))
 			}
+			h.statusUpdates++
 			return c.SubResource(sub).Update(ctx, obj, opts...)
 		},
 	}
@@ -91,9 +93,9 @@ func newStatusHarness(t *testing.T, retryLimit *int32, extra ...interceptor.Func
 	h.c = fake.NewClientBuilder().WithScheme(s).WithObjects(migration).WithStatusSubresource(migration).
 		WithInterceptorFuncs(funcs).Build()
 	h.r = &MigrationReconciler{
-		ReconcilerBase: util.NewReconcilerBase(h.c, s, nil, record.NewFakeRecorder(100), nil),
-		Client:         h.c,
-		Scheme:         s,
+		Recorder: record.NewFakeRecorder(100),
+		Client:   h.c,
+		Scheme:   s,
 	}
 	return h
 }
@@ -101,7 +103,7 @@ func newStatusHarness(t *testing.T, retryLimit *int32, extra ...interceptor.Func
 // events drains and returns the events recorded so far.
 func (h *statusHarness) events() []string {
 	var out []string
-	ch := h.r.GetRecorder().(*record.FakeRecorder).Events
+	ch := h.r.Recorder.(*record.FakeRecorder).Events
 	for {
 		select {
 		case e := <-ch:
@@ -300,7 +302,7 @@ func TestStatusCreateConflictDoesNotCountAnAttempt(t *testing.T) {
 	if err := h.r.Create(context.TODO(), createJobSpec(m, 1)); !apierrors.IsAlreadyExists(err) {
 		t.Fatalf("expected the Job to exist, got %v", err)
 	}
-	if _, err := h.r.submitMigrationJob(context.TODO(), m); err != nil {
+	if _, err := h.r.submitMigrationJob(context.TODO(), m, m.Status.DeepCopy()); err != nil {
 		t.Fatal(err)
 	}
 	if got := h.migration().Status.Attempts; got != 0 {
@@ -532,7 +534,7 @@ func TestStatusDroppedImageVolumeFails(t *testing.T) {
 			t.Fatal("job without the image volume was not deleted")
 		}
 	}
-	recorder := h.r.GetRecorder().(*record.FakeRecorder)
+	recorder := h.r.Recorder.(*record.FakeRecorder)
 	events := 0
 	for len(recorder.Events) > 0 {
 		if e := <-recorder.Events; strings.Contains(e, flywayv1alpha1.ReasonImageVolumeUnsupported) {

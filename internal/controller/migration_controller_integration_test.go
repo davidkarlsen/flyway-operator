@@ -25,8 +25,6 @@ import (
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/redhat-cop/operator-utils/pkg/util"
-	"github.com/redhat-cop/operator-utils/pkg/util/apis"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -397,7 +395,7 @@ var _ = Describe("Migration controller (envtest)", func() {
 
 			Eventually(func(g Gomega) {
 				m := getMigration(ctx, g, key)
-				c := meta.FindStatusCondition(m.Status.Conditions, apis.ReconcileError)
+				c := meta.FindStatusCondition(m.Status.Conditions, conditionReconcileError)
 				g.Expect(c).NotTo(BeNil())
 				g.Expect(c.Status).To(Equal(metav1.ConditionTrue))
 			}, envtestTimeout, envtestInterval).Should(Succeed())
@@ -520,13 +518,11 @@ var _ = Describe("Migration controller (envtest)", func() {
 			m.Annotations = map[string]string{flywayv1alpha1.Prefix + "/paused": "true"}
 			Expect(k8sClient.Create(ctx, m)).To(Succeed())
 
-			Eventually(func(g Gomega) {
-				got := getMigration(ctx, g, key)
-				g.Expect(meta.IsStatusConditionTrue(got.Status.Conditions, apis.ReconcileSuccess)).To(BeTrue())
-			}, envtestTimeout, envtestInterval).Should(Succeed())
-			Consistently(func() bool {
-				return apierrors.IsNotFound(k8sClient.Get(ctx, key, &batchv1.Job{}))
-			}, consistentlyFor, envtestInterval).Should(BeTrue())
+			// a paused reconcile changes no status, so the absence of a Job and of any condition is what is observable
+			Consistently(func(g Gomega) {
+				g.Expect(apierrors.IsNotFound(k8sClient.Get(ctx, key, &batchv1.Job{}))).To(BeTrue())
+				g.Expect(getMigration(ctx, g, key).Status.Conditions).To(BeEmpty())
+			}, consistentlyFor, envtestInterval).Should(Succeed())
 
 			updateMigration(ctx, key, func(m *flywayv1alpha1.Migration) {
 				delete(m.Annotations, flywayv1alpha1.Prefix+"/paused")
@@ -581,9 +577,9 @@ var _ = Describe("Migration controller (envtest)", func() {
 
 		It("returns no error and no requeue when reconciling a Migration that never existed", func(ctx SpecContext) {
 			r := &MigrationReconciler{
-				ReconcilerBase: util.NewReconcilerBase(k8sClient, scheme.Scheme, cfg, record.NewFakeRecorder(10), k8sClient),
-				Client:         k8sClient,
-				Scheme:         scheme.Scheme,
+				Recorder: record.NewFakeRecorder(10),
+				Client:   k8sClient,
+				Scheme:   scheme.Scheme,
 			}
 
 			result, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: "gone"}})

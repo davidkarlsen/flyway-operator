@@ -60,7 +60,7 @@ All commands are driven through the `Makefile`.
 - Operator-owned annotations and labels use the `Prefix = "flyway-operator.davidkarlsen.com"` constant from `api/v1alpha1/migration_types.go`; do not hardcode the domain.
 - Apache 2.0 license header (see `hack/boilerplate.go.txt`) on new Go files; `controller-gen` also enforces it.
 - Env-var defaults use `github.com/caitlinelfring/go-env-default`.
-- Conditions are the canonical status mechanism; update them via `SetConditions` rather than mutating the slice in place.
+- Conditions are the canonical status mechanism; update them with `meta.SetStatusCondition` rather than mutating the slice in place.
 - The Job runs under the Pod Security Standard "restricted": any new container or volume in the Job spec must keep it compliant (see `internal/controller/AGENTS.md`).
 - The migration source needs Kubernetes 1.35 or later (image volumes): `config/manifests/bases/flyway-operator.clusterserviceversion.yaml` sets `minKubeVersion: 1.35.0` and the Helm chart `kubeVersion: ">=1.35.0-0"`. Raise both together.
 - Docs-only (`*.md`, `docs/`, `.claude/`) and Helm chart changes skip the `build`/`e2e` jobs; the `ci-success` check is the only required one.
@@ -86,7 +86,7 @@ A `Migration` carries three required sub-specs plus optional top-level fields:
 - `jobMetadata` / `podMetadata`: user labels and annotations for the Job and its pod template. CEL rules reject reserved keys (`flyway-operator.davidkarlsen.com/*`, `batch.kubernetes.io/*`, `controller-uid`, `job-name`, `app.kubernetes.io/managed-by`) and invalid label/annotation keys; the operator's own keys always win.
 - A CEL rule limits `metadata.name` to 63 characters (it is the Job name and a pod label value).
 
-Status is tracked through `metav1.Condition`s (`Applied`, `Progressing`, `Failed`, all set together with one reason) on `MigrationStatus.Conditions`, plus `observedGeneration`, `attempts`, `lastAppliedImageRef` and `lastAppliedGeneration` (the source image and generation of the last succeeded Job). Reasons: `JobCreated`, `JobRunning`, `JobSucceeded`, `Retrying`, `RetryLimitExceeded`, `TimedOut`, `PreviousJobRunning`, `PreviousJobReplaced`, `ImageVolumeUnsupported`. Helper methods `GetConditions` / `SetConditions` satisfy the `redhat-cop/operator-utils` `ReconcilerBase` interface.
+Status is tracked through `metav1.Condition`s (`Applied`, `Progressing`, `Failed`, all set together with one reason) on `MigrationStatus.Conditions`, plus `observedGeneration`, `attempts`, `lastAppliedImageRef` and `lastAppliedGeneration` (the source image and generation of the last succeeded Job). Reasons: `JobCreated`, `JobRunning`, `JobSucceeded`, `Retrying`, `RetryLimitExceeded`, `TimedOut`, `PreviousJobRunning`, `PreviousJobReplaced`, `ImageVolumeUnsupported`. A failing reconcile also sets a `ReconcileError` condition (removed by the next success); `ReconcileSuccess` is no longer written.
 
 Operator-owned keys, namespaced under `Prefix = "flyway-operator.davidkarlsen.com"`:
 - Annotation `<Prefix>/generation`: written onto the spawned Job to track which `Migration.Generation` produced it (`GenerationAsString()`).
@@ -103,7 +103,7 @@ Operator-owned keys, namespaced under `Prefix = "flyway-operator.davidkarlsen.co
 3. If the Job exists and its `generation` annotation matches the current `Migration.Generation`, mirror its result into the `Applied`/`Progressing`/`Failed` conditions (with `observedGeneration`). A failed Job is deleted and re-created (attempt +1) until `spec.retryLimit` is exhausted, then the Migration stops with `Failed=True` (`RetryLimitExceeded`, or `TimedOut` when the Job hit its deadline). The status is computed also while a Job is terminating, so `Retrying` / `PreviousJobReplaced` survive a lost status write. A Job of an older generation is waited for while running (`PreviousJobRunning`), otherwise deleted (`PreviousJobReplaced`), recording `lastAppliedImageRef` first if it succeeded.
 4. Otherwise build a fresh Job spec via `internal/controller/jobutil.go` (SQL image mounted as an image volume; Flyway container runs with env vars derived from `FlywayConfiguration` and `Database`), apply the restricted security context and submit it (`submitMigrationJob`), with the Migration set as controller owner reference so deletion cascades.
 
-The reconciler embeds `util.ReconcilerBase` from `redhat-cop/operator-utils` and uses its condition / event helpers. Events go to a `record.EventRecorder` (real one in `cmd/main.go`, `record.FakeRecorder` in tests). At startup `cmd/main.go` detects OpenShift (`IsOpenShift`, via the `security.openshift.io` API) and passes it to the reconciler.
+The reconciler embeds `client.Client` and holds a `Recorder`; `manageSuccess` / `manageError` (`reconcile_result.go`) save the status, only when it differs from the status read at the start, with `Status().Update`. Events go to a `record.EventRecorder` (real one in `cmd/main.go`, `record.FakeRecorder` in tests). At startup `cmd/main.go` detects OpenShift (`IsOpenShift`, via the `security.openshift.io` API) and passes it to the reconciler.
 
 #### Metrics (`internal/controller/metrics.go`, `docs/metrics.md`)
 
@@ -130,7 +130,6 @@ Dependabot opens dep-bump PRs (k8s.io and sigs.k8s.io updates are grouped); when
 - `k8s.io/{api,apimachinery,client-go}`: Kubernetes types and client
 - `github.com/prometheus/client_golang`: metrics
 - `github.com/onsi/ginkgo/v2` + `github.com/onsi/gomega`: BDD test framework
-- `github.com/redhat-cop/operator-utils`: `ReconcilerBase`, condition helpers
 - `github.com/samber/lo`: Go generics utilities
 - `github.com/caitlinelfring/go-env-default`: env-var defaulting
 

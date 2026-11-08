@@ -4,7 +4,6 @@ import (
 	"context"
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	"github.com/gophercloud/gophercloud/testhelper"
-	"github.com/redhat-cop/operator-utils/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -52,9 +51,9 @@ func TestGithubactionRunnerController(t *testing.T) {
 
 	fakeRecorder := record.NewFakeRecorder(10)
 	r := &MigrationReconciler{
-		ReconcilerBase: util.NewReconcilerBase(fakeClient, s, nil, fakeRecorder, nil),
-		Client:         fakeClient,
-		Scheme:         s,
+		Recorder: fakeRecorder,
+		Client:   fakeClient,
+		Scheme:   s,
 	}
 
 	req := reconcile.Request{

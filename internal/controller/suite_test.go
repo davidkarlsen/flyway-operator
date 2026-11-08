@@ -23,7 +23,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/redhat-cop/operator-utils/pkg/util"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -82,10 +81,10 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 	Expect(openShift).To(BeFalse())
 	err = (&MigrationReconciler{
-		ReconcilerBase: util.NewFromManager(k8sManager, k8sManager.GetEventRecorderFor("Migration")), //nolint:staticcheck // SA1019 - GetEventRecorderFor is deprecated
-		Client:         k8sManager.GetClient(),
-		Scheme:         k8sManager.GetScheme(),
-		OpenShift:      openShift,
+		Recorder:  k8sManager.GetEventRecorderFor("Migration"), //nolint:staticcheck // SA1019 - GetEventRecorderFor is deprecated
+		Client:    k8sManager.GetClient(),
+		Scheme:    k8sManager.GetScheme(),
+		OpenShift: openShift,
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
