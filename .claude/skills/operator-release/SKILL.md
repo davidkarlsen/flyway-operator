@@ -33,6 +33,8 @@ opm render ghcr.io/davidkarlsen/flyway-operator-catalog:v<version> | grep -c 'fl
 
 A separate PR, merged after the tag build succeeded (merging any `config/helm-chart/` change publishes the chart immediately):
 
+- If the release PR also resolves issues (e.g. a chart issue), add `Closes #N` for each and verify `closingIssuesReferences`.
+
 - `make helm-crds` (sync the chart CRD; chart-test fails if it's stale). The target and the chart-test gate come from #498.
 - `values.yaml` `image.tag` and `Chart.yaml` `appVersion` to the new version; bump the chart `version` (minor if anything user-visible changed).
 - `kubeVersion` in `Chart.yaml` if the minimum Kubernetes changed.

@@ -21,7 +21,7 @@ Pass `model` explicitly when delegating (tier aliases):
 
 ## 1. Issue
 
-- One issue per change: `gh issue create --label enhancement|bug`.
+- One issue per change, and every PR has one (features, fixes, chart changes, CI and dependency work; only Dependabot PRs and small docs-only fixes are exempt). Always label it with a type and one or more areas: `gh issue create --label enhancement|bug --label area/<x>`. Areas: `area/api` (CRD/types), `area/controller` (reconcile, Job, status), `area/helm`, `area/olm` (bundle/catalog), `area/observability` (metrics, alerts, dashboards), `area/security`, `area/ci` (workflows, release, tooling), `area/docs`. Pick every area the change touches; create a new `area/*` label only when none fits. Before creating one, check `gh issue list` for an existing issue the change already fixes (e.g. a spec issue) and use that instead.
 - Body: problem, proposal (API/fields if any), behaviour, acceptance criteria (testable), out of scope. Short.
 - **Features** (new API fields, reconcile behaviour, release/CI flow): get the design reviewed *before* coding. Run `oh-my-claudecode:architect` and `oh-my-claudecode:critic` in parallel on the issue, each independently. Fold their findings into the issue body (edit, don't comment). Bring real trade-offs to the user as a decision, with a recommendation.
 - Larger or vague requests: start with the `oh-my-claudecode:plan` skill instead.
@@ -78,7 +78,8 @@ Never delete clusters or registries you didn't create. If a run crashed, clean u
 ## 4. Pull request
 
 - Rebase on `origin/main` right before pushing.
-- `gh pr create` with `Closes #<issue>` in the body so the merge closes the issue.
+- `gh pr create` with `Closes #<issue>` in the body for **every** issue the PR resolves (one line each), so the merge closes them. Then verify GitHub registered the link: `gh pr view <n> --json closingIssuesReferences -q '[.closingIssuesReferences[].number]'` must list each issue; if not, fix the body.
+- Stacked PRs (built on another open PR) each close their own issue.
 - Body describes the change **as it now stands**: what changed and what it does, what the reviewer must check, risks that survive the merge. No preamble, no investigation history, no rejected options.
 - Commit messages follow the same rule. Sign off (`git commit -s`).
 - Open as **draft** if it must wait (e.g. for a release); say why in the body.
