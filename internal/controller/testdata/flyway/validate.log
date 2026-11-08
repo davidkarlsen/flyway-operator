@@ -1,0 +1,11 @@
+{
+  "allErrorMessages" : "",
+  "database" : null,
+  "errorDetails" : null,
+  "flywayVersion" : "13.12.1",
+  "invalidMigrations" : [ ],
+  "operation" : "validate",
+  "validateCount" : 2,
+  "validationSuccessful" : true,
+  "warnings" : [ ]
+}

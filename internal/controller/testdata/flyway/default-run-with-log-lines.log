@@ -1,0 +1,122 @@
+Picked up JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
+{"level":"WARN","message":"not a flyway result"}
+WARNING: some driver warning
+{
+  "individualResults" : [ {
+    "allSchemasEmpty" : true,
+    "database" : "",
+    "exception" : null,
+    "flywayVersion" : "13.12.1",
+    "licenseFailed" : false,
+    "migrations" : [ {
+      "category" : "Versioned",
+      "description" : "init",
+      "executionTime" : 0,
+      "filepath" : "/sql/V1__init.sql",
+      "installedBy" : "",
+      "installedOnUTC" : "",
+      "rawVersion" : "1",
+      "shouldExecuteExpression" : null,
+      "state" : "Pending",
+      "type" : "SQL",
+      "undoFilepath" : "",
+      "undoable" : "No",
+      "version" : "1"
+    }, {
+      "category" : "Versioned",
+      "description" : "b",
+      "executionTime" : 0,
+      "filepath" : "/sql/V2__b.sql",
+      "installedBy" : "",
+      "installedOnUTC" : "",
+      "rawVersion" : "2",
+      "shouldExecuteExpression" : null,
+      "state" : "Pending",
+      "type" : "SQL",
+      "undoFilepath" : "",
+      "undoable" : "No",
+      "version" : "2"
+    } ],
+    "operation" : "info",
+    "schemaName" : "",
+    "schemaVersion" : null,
+    "timestamp" : "2026-11-08T17:41:36.042415001Z"
+  }, {
+    "database" : null,
+    "databaseType" : "SQLite",
+    "exception" : null,
+    "flywayVersion" : "13.12.1",
+    "initialSchemaVersion" : null,
+    "licenseFailed" : false,
+    "migrations" : [ {
+      "category" : "Versioned",
+      "description" : "init",
+      "executionTime" : 3,
+      "filepath" : "/sql/V1__init.sql",
+      "type" : "SQL",
+      "version" : "1"
+    }, {
+      "category" : "Versioned",
+      "description" : "b",
+      "executionTime" : 2,
+      "filepath" : "/sql/V2__b.sql",
+      "type" : "SQL",
+      "version" : "2"
+    } ],
+    "migrationsExecuted" : 2,
+    "operation" : "migrate",
+    "schemaName" : "",
+    "success" : true,
+    "targetSchemaVersion" : "2",
+    "timestamp" : "2026-11-08T17:41:36.075626917Z",
+    "totalMigrationTime" : 5,
+    "warnings" : [ ]
+  }, {
+    "allSchemasEmpty" : false,
+    "database" : "",
+    "exception" : null,
+    "flywayVersion" : "13.12.1",
+    "licenseFailed" : false,
+    "migrations" : [ {
+      "category" : "Versioned",
+      "description" : "init",
+      "executionTime" : 3,
+      "filepath" : "/sql/V1__init.sql",
+      "installedBy" : "",
+      "installedOnUTC" : "2026-11-08T17:41:36.088Z",
+      "rawVersion" : "1",
+      "shouldExecuteExpression" : null,
+      "state" : "Success",
+      "type" : "SQL",
+      "undoFilepath" : "",
+      "undoable" : "No",
+      "version" : "1"
+    }, {
+      "category" : "Versioned",
+      "description" : "b",
+      "executionTime" : 2,
+      "filepath" : "/sql/V2__b.sql",
+      "installedBy" : "",
+      "installedOnUTC" : "2026-11-08T17:41:36.100Z",
+      "rawVersion" : "2",
+      "shouldExecuteExpression" : null,
+      "state" : "Success",
+      "type" : "SQL",
+      "undoFilepath" : "",
+      "undoable" : "No",
+      "version" : "2"
+    } ],
+    "operation" : "info",
+    "schemaName" : "",
+    "schemaVersion" : "2",
+    "timestamp" : "2026-11-08T17:41:36.119051251Z"
+  } ],
+  "schemaVersion" : 1
+}
+
+INFO: trailing stderr line
+{"level":"INFO","message":"a JSON log line after the result"}
+{"ts":1,"operation":"http"}
+{"level":"INFO","error":"x"}
+{"level":"WARN","error":null}
+{"individualResults":[{"ts":2}]}

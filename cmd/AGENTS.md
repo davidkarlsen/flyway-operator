@@ -1,10 +1,10 @@
 # cmd
 
 **Parent context:** `../AGENTS.md`
-**Generated:** 2026-05-09 · **Updated:** 2026-11-07
+**Generated:** 2026-05-09 · **Updated:** 2026-11-08
 
 ## Purpose
-Operator binary entry point. Wires up the controller-runtime manager, registers the v1alpha1 scheme, sets up health/metrics endpoints and leader election, detects whether the cluster is OpenShift, starts `MigrationReconciler` and registers the `MigrationCollector` metrics collector.
+Operator binary entry point. Wires up the controller-runtime manager, registers the v1alpha1 scheme, sets up health/metrics endpoints and leader election, detects whether the cluster is OpenShift, starts `MigrationReconciler` (with a typed core client as its `LogReader` for pod logs) and registers the `MigrationCollector` metrics collector.
 
 ## Key Files
 

@@ -1,0 +1,14 @@
+Flyway OSS Edition 13.12.1 by Redgate
+
+See release notes here: https://help.red-gate.com/help/flyway-cli13/help_12.aspx?topic=release-notes-and-older-versions/release-notes-for-flyway-engine
+Environment: default
+Database: jdbc:sqlite:******** (SQLite 3.50)
+Schema version: 2
+
++-----------+---------+-------------+------+---------------------+---------+----------+
+| Category  | Version | Description | Type | Installed On        | State   | Undoable |
++-----------+---------+-------------+------+---------------------+---------+----------+
+| Versioned | 1       | init        | SQL  | 2026-11-08 17:41:36 | Success | No       |
+| Versioned | 2       | b           | SQL  | 2026-11-08 17:41:36 | Success | No       |
++-----------+---------+-------------+------+---------------------+---------+----------+
+

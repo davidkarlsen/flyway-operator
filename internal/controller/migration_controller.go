@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
@@ -54,10 +55,14 @@ type MigrationReconciler struct {
 	// APIReader reads pods and events straight from the API server, so no cluster-wide Pod or Event informer is
 	// started. When nil, Client is used.
 	APIReader client.Reader
+	// LogReader reads the Flyway container's log for status.schemaVersion and the Flyway error in a failure
+	// message. When nil, neither is reported.
+	LogReader PodLogReader
 }
 
 //+kubebuilder:rbac:groups=core,resources=events,verbs=create;patch;list
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=list
+//+kubebuilder:rbac:groups=core,resources=pods/log,verbs=get
 //+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=flyway.davidkarlsen.com,resources=migrations,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=flyway.davidkarlsen.com,resources=migrations/status,verbs=get;update;patch
@@ -147,6 +152,7 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				r.warnLastAppliedUnknown(ctx, migration, existingJob)
 			} else if before.LastAppliedImageRef != migration.Status.LastAppliedImageRef ||
 				before.LastAppliedGeneration != migration.Status.LastAppliedGeneration {
+				r.recordSchemaVersion(ctx, migration, existingJob)
 				// persist before the Job, the only record of this success, is deleted
 				if err := r.Status().Update(ctx, migration); err != nil {
 					return ctrl.Result{}, err
@@ -195,6 +201,9 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	case jobSucceeded:
 		recorded := setLastApplied(migration, existingJob)
+		if outcomeIsNew(prev, migration.Generation, attempt, flywayv1alpha1.ReasonJobSucceeded) {
+			r.recordSchemaVersion(ctx, migration, existingJob)
+		}
 		if !meta.IsStatusConditionTrue(migration.Status.Conditions, flywayv1alpha1.ConditionApplied) {
 			logger.Info("Migration succeeded")
 			r.Recorder.Event(migration, corev1.EventTypeNormal, "Succeeded",
@@ -216,23 +225,26 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			outcome, failedReason = fmt.Sprintf("timed out (activeDeadline %s)", migration.GetActiveDeadline()), flywayv1alpha1.ReasonTimedOut
 		}
 		if attempt > retryLimit {
+			base := fmt.Sprintf("Job %s %s on attempt %d of %d: %s", existingJob.Name, outcome, attempt, retryLimit+1, failure)
+			message := r.failureMessage(ctx, migration, existingJob, failedReason, base)
 			if !meta.IsStatusConditionTrue(migration.Status.Conditions, flywayv1alpha1.ConditionFailed) {
 				eventReason := "Failed"
 				if failedReason == flywayv1alpha1.ReasonTimedOut {
 					eventReason = flywayv1alpha1.ReasonTimedOut
 				}
 				r.Recorder.Event(migration, corev1.EventTypeWarning, eventReason,
-					fmt.Sprintf("Migration %s on attempt %d of %d: %s", outcome, attempt, retryLimit+1, failure))
+					fmt.Sprintf("Migration %s on attempt %d of %d: %s%s", outcome, attempt, retryLimit+1, failure, strings.TrimPrefix(message, base)))
 			}
-			setFailed(migration, failedReason, fmt.Sprintf("Job %s %s on attempt %d of %d: %s", existingJob.Name, outcome, attempt, retryLimit+1, failure))
+			setFailed(migration, failedReason, message)
 			res, err := r.manageSuccess(ctx, migration, prev, 0)
 			if err == nil && outcomeIsNew(prev, migration.Generation, attempt, failedReason) {
 				recordOutcome(migration, existingJob, resultFailed)
 			}
 			return res, err
 		}
+		base := fmt.Sprintf("Job %s %s on attempt %d of %d, retrying: %s", existingJob.Name, outcome, attempt, retryLimit+1, failure)
 		setConditions(migration, flywayv1alpha1.ReasonRetrying,
-			fmt.Sprintf("Job %s %s on attempt %d of %d, retrying: %s", existingJob.Name, outcome, attempt, retryLimit+1, failure),
+			r.failureMessage(ctx, migration, existingJob, flywayv1alpha1.ReasonRetrying, base),
 			metav1.ConditionTrue, metav1.ConditionFalse)
 		res, err := r.deleteJob(ctx, migration, prev, existingJob)
 		if err == nil && outcomeIsNew(prev, migration.Generation, attempt, flywayv1alpha1.ReasonRetrying) {
