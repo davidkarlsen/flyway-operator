@@ -60,6 +60,9 @@ spec:
     volumeMounts: []                 # mounted into the Flyway container
     # podSecurityContext: {}         # optional: replaces the default as a whole, see Security context
     # securityContext: {}            # optional: replaces the default as a whole, for the Flyway container
+    # resources: {}                  # optional: requests/limits of the Flyway container, unset by default
+    # serviceAccountName: flyway     # optional: the pod's service account, default the namespace's default
+    # nodeSelector: {}               # optional, pod scheduling: also tolerations, affinity, priorityClassName
 ```
 
 The default Flyway image is `docker.io/flyway/flyway:13`. The operator's `FLYWAY_IMAGE` environment variable
@@ -160,6 +163,52 @@ Job's pod retries. A migration that legitimately runs longer than an hour must s
 - With Istio, an injected sidecar that never exits keeps the pod running after Flyway has finished. The deadline bounds
   this but reports it as a failure; disable injection for the Job's pod (`podMetadata` annotation
   `sidecar.istio.io/inject: "false"`) or run the proxy as a native sidecar so the pod completes.
+
+## Resources, scheduling and service account
+
+These optional `flywayConfiguration` fields shape the Job's pod. Unset, the pod has no requests or limits, uses the
+default scheduler and runs as the namespace's `default` service account.
+
+| Field | Applies to |
+|---|---|
+| `resources` | the Flyway container (`requests`, `limits`) |
+| `nodeSelector`, `tolerations`, `affinity`, `priorityClassName` | the pod |
+| `serviceAccountName` | the pod |
+
+```yaml
+  flywayConfiguration:
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {memory: 512Mi}
+    serviceAccountName: flyway
+    nodeSelector:
+      kubernetes.io/os: linux
+    tolerations:
+      - {key: dedicated, operator: Equal, value: batch, effect: NoSchedule}
+    priorityClassName: batch-low
+```
+
+The operator sets no default `resources`. Flyway runs on the JVM, so the right size depends on your migrations; the
+numbers above are a starting point, not a measured recommendation.
+
+### ResourceQuota
+
+A namespace with a `ResourceQuota` on `requests.*` or `limits.*` rejects pods that do not set them (unless a
+`LimitRange` supplies defaults). The Job then creates no pod, and the `Migration` stays `Progressing` until
+`activeDeadline`. `kubectl describe job <name>` shows the `FailedCreate` event ("must specify limits.cpu ..."). Set
+`resources` with every resource the quota covers. `serviceAccountName` must name an existing service account in the
+namespace, or the Job cannot create its pod either. A Job whose pod cannot be created is not marked failed: after
+fixing the field, delete the Job (`kubectl delete job <name>`) to start over at once instead of waiting for the
+`activeDeadline` of the stuck one.
+
+`serviceAccountName` lets a `Migration` author run the pod as any service account of the namespace, including its
+cloud identity. Grant `Migration` edit rights accordingly. Workload identity systems may also need a pod label or
+annotation, set with `podMetadata` (for example `azure.workload.identity/use: "true"` for Azure Workload Identity).
+
+A change to any of these fields creates a new Job, which runs the configured `commands` again.
+
+If you install with Helm, upgrade the CRD yourself (`kubectl apply --server-side -f` the CRD of the release): Helm does
+not update CRDs in `crds/`, and the old schema drops the new fields silently.
 
 ## Security context
 

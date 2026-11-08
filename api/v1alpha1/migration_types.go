@@ -300,6 +300,33 @@ type FlywayConfiguration struct {
 	// default (no privilege escalation, all capabilities dropped, read-only root filesystem).
 	// +kubebuilder:validation:Optional
 	SecurityContext *v1.SecurityContext `json:"securityContext,omitempty"`
+
+	// Compute resources (requests and limits) of the migration job's flyway container. Unset by default.
+	// Set it in namespaces with a ResourceQuota, which rejects pods without requests and limits.
+	// +kubebuilder:validation:Optional
+	Resources *v1.ResourceRequirements `json:"resources,omitempty"`
+
+	// NodeSelector of the migration job's pod.
+	// +kubebuilder:validation:Optional
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// Tolerations of the migration job's pod.
+	// +kubebuilder:validation:Optional
+	Tolerations []v1.Toleration `json:"tolerations,omitempty"`
+
+	// Affinity of the migration job's pod.
+	// +kubebuilder:validation:Optional
+	Affinity *v1.Affinity `json:"affinity,omitempty"`
+
+	// PriorityClassName of the migration job's pod.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxLength=253
+	PriorityClassName string `json:"priorityClassName,omitempty"`
+
+	// ServiceAccountName the migration job's pod runs as. Defaults to the namespace's default service account.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxLength=253
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 }
 
 // MigrationSource defines the source for the flyway-migrations.

@@ -182,7 +182,28 @@ func hasSourceImageVolume(job *batchv1.Job) bool {
 	})
 }
 
+// copyTolerations deep-copies ts, keeping nil as nil.
+func copyTolerations(ts []corev1.Toleration) []corev1.Toleration {
+	if ts == nil {
+		return nil
+	}
+	out := make([]corev1.Toleration, len(ts))
+	for i := range ts {
+		ts[i].DeepCopyInto(&out[i])
+	}
+	return out
+}
+
+// resourcesOrEmpty deep-copies r, or returns empty requirements when unset.
+func resourcesOrEmpty(r *corev1.ResourceRequirements) corev1.ResourceRequirements {
+	if r == nil {
+		return corev1.ResourceRequirements{}
+	}
+	return *r.DeepCopy()
+}
+
 func createJobSpec(migration *flywayv1alpha1.Migration, attempt int32) *batchv1.Job {
+	config := migration.Spec.FlywayConfiguration
 	envVars := []corev1.EnvVar{
 		{
 			Name:  "FLYWAY_USER",
@@ -259,6 +280,7 @@ func createJobSpec(migration *flywayv1alpha1.Migration, attempt int32) *batchv1.
 							ImagePullPolicy: corev1.PullAlways,
 							Args:            getFlywayArgs(migration),
 							Env:             envVars,
+							Resources:       resourcesOrEmpty(config.Resources),
 							VolumeMounts: append([]corev1.VolumeMount{
 								{
 									Name:      sqlVolumeName,
@@ -279,8 +301,13 @@ func createJobSpec(migration *flywayv1alpha1.Migration, attempt int32) *batchv1.
 							},
 						},
 					}, migration.Spec.FlywayConfiguration.Volumes...),
-					ImagePullSecrets: migration.Spec.MigrationSource.ImagePullSecrets,
-					RestartPolicy:    corev1.RestartPolicyNever,
+					ImagePullSecrets:   migration.Spec.MigrationSource.ImagePullSecrets,
+					RestartPolicy:      corev1.RestartPolicyNever,
+					NodeSelector:       maps.Clone(config.NodeSelector),
+					Tolerations:        copyTolerations(config.Tolerations),
+					Affinity:           config.Affinity.DeepCopy(),
+					PriorityClassName:  config.PriorityClassName,
+					ServiceAccountName: config.ServiceAccountName,
 				},
 			},
 		},

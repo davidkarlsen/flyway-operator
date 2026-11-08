@@ -178,6 +178,63 @@ spec:
 			g.Expect(pod.Labels).NotTo(HaveKey("app.kubernetes.io/instance"))
 		}, jobTimeout, pollInterval).Should(Succeed())
 	})
+	It("sets resources, tolerations and the service account on the Job's pod", func() {
+		mustRun(exec.Command("kubectl", "-n", namespace, "create", "serviceaccount", "flyway-podfields"))
+		cmd := exec.Command("kubectl", "-n", namespace, "apply", "-f", "-")
+		cmd.Stdin = strings.NewReader(fmt.Sprintf(`apiVersion: flyway.davidkarlsen.com/v1alpha1
+kind: Migration
+metadata:
+  name: pod-fields
+spec:
+  database:
+    username: app
+    jdbcUrl: jdbc:postgresql://postgres:5432/app
+    credentials:
+      name: postgres
+      key: password
+  migrationSource:
+    imageRef: %s
+  flywayConfiguration:
+    defaultSchema: podfields
+    serviceAccountName: flyway-podfields
+    priorityClassName: system-cluster-critical
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {memory: 768Mi}
+    tolerations:
+      - {key: example.com/none, operator: Exists}
+`, sqlImage("v1")))
+		mustRun(cmd)
+
+		// The pod runs the migration with these settings, so the Migration still reaches Applied.
+		Eventually(func(g Gomega) {
+			out, err := utils.Run(exec.Command("kubectl", "-n", namespace, "get", "pods",
+				"-l", "batch.kubernetes.io/job-name=pod-fields", "-o", "json"))
+			g.Expect(err).NotTo(HaveOccurred())
+			var pods struct {
+				Items []struct {
+					Spec struct {
+						ServiceAccountName string `json:"serviceAccountName"`
+						PriorityClassName  string `json:"priorityClassName"`
+						Containers         []struct {
+							Resources struct {
+								Requests map[string]string `json:"requests"`
+								Limits   map[string]string `json:"limits"`
+							} `json:"resources"`
+						} `json:"containers"`
+					} `json:"spec"`
+				} `json:"items"`
+			}
+			g.Expect(json.Unmarshal([]byte(out), &pods)).To(Succeed())
+			g.Expect(pods.Items).NotTo(BeEmpty())
+			spec := pods.Items[0].Spec
+			g.Expect(spec.ServiceAccountName).To(Equal("flyway-podfields"))
+			g.Expect(spec.PriorityClassName).To(Equal("system-cluster-critical"))
+			g.Expect(spec.Containers).To(HaveLen(1))
+			g.Expect(spec.Containers[0].Resources.Requests).To(HaveKeyWithValue("memory", "256Mi"))
+			g.Expect(spec.Containers[0].Resources.Limits).To(HaveKeyWithValue("memory", "768Mi"))
+		}, jobTimeout, pollInterval).Should(Succeed())
+	})
 })
 
 // applyMigration creates or updates a Migration against the in-cluster postgres, migrating the given schema.
