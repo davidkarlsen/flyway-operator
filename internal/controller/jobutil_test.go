@@ -180,7 +180,7 @@ func TestCreateJobSpec(t *testing.T) {
 				Spec: flywayv1alpha1.MigrationSpec{
 					Database: flywayv1alpha1.Database{
 						Username: "testuser",
-						Credentials: corev1.SecretKeySelector{
+						Credentials: &corev1.SecretKeySelector{
 							LocalObjectReference: corev1.LocalObjectReference{Name: "db-secret"},
 							Key:                  "password",
 						},
@@ -208,7 +208,7 @@ func TestCreateJobSpec(t *testing.T) {
 				Spec: flywayv1alpha1.MigrationSpec{
 					Database: flywayv1alpha1.Database{
 						Username: "user2",
-						Credentials: corev1.SecretKeySelector{
+						Credentials: &corev1.SecretKeySelector{
 							LocalObjectReference: corev1.LocalObjectReference{Name: "secret2"},
 							Key:                  "pass2",
 						},
@@ -237,7 +237,7 @@ func TestCreateJobSpec(t *testing.T) {
 				Spec: flywayv1alpha1.MigrationSpec{
 					Database: flywayv1alpha1.Database{
 						Username: "voluser",
-						Credentials: corev1.SecretKeySelector{
+						Credentials: &corev1.SecretKeySelector{
 							LocalObjectReference: corev1.LocalObjectReference{Name: "vol-secret"},
 							Key:                  "volpass",
 						},

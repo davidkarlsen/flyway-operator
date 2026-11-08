@@ -204,17 +204,18 @@ func resourcesOrEmpty(r *corev1.ResourceRequirements) corev1.ResourceRequirement
 
 func createJobSpec(migration *flywayv1alpha1.Migration, attempt int32) *batchv1.Job {
 	config := migration.Spec.FlywayConfiguration
-	envVars := []corev1.EnvVar{
-		{
-			Name:  "FLYWAY_USER",
-			Value: migration.Spec.Database.Username,
-		},
-		{
-			Name: "FLYWAY_PASSWORD",
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &(migration.Spec.Database).Credentials,
-			},
-		},
+	var envVars []corev1.EnvVar
+	if migration.Spec.Database.Username != "" {
+		envVars = append(envVars, corev1.EnvVar{Name: "FLYWAY_USER", Value: migration.Spec.Database.Username})
+	}
+	// Without credentials there is no FLYWAY_PASSWORD: the driver authenticates through the URL and the pod's identity.
+	if migration.Spec.Database.Credentials != nil {
+		envVars = append(envVars, corev1.EnvVar{
+			Name:      "FLYWAY_PASSWORD",
+			ValueFrom: &corev1.EnvVarSource{SecretKeyRef: migration.Spec.Database.Credentials.DeepCopy()},
+		})
+	}
+	envVars = append(envVars, []corev1.EnvVar{
 		{
 			Name:  "FLYWAY_URL",
 			Value: migration.Spec.Database.JdbcUrl,
@@ -223,7 +224,7 @@ func createJobSpec(migration *flywayv1alpha1.Migration, attempt int32) *batchv1.
 			Name:  "FLYWAY_ENCODING",
 			Value: migration.Spec.MigrationSource.Encoding,
 		},
-	}
+	}...)
 	for _, e := range []corev1.EnvVar{
 		{Name: "FLYWAY_LOCATIONS", Value: sqlLocation(migration)},
 		// without it Flyway exits 0 without running anything when the location does not exist

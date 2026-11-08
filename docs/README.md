@@ -30,3 +30,4 @@ startup, or hold DDL privileges. The SQL is versioned and promoted as an immutab
   - [DB2 with username and password](examples/db2-password.md)
   - [Azure SQL with a service principal and certificate](examples/mssql-sp-cert.md)
   - [Resources, scheduling and service account (ResourceQuota)](examples/resources-and-quota.md)
+  - [Azure SQL with Entra ID workload identity (passwordless)](examples/azure-sql-workload-identity.md)

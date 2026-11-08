@@ -69,7 +69,7 @@ func newMigration(namespace, name string) *flywayv1alpha1.Migration {
 		Spec: flywayv1alpha1.MigrationSpec{
 			Database: flywayv1alpha1.Database{
 				Username: "someUser",
-				Credentials: corev1.SecretKeySelector{
+				Credentials: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{Name: "somesecret"},
 					Key:                  "someKey",
 				},
@@ -271,7 +271,7 @@ var _ = Describe("Migration controller (envtest)", func() {
 			Expect(envValue(flyway.Env, "FLYWAY_PLACEHOLDERS_owner")).To(Equal("app"))
 			Expect(flyway.Env).To(ContainElement(corev1.EnvVar{
 				Name:      "FLYWAY_PASSWORD",
-				ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &m.Spec.Database.Credentials},
+				ValueFrom: &corev1.EnvVarSource{SecretKeyRef: m.Spec.Database.Credentials},
 			}))
 
 			// The envtest namespace has no OpenShift UID range, so the pod runs as the default UID and fsGroup.
@@ -287,6 +287,21 @@ var _ = Describe("Migration controller (envtest)", func() {
 				Expect(c.SecurityContext.Capabilities.Drop).To(Equal([]corev1.Capability{"ALL"}), c.Name)
 				Expect(c.SecurityContext.ReadOnlyRootFilesystem).To(Equal(ptr.To(true)), c.Name)
 				Expect(c.VolumeMounts).To(ContainElement(corev1.VolumeMount{Name: tmpVolumeName, MountPath: tmpPath}), c.Name)
+			}
+		})
+
+		It("accepts a Migration without credentials and username and sets neither FLYWAY_PASSWORD nor FLYWAY_USER", func(ctx SpecContext) {
+			m := newMigration(ns, key.Name)
+			m.Spec.Database.Credentials = nil
+			m.Spec.Database.Username = ""
+			m.Spec.Database.JdbcUrl = "jdbc:sqlserver://h:1433;authentication=ActiveDirectoryDefault"
+			Expect(k8sClient.Create(ctx, m)).To(Succeed())
+
+			flyway := waitForJob(ctx, key, "").Spec.Template.Spec.Containers[0]
+
+			Expect(envValue(flyway.Env, "FLYWAY_URL")).To(ContainSubstring("ActiveDirectoryDefault"))
+			for _, e := range flyway.Env {
+				Expect(e.Name).NotTo(BeElementOf("FLYWAY_PASSWORD", "FLYWAY_USER"))
 			}
 		})
 
@@ -615,12 +630,6 @@ var _ = Describe("Migration controller (envtest)", func() {
 			Entry("missing imageRef", func(spec map[string]any) {
 				delete(spec["migrationSource"].(map[string]any), "imageRef")
 			}, "spec.migrationSource.imageRef"),
-			Entry("missing credentials", func(spec map[string]any) {
-				delete(spec["database"].(map[string]any), "credentials")
-			}, "spec.database.credentials"),
-			Entry("missing username", func(spec map[string]any) {
-				delete(spec["database"].(map[string]any), "username")
-			}, "spec.database.username"),
 			Entry("negative retryLimit", func(spec map[string]any) {
 				spec["retryLimit"] = int64(-1)
 			}, "spec.retryLimit"),

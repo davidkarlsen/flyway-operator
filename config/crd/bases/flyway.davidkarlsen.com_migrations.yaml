@@ -55,8 +55,10 @@ spec:
                 description: settings for database connection
                 properties:
                   credentials:
-                    description: reference to a secret containing the password for
-                      connecting to database
+                    description: |-
+                      reference to a secret containing the password for connecting to database. Passed as FLYWAY_PASSWORD.
+                      Leave it unset for passwordless login, where the JDBC driver authenticates through jdbcUrl and
+                      jdbcProperties and the pod's workload identity (see spec.flywayConfiguration.serviceAccountName).
                     properties:
                       key:
                         description: The key of the secret to select from.  Must be
@@ -84,12 +86,12 @@ spec:
                     pattern: ^jdbc:.*
                     type: string
                   username:
-                    description: username for connecting to database
+                    description: |-
+                      username for connecting to database. Passed as FLYWAY_USER; unset leaves it out, for authentication that
+                      needs no user name (for example ActiveDirectoryDefault).
                     type: string
                 required:
-                - credentials
                 - jdbcUrl
-                - username
                 type: object
               flywayConfiguration:
                 description: settings for flyway
