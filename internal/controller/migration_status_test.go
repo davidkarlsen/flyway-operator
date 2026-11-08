@@ -42,6 +42,8 @@ type statusHarness struct {
 	statusUpdates int
 	// lastJobDeletePropagation is the propagation policy of the latest Job delete that reached the client.
 	lastJobDeletePropagation metav1.DeletionPropagation
+	// lastJobDeletePreconditions are the preconditions of the latest Job delete that reached the client.
+	lastJobDeletePreconditions *metav1.Preconditions
 }
 
 func newStatusHarness(t *testing.T, retryLimit *int32, extra ...interceptor.Funcs) *statusHarness {
@@ -77,6 +79,7 @@ func newStatusHarness(t *testing.T, retryLimit *int32, extra ...interceptor.Func
 				h.jobDeletes++
 				o := &client.DeleteOptions{}
 				o.ApplyOptions(opts)
+				h.lastJobDeletePreconditions = o.Preconditions
 				if o.PropagationPolicy != nil {
 					h.lastJobDeletePropagation = *o.PropagationPolicy
 				}

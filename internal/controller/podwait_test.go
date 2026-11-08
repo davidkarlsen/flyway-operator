@@ -8,11 +8,13 @@ import (
 	"time"
 
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -39,7 +41,7 @@ func (h *statusHarness) addPod(name string, mutate func(p *corev1.Pod)) {
 		h.t.Fatal(err)
 	}
 	p.Status = status
-	if err := h.c.Update(context.TODO(), p); err != nil {
+	if err := h.c.Status().Update(context.TODO(), p); err != nil {
 		h.t.Fatal(err)
 	}
 }
@@ -129,7 +131,7 @@ func TestPodWaitMessages(t *testing.T) {
 		{"FailedCreate event", func(h *statusHarness) {
 			h.addFailedCreate(`pods "x" is forbidden: exceeded quota: q, requested: limits.cpu=1`)
 		}, `pod not created: pods "x" is forbidden: exceeded quota: q`},
-		{"no pod and no event", func(h *statusHarness) {}, "no pod created after 5m0s, see `kubectl describe job status-migration`"},
+		{"no pod and no event", func(h *statusHarness) {}, "no pod created yet, see `kubectl describe job status-migration`"},
 		{"ContainerCreating is not a finding", func(h *statusHarness) {
 			h.addPod("p", waiting("ContainerCreating", ""))
 		}, ""},
@@ -139,7 +141,7 @@ func TestPodWaitMessages(t *testing.T) {
 				waiting("ImagePullBackOff", "other")(p)
 				p.OwnerReferences[0].UID = "someone-else"
 			})
-		}, "no pod created after"},
+		}, "no pod created yet"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			h := runningJob(t)
@@ -166,8 +168,9 @@ func TestPodWaitMessages(t *testing.T) {
 		h.addPod("p", waiting("ErrImagePull", long))
 		h.reconcileResult()
 		c := h.progressing()
-		if n := len([]rune(c.Message)); n > 450 || !strings.HasSuffix(c.Message, "…") {
-			t.Errorf("message has %d runes, want a truncated one: %q", n, c.Message)
+		_, detail, _ := strings.Cut(c.Message, prefixImagePullFailed)
+		if n := len([]rune(detail)); n != maxWaitMessage || !strings.HasSuffix(detail, "…") {
+			t.Errorf("detail has %d runes, want exactly %d ending in an ellipsis: %q", n, maxWaitMessage, detail)
 		}
 	})
 }
@@ -201,19 +204,31 @@ func TestPodWaitKeepsPullCauseWhileBackingOff(t *testing.T) {
 	h.addPod("p", waiting("ErrImagePull", "manifest unknown"))
 	h.reconcileResult()
 	want := h.progressing().Message
+	if !strings.Contains(want, "manifest unknown") {
+		t.Fatalf("message = %q, want the pull cause", want)
+	}
 
-	h.addPod("p2", nil) // an unrelated pending pod must not matter
-	p := &corev1.Pod{}
-	if err := h.c.Get(context.TODO(), client.ObjectKey{Namespace: "ns", Name: "p"}, p); err != nil {
-		t.Fatal(err)
+	setPodStatus := func(mutate func(p *corev1.Pod)) {
+		p := &corev1.Pod{}
+		if err := h.c.Get(context.TODO(), client.ObjectKey{Namespace: "ns", Name: "p"}, p); err != nil {
+			t.Fatal(err)
+		}
+		mutate(p)
+		if err := h.c.Status().Update(context.TODO(), p); err != nil {
+			t.Fatal(err)
+		}
 	}
-	waiting("ImagePullBackOff", `Back-off pulling image "reg/flyway:x"`)(p)
-	if err := h.c.Update(context.TODO(), p); err != nil {
-		t.Fatal(err)
-	}
+	setPodStatus(waiting("ImagePullBackOff", `Back-off pulling image "reg/flyway:x"`))
 	h.reconcileResult()
 	if got := h.progressing().Message; got != want {
 		t.Errorf("message = %q, want the ErrImagePull cause kept: %q", got, want)
+	}
+
+	// a different cause is not hidden
+	setPodStatus(waiting("ErrImagePull", "unauthorized"))
+	h.reconcileResult()
+	if got := h.progressing().Message; !strings.Contains(got, "unauthorized") {
+		t.Errorf("message = %q, want the new cause", got)
 	}
 }
 
@@ -226,7 +241,7 @@ func TestPodWaitFallsBackWhenEventsAreForbidden(t *testing.T) {
 	}})
 	h.addFailedCreate("exceeded quota")
 	h.reconcileResult()
-	if m := h.progressing().Message; !strings.Contains(m, "no pod created after") || strings.Contains(m, "quota") {
+	if m := h.progressing().Message; !strings.Contains(m, "no pod created yet") || strings.Contains(m, "quota") {
 		t.Errorf("message = %q, want the age fallback", m)
 	}
 }
@@ -258,6 +273,16 @@ func TestPodWaitReplacesOldJobThatNeverStarted(t *testing.T) {
 		}},
 		{"unschedulable", func(h *statusHarness) { h.addPod("p", unschedulable("0/3 nodes")) }},
 		{"ContainerCreating", func(h *statusHarness) { h.addPod("p", waiting("ContainerCreating", "")) }},
+		{"an injected init container ran and a sidecar runs while the pod is Pending", func(h *statusHarness) {
+			h.addPod("p", func(p *corev1.Pod) {
+				p.Status.InitContainerStatuses = []corev1.ContainerStatus{{Name: "istio-init",
+					State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 0}}}}
+				p.Status.ContainerStatuses = []corev1.ContainerStatus{
+					{Name: "istio-proxy", Started: ptr.To(true), State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
+					{Name: flywayContainerName, State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "ErrImagePull"}}},
+				}
+			})
+		}},
 		{"a running pod of another owner", func(h *statusHarness) {
 			h.addPod("p", func(p *corev1.Pod) { running(p); p.OwnerReferences[0].UID = "someone-else" })
 		}},
@@ -318,6 +343,40 @@ func TestPodWaitDoesNotReplaceOldJobThatStarted(t *testing.T) {
 				p.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: flywayContainerName,
 					State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 0}}}}
 			})
+		}},
+		{"container marked started", func(h *statusHarness) {
+			h.addPod("p", func(p *corev1.Pod) {
+				p.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: flywayContainerName, Started: ptr.To(true),
+					State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "PodInitializing"}}}}
+			})
+		}},
+		{"container that was running before", func(h *statusHarness) {
+			h.addPod("p", func(p *corev1.Pod) {
+				p.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: flywayContainerName,
+					State:                corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "ContainerCreating"}},
+					LastTerminationState: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}
+			})
+		}},
+		{"the Job counts a succeeded pod", func(h *statusHarness) {
+			j := h.job()
+			j.Status.Succeeded = 1
+			if err := h.c.Status().Update(context.TODO(), j); err != nil {
+				h.t.Fatal(err)
+			}
+		}},
+		{"an uncounted succeeded pod", func(h *statusHarness) {
+			j := h.job()
+			j.Status.UncountedTerminatedPods = &batchv1.UncountedTerminatedPods{Succeeded: []types.UID{"u1"}}
+			if err := h.c.Status().Update(context.TODO(), j); err != nil {
+				h.t.Fatal(err)
+			}
+		}},
+		{"an uncounted failed pod", func(h *statusHarness) {
+			j := h.job()
+			j.Status.UncountedTerminatedPods = &batchv1.UncountedTerminatedPods{Failed: []types.UID{"u1"}}
+			if err := h.c.Status().Update(context.TODO(), j); err != nil {
+				h.t.Fatal(err)
+			}
 		}},
 		{"pod past Pending", func(h *statusHarness) { h.addPod("p", func(p *corev1.Pod) { p.Status.Phase = corev1.PodFailed }) }},
 		{"a failed pod was cleaned up, a retry is Pending", func(h *statusHarness) {
@@ -393,4 +452,136 @@ func TestPodWaitReplacementSurvivesTerminatingJob(t *testing.T) {
 		t.Fatal("successor created while the old Job still exists")
 	}
 	h.expectRuns(0, 0, 0)
+}
+
+func TestPodWaitIgnoresEventsOfAnotherJobWithTheSameName(t *testing.T) {
+	h := runningJob(t)
+	h.addFailedCreate("exceeded quota")
+	ev := &corev1.Event{}
+	if err := h.c.Get(context.TODO(), client.ObjectKey{Namespace: "ns", Name: "ev-exc"}, ev); err != nil {
+		t.Fatal(err)
+	}
+	ev.InvolvedObject.UID = "an-earlier-job"
+	if err := h.c.Update(context.TODO(), ev); err != nil {
+		t.Fatal(err)
+	}
+	h.reconcileResult()
+	if m := h.progressing().Message; strings.Contains(m, "quota") || !strings.Contains(m, "no pod created yet") {
+		t.Errorf("message = %q, want the event of the earlier Job ignored", m)
+	}
+}
+
+func TestPodWaitDescribesTheNewestPod(t *testing.T) {
+	h := runningJob(t)
+	now := time.Now()
+	h.addPod("old", func(p *corev1.Pod) {
+		waiting("ErrImagePull", "old cause")(p)
+		p.CreationTimestamp = metav1.NewTime(now.Add(-time.Hour))
+	})
+	h.addPod("new", func(p *corev1.Pod) {
+		waiting("ErrImagePull", "new cause")(p)
+		p.CreationTimestamp = metav1.NewTime(now)
+	})
+	h.reconcileResult()
+	if m := h.progressing().Message; !strings.Contains(m, "new cause") || strings.Contains(m, "old cause") {
+		t.Errorf("message = %q, want the newest pod described", m)
+	}
+}
+
+func TestPodWaitGraceBoundary(t *testing.T) {
+	for _, tt := range []struct {
+		age  time.Duration
+		want bool
+	}{{podWaitGrace - 10*time.Second, false}, {podWaitGrace + 10*time.Second, true}} {
+		h := runningJob(t)
+		j := h.job()
+		j.CreationTimestamp = metav1.NewTime(time.Now().Add(-tt.age))
+		if err := h.c.Update(context.TODO(), j); err != nil {
+			t.Fatal(err)
+		}
+		h.reconcileResult()
+		if got := strings.Contains(h.progressing().Message, "no pod created yet"); got != tt.want {
+			t.Errorf("job aged %s: message %q, want finding=%v", tt.age, h.progressing().Message, tt.want)
+		}
+	}
+}
+
+func TestPodWaitMessageIsStableOverTime(t *testing.T) {
+	h := runningJob(t)
+	h.reconcileResult()
+	first := h.progressing().Message
+	writes := h.statusUpdates
+	j := h.job()
+	j.CreationTimestamp = metav1.NewTime(time.Now().Add(-3 * time.Hour))
+	if err := h.c.Update(context.TODO(), j); err != nil {
+		t.Fatal(err)
+	}
+	h.reconcileResult()
+	if h.progressing().Message != first || h.statusUpdates != writes {
+		t.Errorf("message or status changed with the Job's age: %q -> %q", first, h.progressing().Message)
+	}
+}
+
+func TestPodWaitPodsForbiddenKeepsPlainMessageWithoutRequeue(t *testing.T) {
+	fail := false
+	h := runningJob(t, interceptor.Funcs{List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+		if _, ok := list.(*corev1.PodList); ok && fail {
+			return apierrors.NewForbidden(schema.GroupResource{Resource: "pods"}, "", errors.New("no rbac"))
+		}
+		return c.List(ctx, list, opts...)
+	}})
+	fail = true
+	res := h.reconcileResult()
+	if res.RequeueAfter != 0 {
+		t.Errorf("requeueAfter = %s, want none when pods are forbidden", res.RequeueAfter)
+	}
+	if m := h.progressing().Message; m != "Job status-migration attempt 1 of 3 is running" {
+		t.Errorf("message = %q, want the plain one", m)
+	}
+}
+
+// Only the message may be read from the watch cache; the decision to delete a Job reads the pods fresh.
+func TestPodWaitReadsPodsFreshOnlyToDecide(t *testing.T) {
+	var rv []string
+	h := runningJob(t, interceptor.Funcs{List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+		if _, ok := list.(*corev1.PodList); ok {
+			lo := &client.ListOptions{}
+			lo.ApplyOptions(opts)
+			if lo.Raw != nil {
+				rv = append(rv, lo.Raw.ResourceVersion)
+			} else {
+				rv = append(rv, "")
+			}
+		}
+		return c.List(ctx, list, opts...)
+	}})
+	rv = nil
+	h.reconcile() // the current generation: a message only
+	if len(rv) != 1 || rv[0] != "0" {
+		t.Errorf("current generation pod list resourceVersions = %q, want [\"0\"]", rv)
+	}
+	rv = nil
+	h.supersede()
+	h.reconcile() // an older generation: a decision
+	if len(rv) != 1 || rv[0] != "" {
+		t.Errorf("older generation pod list resourceVersions = %q, want a fresh read", rv)
+	}
+}
+
+func TestPodWaitDeletesOnlyTheJobItListed(t *testing.T) {
+	h := runningJob(t)
+	j := h.job()
+	j.UID = "uid-of-the-old-job"
+	if err := h.c.Update(context.TODO(), j); err != nil {
+		t.Fatal(err)
+	}
+	if h.job().UID != "uid-of-the-old-job" {
+		t.Fatal("the fake client dropped the UID")
+	}
+	h.supersede()
+	h.reconcile()
+	got := h.lastJobDeletePreconditions
+	if got == nil || got.UID == nil || *got.UID != "uid-of-the-old-job" {
+		t.Errorf("delete preconditions = %v, want the listed Job's UID", got)
+	}
 }

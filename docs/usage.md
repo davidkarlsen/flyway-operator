@@ -355,16 +355,22 @@ kubectl get migration my-app -o jsonpath='{.status.conditions[?(@.type=="Progres
 | Message after "is running;" | Source | Cause |
 | --- | --- | --- |
 | `pod not created: ...` | the newest `FailedCreate` event of the Job | quota, missing `ServiceAccount` or `PriorityClass`, Pod Security or SCC admission |
-| `no pod created after ..., see kubectl describe job` | Job age, when no `FailedCreate` event can be read | as above; the operator has no RBAC for events (see below) or the event expired |
+| `no pod created yet, see kubectl describe job` | the Job is over 30s old and no `FailedCreate` event can be read | as above; the operator has no RBAC for events (see below) or the event expired |
 | `pod unschedulable: ...` | the pod's `PodScheduled` condition (`FailedScheduling`) | `nodeSelector`, `affinity`, `tolerations` or `resources` fit no node |
 | `image pull failed: ...` | `ImagePullBackOff`, `ErrImagePull` or `InvalidImageName` of a container | wrong image or registry credentials |
 | `container cannot start: ...` | `CreateContainerConfigError` or `CreateContainerError` | for example a missing Secret or a `runAsNonRoot` conflict |
 
 Messages are cut at 300 characters, so `kubectl describe` still has the full text. The operator reads pods and the
-Job's events from the API server (`pods` and `events` need the `list` verb). Without that RBAC, for example on a chart
-older than the operator, the message is the plain `is running` text or the age-based one; nothing else changes. A failure
-to pull the *migration source* image volume is not named: the pod shows `ContainerCreating` and the reason is in
-`kubectl describe pod`. Look at the details by hand:
+Job's events from the API server and needs the `list` verb on both. A missing permission degrades differently:
+
+- **`events` forbidden:** the cause of a missing pod is not shown; the message says `no pod created yet`.
+- **`pods` forbidden:** the message is the plain `is running` text, and the operator also cannot tell whether an old
+  Job ever started, so it keeps waiting for it (`PreviousJobRunning`) and never does the replacement described below.
+  The Helm chart's ClusterRole gains both verbs in the chart release after this change, so until a chart with them is
+  installed Helm users see this case; the kustomize and OLM installs get them with the operator.
+
+A failure to pull the *migration source* image volume is not named: the pod shows `ContainerCreating` and the reason is
+in `kubectl describe pod`. Look at the details by hand:
 
 ```shell
 kubectl describe job my-app     # FailedCreate: the pod was not admitted

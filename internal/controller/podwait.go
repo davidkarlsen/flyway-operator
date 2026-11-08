@@ -37,7 +37,7 @@ const (
 	// podWaitRequeue is how often a Job whose pod has not started is looked at again: pod status changes do not
 	// trigger a reconcile because the operator does not watch pods.
 	podWaitRequeue = 15 * time.Second
-	// podWaitGrace is how old a Job without pods must be before "no pod created" is reported when no
+	// podWaitGrace is how old a Job without pods must be before "no pod created yet" is reported when no
 	// FailedCreate event explains it.
 	podWaitGrace = 30 * time.Second
 	// maxWaitMessage bounds the pod detail put into a condition message.
@@ -64,9 +64,15 @@ func (r *MigrationReconciler) reader() client.Reader {
 
 // podsOfJob lists the pods the Job controller created for the Job, from the API server (not the cache, which
 // would start a cluster-wide Pod informer).
-func (r *MigrationReconciler) podsOfJob(ctx context.Context, job *batchv1.Job) ([]corev1.Pod, error) {
+// With fresh false the list may come from the API server's watch cache (resourceVersion 0): good enough for a
+// message, never for deciding that nothing ran.
+func (r *MigrationReconciler) podsOfJob(ctx context.Context, job *batchv1.Job, fresh bool) ([]corev1.Pod, error) {
 	list := &corev1.PodList{}
-	if err := r.reader().List(ctx, list, client.InNamespace(job.Namespace), client.MatchingLabels{jobNameLabel: job.Name}); err != nil {
+	opts := []client.ListOption{client.InNamespace(job.Namespace), client.MatchingLabels{jobNameLabel: job.Name}}
+	if !fresh {
+		opts = append(opts, &client.ListOptions{Raw: &metav1.ListOptions{ResourceVersion: "0"}})
+	}
+	if err := r.reader().List(ctx, list, opts...); err != nil {
 		return nil, err
 	}
 	pods := make([]corev1.Pod, 0, len(list.Items))
@@ -108,9 +114,9 @@ func jobMayHaveRun(job *batchv1.Job, listed int) bool {
 
 // jobNeverStarted reports whether the Flyway container of the Job never started: the Job has no pod, or only pods
 // that are still Pending with it not run, and its status shows no pod that ran or ended. It also returns the pods.
-// An error means unknown; callers treat that as started.
-func (r *MigrationReconciler) jobNeverStarted(ctx context.Context, job *batchv1.Job) (bool, []corev1.Pod, error) {
-	pods, err := r.podsOfJob(ctx, job)
+// An error means unknown; callers treat that as started. fresh is true when the answer decides to delete the Job.
+func (r *MigrationReconciler) jobNeverStarted(ctx context.Context, job *batchv1.Job, fresh bool) (bool, []corev1.Pod, error) {
+	pods, err := r.podsOfJob(ctx, job, fresh)
 	if err != nil {
 		return false, nil, err
 	}
@@ -132,6 +138,7 @@ func (r *MigrationReconciler) podWaitDetail(ctx context.Context, job *batchv1.Jo
 		return r.noPodDetail(ctx, job)
 	}
 	// newest first, so a replacement pod is described rather than the one it replaced
+	pods = slices.Clone(pods)
 	slices.SortFunc(pods, func(a, b corev1.Pod) int { return b.CreationTimestamp.Compare(a.CreationTimestamp.Time) })
 	pod := &pods[0]
 	statuses := append(slices.Clone(pod.Status.InitContainerStatuses), pod.Status.ContainerStatuses...)
@@ -174,8 +181,9 @@ func (r *MigrationReconciler) noPodDetail(ctx context.Context, job *batchv1.Job)
 			return prefixPodNotCreated + truncate(newest.Message, maxWaitMessage)
 		}
 	}
-	if age := time.Since(job.CreationTimestamp.Time); age > podWaitGrace {
-		return fmt.Sprintf("no pod created after %s, see `kubectl describe job %s`", age.Truncate(time.Minute), job.Name)
+	// no age in the text: it would change the message, and so write the status, every time it is shown
+	if time.Since(job.CreationTimestamp.Time) > podWaitGrace {
+		return fmt.Sprintf("no pod created yet, see `kubectl describe job %s`", job.Name)
 	}
 	return ""
 }

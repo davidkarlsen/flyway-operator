@@ -128,7 +128,7 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if state == jobRunning && existingJob.DeletionTimestamp == nil {
 			// a Job no container of which ever started cannot have touched the database: replace it rather than
 			// wait for it to time out. Any started container, or not knowing, means wait.
-			neverStarted, _, err := r.jobNeverStarted(ctx, existingJob)
+			neverStarted, _, err := r.jobNeverStarted(ctx, existingJob, true)
 			if err != nil {
 				logger.V(1).Info("unable to list the pods of the previous job, waiting for it", "job", existingJob.Name, "error", err.Error())
 			}
@@ -175,7 +175,7 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		var requeue time.Duration
 		if existingJob.DeletionTimestamp == nil {
 			// pod status changes do not trigger a reconcile, so look again while no container has started
-			neverStarted, pods, err := r.jobNeverStarted(ctx, existingJob)
+			neverStarted, pods, err := r.jobNeverStarted(ctx, existingJob, false)
 			switch {
 			case err != nil:
 				// without RBAC for pods (Forbidden) a retry cannot help; the plain message stays
@@ -328,6 +328,7 @@ func imageVolumeUnsupported(migration *flywayv1alpha1.Migration) bool {
 // replacement as PreviousJobReplaced. No run outcome is recorded: nothing ran.
 func (r *MigrationReconciler) replaceNeverStartedJob(ctx context.Context, migration *flywayv1alpha1.Migration, prev *flywayv1alpha1.MigrationStatus, job *batchv1.Job) (reconcile.Result, error) {
 	gen := job.Annotations[flywayv1alpha1.Generation]
+	log.FromContext(ctx).Info("Deleting job of an older generation: none of its containers ever started", "job", job.Name, "generation", gen)
 	if c := meta.FindStatusCondition(migration.Status.Conditions, flywayv1alpha1.ConditionProgressing); c == nil ||
 		c.Reason != flywayv1alpha1.ReasonPreviousJobReplaced || c.ObservedGeneration != migration.Generation {
 		r.Recorder.Event(migration, corev1.EventTypeNormal, flywayv1alpha1.ReasonPreviousJobReplaced,
@@ -357,9 +358,12 @@ func (r *MigrationReconciler) deleteJobWith(ctx context.Context, migration *flyw
 		log.FromContext(ctx).Info("Previous job is being deleted, requeueing", "job", job.Name)
 		return r.manageSuccess(ctx, migration, prev, deletionRequeue)
 	}
-	err := r.Delete(ctx, job, &client.DeleteOptions{
-		PropagationPolicy: &opts,
-	})
+	del := &client.DeleteOptions{PropagationPolicy: &opts}
+	if job.UID != "" {
+		// never delete a successor that took the name in the meantime
+		del.Preconditions = &metav1.Preconditions{UID: &job.UID}
+	}
+	err := r.Delete(ctx, job, del)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return r.manageError(ctx, migration, prev, err)
 	}
