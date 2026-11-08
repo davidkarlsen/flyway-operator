@@ -22,13 +22,13 @@ Helm chart for installing the operator outside of OLM. Mirrors the deployment su
 |-----------|---------|
 | `crds/` | CRD copy installed by Helm pre-install (see `crds/AGENTS.md`) |
 | `dashboards/` | Copy of `config/grafana/dashboards/*.json`, read by the dashboards templates. Never edit it by hand: run `make helm-dashboards` (chart CI fails on chart PRs if it is stale) |
-| `files/` | `rules.yaml`: the alert rule groups, rendered by `templates/prometheusrule.yaml` (kept identical to `config/prometheus/rules.yaml`) |
+| `files/` | `rules.yaml`: the alert rule groups, rendered by `templates/prometheusrule.yaml` (copy of the groups in `config/prometheus/rules.yaml`). Never edit it by hand: run `make helm-rules` (chart CI fails on chart PRs if it is stale) |
 | `templates/` | Deployment, RBAC, ServiceAccount, NOTES, helpers (see `templates/AGENTS.md`) |
 
 ## For AI Agents
 
 ### Working In This Directory
-- The chart is released in its own PR after the operator tag build (merging a `config/helm-chart/` change publishes it, see `.github/workflows/chart-release.yaml`): `make helm-crds` and `make helm-dashboards`, `image.tag` and `appVersion` to the new version, bump the chart `version`.
+- The chart is released in its own PR after the operator tag build (merging a `config/helm-chart/` change publishes it, see `.github/workflows/chart-release.yaml`): `make helm-crds`, `make helm-dashboards`, `make helm-rules` and `make helm-schema`, `image.tag` and `appVersion` to the new version, bump the chart `version`.
 - Helm does not upgrade CRDs in `crds/` after first install — breaking CRD changes require manual user action; document in chart `README.md` when bumping.
 - Chart is tested in CI via `chart-testing` (`ct lint`, `ct install`) — see `.github/workflows/chart-test.yaml` and `ct-config.yaml`.
 - When changing user-facing flags or RBAC in `config/manager/` or `config/rbac/`, mirror them into `templates/` so kustomize and Helm installs stay equivalent.

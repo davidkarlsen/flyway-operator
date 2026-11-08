@@ -36,6 +36,7 @@ A separate PR, merged after the tag build succeeded (merging any `config/helm-ch
 - `make helm-crds` (sync the chart CRD; chart-test fails if it's stale). The target and the chart-test gate come from #498.
 - `values.yaml` `image.tag` and `Chart.yaml` `appVersion` to the new version; bump the chart `version` (minor if anything user-visible changed).
 - `kubeVersion` in `Chart.yaml` if the minimum Kubernetes changed.
+- `make helm-dashboards` and `make helm-rules` to copy dashboard and alert changes since the last chart release (chart-test fails if either copy is stale).
 - `make helm-schema` whenever `values.yaml` changed (chart-test fails if `values.schema.json` is stale); add `# @schema` annotations only where the inferred type or enum is wrong.
 - Fold in any draft chart-fix PRs that were waiting for this release: carry each one's `Closes #N` into this PR's body, check `closingIssuesReferences`, and close the folded PRs with a link to this one.
 - Release note: Helm never upgrades `crds/`, so users must `kubectl apply` the CRD before `helm upgrade`.

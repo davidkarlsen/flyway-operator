@@ -18,7 +18,12 @@ image:
   # enum: [IfNotPresent, Always, Never]
   # @schema
   pullPolicy: IfNotPresent
+  # @schema
+  # type: [string, number]
+  # @schema
   tag: 0.7.0
+  # Image digest, e.g. sha256:<hash>. When set, it replaces the tag (image@digest).
+  digest: ""
 
 # @schema
 # type: array
@@ -78,6 +83,9 @@ service:
   # enum: [ClusterIP, NodePort, LoadBalancer]
   # @schema
   type: ClusterIP
+  # @schema
+  # type: [integer, string]
+  # @schema
   port: 80
 
 metrics:

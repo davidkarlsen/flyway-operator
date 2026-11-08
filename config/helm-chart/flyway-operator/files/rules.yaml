@@ -11,7 +11,8 @@ groups:
           runbook_url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/runbook.md#flywayoperatormetricsabsent
           summary: No flyway-operator metrics target is up.
           description: >-
-            Prometheus has no up flyway-operator scrape target for 10m, so no Migration alert can fire. Check the operator pod and the ServiceMonitor, and that Prometheus is bound to the metrics-reader ClusterRole.
+            Prometheus has no up flyway-operator scrape target for 10m, so no Migration alert can fire.
+            Check the operator pod and the ServiceMonitor, and that Prometheus is bound to the metrics-reader ClusterRole.
       - alert: FlywayOperatorReconcileErrors
         expr: |
           sum by (namespace) (rate(controller_runtime_reconcile_errors_total{controller="migration"}[15m]))
@@ -24,7 +25,8 @@ groups:
           runbook_url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/runbook.md#flywayoperatorreconcileerrors
           summary: More than 10% of Migration reconciles fail.
           description: >-
-            {{ $value | humanizePercentage }} of Migration reconciles failed over the last 15m. Check the operator logs.
+            {{ $value | humanizePercentage }} of Migration reconciles failed over the last 15m.
+            Check the operator logs.
   - name: flyway-operator.migrations
     rules:
       - alert: FlywayMigrationFailed
@@ -41,7 +43,11 @@ groups:
           runbook_url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/runbook.md#flywaymigrationfailed
           summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} failed and is not retried.
           description: >-
-            retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline, else RetryLimitExceeded), or the cluster does not support image volumes (ImageVolumeUnsupported). Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}` and `kubectl -n {{ $labels.namespace }} logs job/{{ $labels.migration }} -c flyway`. A spec change starts a new run.
+            retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline,
+            else RetryLimitExceeded), or the cluster does not support image volumes (ImageVolumeUnsupported).
+            Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}`
+            and `kubectl -n {{ $labels.namespace }} logs job/{{ $labels.migration }} -c flyway`.
+            A spec change starts a new run.
       - alert: FlywayMigrationStuck
         expr: |
           max by (namespace, migration) (
@@ -61,4 +67,5 @@ groups:
           runbook_url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/runbook.md#flywaymigrationstuck
           summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} has been progressing for more than 1h.
           description: >-
-            The Job may be waiting on a database lock, an unreachable database or an unschedulable pod. Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}` and the Job's pods.
+            The Job may be waiting on a database lock, an unreachable database or an unschedulable pod.
+            Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}` and the Job's pods.

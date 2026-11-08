@@ -116,12 +116,14 @@ Remove it again with `make undeploy` (controller) and `make uninstall` (CRDs).
   fields and optional credentials; the API server drops them until you apply it. Use the command in
   [Upgrading the CRD](#upgrading-the-crd) with tag `v0.7.0`. OLM and kustomize update the CRD themselves.
 - **RBAC.** The operator needs `pods: list` and `events: list` (to say why a pod does not start) and `pods/log: get`
-  (to read Flyway's output). OLM and kustomize grant them. Helm gets them with the chart release that follows the
-  v0.7.0 tag; until then the Migrations still run, but the status shows plain messages, a never-started Job is waited
-  for rather than replaced, and there is no `schemaVersion` and no Flyway error.
+  (to read Flyway's output). OLM and kustomize grant them. Helm gets them with chart 0.6.0; until then the Migrations
+  still run, but the status shows plain messages, a never-started Job is waited for rather than replaced, and there is
+  no `schemaVersion` and no Flyway error.
 - **Alerts.** A `PrometheusRule` with four alerts is now installed by default with OLM and kustomize (it needs the
-  Prometheus Operator CRDs), and is opt-in in Helm with the same chart release. To turn it off, see
+  Prometheus Operator CRDs), and is opt-in in Helm with chart 0.6.0. To turn it off, see
   [Shipped rules](metrics.md#shipped-rules); the alerts are explained in the [runbook](runbook.md).
+- **Helm: values are validated.** Chart 0.6.0 ships a `values.schema.json`; a value of the wrong type or an unknown
+  key fails `helm upgrade`, so check your values file against the chart's `values.yaml` first.
 - **OLM channel.** `stable-v0` is now the default channel, see [OpenShift (OLM)](#openshift-olm).
 
 ### New in 0.7.0

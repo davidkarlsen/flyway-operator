@@ -69,5 +69,5 @@ annotations:
       description: "Optional Grafana dashboards (grafana.dashboards.enabled): a ConfigMap and, when grafana-operator is installed, GrafanaDashboards"
     - kind: added
       description: "Optional PrometheusRule with the operator's alerts (prometheusRule.enabled)"
-    - kind: added
-      description: "values.schema.json: Helm validates values on install and upgrade"
+    - kind: changed
+      description: "Values are now validated against values.schema.json: a wrong type or an unknown key fails install and upgrade"

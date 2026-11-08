@@ -45,6 +45,8 @@ All commands are driven through the `Makefile`.
 | Generate `zz_generated.deepcopy.go` | `make generate` |
 | Copy the generated CRD into the Helm chart's `crds/` | `make helm-crds` |
 | Copy the Grafana dashboards into the Helm chart's `dashboards/` | `make helm-dashboards` |
+| Copy the alert rule groups into the Helm chart's `files/rules.yaml` | `make helm-rules` |
+| Regenerate the Helm chart's `values.schema.json` | `make helm-schema` |
 | Format / vet | `make fmt` / `make vet` |
 | Full build (runs manifests, generate, fmt, vet) | `make build` |
 | Run all tests with envtest | `make test` |

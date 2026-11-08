@@ -117,6 +117,12 @@
     "image": {
       "additionalProperties": false,
       "properties": {
+        "digest": {
+          "default": "",
+          "description": "Image digest, e.g. sha256:\u003chash\u003e. When set, it replaces the tag (image",
+          "title": "digest",
+          "type": "string"
+        },
         "pullPolicy": {
           "default": "IfNotPresent",
           "enum": [
@@ -139,8 +145,12 @@
         },
         "tag": {
           "default": "0.7.0",
+          "required": [],
           "title": "tag",
-          "type": "string"
+          "type": [
+            "string",
+            "number"
+          ]
         }
       },
       "required": [],
@@ -332,8 +342,12 @@
       "properties": {
         "port": {
           "default": 80,
+          "required": [],
           "title": "port",
-          "type": "integer"
+          "type": [
+            "integer",
+            "string"
+          ]
         },
         "type": {
           "default": "ClusterIP",

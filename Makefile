@@ -104,6 +104,10 @@ helm-dashboards: ## Copy the Grafana dashboards into the Helm chart's dashboards
 	rm -f config/helm-chart/flyway-operator/dashboards/*.json
 	cp config/grafana/dashboards/*.json config/helm-chart/flyway-operator/dashboards/
 
+.PHONY: helm-rules
+helm-rules: ## Copy the alert rule groups of config/prometheus/rules.yaml into the Helm chart's files/rules.yaml.
+	sed -e '1,/^spec:$$/d' -e 's/^  //' config/prometheus/rules.yaml > config/helm-chart/flyway-operator/files/rules.yaml
+
 .PHONY: helm-schema
 helm-schema: helm-schema-bin ## Generate the Helm chart's values.schema.json from values.yaml and its @schema annotations.
 	cd config/helm-chart/flyway-operator && $(HELM_SCHEMA) --no-dependencies --append-newline --skip-auto-generation required
@@ -297,7 +301,12 @@ helm-schema-bin: ## Download the pinned helm-schema locally if necessary. If ano
 	mkdir -p $(LOCALBIN) ;\
 	OS=$$(uname -s) && ARCH=$$(uname -m | sed 's/aarch64/arm64/') && \
 	TMP=$$(mktemp -d) && \
-	curl -fsSL https://github.com/dadav/helm-schema/releases/download/$(HELM_SCHEMA_VERSION)/helm-schema_$(HELM_SCHEMA_VERSION)_$${OS}_$${ARCH}.tar.gz | tar -xz -C $$TMP helm-schema ;\
+	ASSET=helm-schema_$(HELM_SCHEMA_VERSION)_$${OS}_$${ARCH}.tar.gz && \
+	URL=https://github.com/dadav/helm-schema/releases/download/$(HELM_SCHEMA_VERSION) && \
+	curl -fsSLo $$TMP/$$ASSET $$URL/$$ASSET && \
+	curl -fsSLo $$TMP/checksums.txt $$URL/checksums.txt && \
+	(cd $$TMP && grep "  $$ASSET$$" checksums.txt | shasum -a 256 -c -) && \
+	tar -xzf $$TMP/$$ASSET -C $$TMP helm-schema && \
 	mv $$TMP/helm-schema $(HELM_SCHEMA) ;\
 	rm -rf $$TMP ;\
 	}
