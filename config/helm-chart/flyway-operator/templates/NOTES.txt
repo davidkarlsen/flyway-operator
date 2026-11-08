@@ -17,3 +17,16 @@ is not available, so no ServiceMonitor was created. Install the Prometheus Opera
 upgrade, or disable it.
 {{- end }}
 {{- end }}
+{{- if .Values.grafana.dashboards.enabled }}
+
+The Grafana dashboards are in the ConfigMap {{ include "flyway-operator.fullname" . }}-dashboards in namespace {{ .Release.Namespace }}.
+{{- if not .Values.grafana.dashboards.grafanaDashboard.enabled }}
+The Grafana sidecar loads it by the label grafana_dashboard.
+{{- else if not (.Capabilities.APIVersions.Has "grafana.integreatly.org/v1beta1") }}
+
+WARNING: grafana.dashboards.grafanaDashboard.enabled=true but the grafana.integreatly.org/v1beta1 API
+is not available, so no GrafanaDashboard was created. The ConfigMap was created: the Grafana sidecar
+loads it by the label grafana_dashboard, or import the JSON from it manually (see docs/dashboards.md).
+Install grafana-operator and upgrade to have GrafanaDashboards created.
+{{- end }}
+{{- end }}

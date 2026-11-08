@@ -44,6 +44,7 @@ All commands are driven through the `Makefile`.
 | Generate CRDs / RBAC from kubebuilder markers | `make manifests` |
 | Generate `zz_generated.deepcopy.go` | `make generate` |
 | Copy the generated CRD into the Helm chart's `crds/` | `make helm-crds` |
+| Copy the Grafana dashboards into the Helm chart's `dashboards/` | `make helm-dashboards` |
 | Format / vet | `make fmt` / `make vet` |
 | Full build (runs manifests, generate, fmt, vet) | `make build` |
 | Run all tests with envtest | `make test` |

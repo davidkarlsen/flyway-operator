@@ -56,7 +56,7 @@ The kustomize install (`config/default`) and the OLM bundle create a ConfigMap `
 operator's namespace (`flyway-operator-system` for kustomize, the install namespace for OLM). It has one key per
 dashboard, `flyway-operator.json` and `flyway-migrations.json`, and the label `grafana_dashboard: "1"`.
 
-The Helm chart does not ship the dashboards yet.
+The Helm chart ships them too, see [Helm](#helm).
 
 The ConfigMap is about 70 KB. `make deploy` applies with client-side `kubectl apply`, which stores a copy of each
 object in the `kubectl.kubernetes.io/last-applied-configuration` annotation; annotations of an object are capped at
@@ -66,6 +66,37 @@ do not use that annotation.
 Use one import path per Grafana: the grafana-operator, the sidecar, or a manual import. The dashboard uids
 (`flyway-operator`, `flyway-migrations`) are fixed, so a second path imports the same uids and the two overwrite
 each other.
+
+## Helm
+
+The chart creates the same ConfigMap, named `<release fullname>-dashboards` (for example
+`flyway-operator-dashboards`) in the release namespace, when you set `grafana.dashboards.enabled=true`. It is off
+by default. The ConfigMap has the keys `flyway-operator.json` and `flyway-migrations.json` and the labels from
+`grafana.dashboards.labels` (default `grafana_dashboard: "1"`), so the [Grafana sidecar](#grafana-sidecar) loads
+it as is.
+
+```yaml
+grafana:
+  dashboards:
+    enabled: true
+    grafanaDashboard:
+      instanceSelector:
+        matchLabels:
+          dashboards: grafana # match the labels of your Grafana resource
+      allowCrossNamespaceImport: true
+      folder: Flyway # optional
+```
+
+When the cluster serves `grafana.integreatly.org/v1beta1` (grafana-operator v5), the chart also creates the two
+`GrafanaDashboard`s of [grafana-operator v5](#grafana-operator-v5) in the release namespace, with
+`configMapRef` pointing at the ConfigMap. If the API is not served they are skipped, not failed, and the install
+notes say so; for `helm template` or GitOps rendering without a cluster pass
+`--api-versions grafana.integreatly.org/v1beta1`. `instanceSelector` and `allowCrossNamespaceImport` are immutable
+once the `GrafanaDashboard` exists, see below.
+
+Use one import path per Grafana. With the sidecar, set `grafana.dashboards.grafanaDashboard.enabled=false` so
+only the ConfigMap is created. The chart's copy of the JSON is kept in sync with `config/grafana/dashboards/` by
+`make helm-dashboards`.
 
 ## grafana-operator v5
 
