@@ -3,6 +3,82 @@ entries:
   flyway-operator:
   - annotations:
       artifacthub.io/changes: |
+        - kind: changed
+          description: "Operator 0.7.0. Apply the 0.7.0 CRD before helm upgrade: Helm does not update crds/"
+        - kind: added
+          description: "RBAC for pods list, events list and pods/log get: the operator reports why a pod does not start, Flyway's error and the schema version"
+        - kind: added
+          description: "Optional Grafana dashboards (grafana.dashboards.enabled): a ConfigMap and, when grafana-operator is installed, GrafanaDashboards"
+        - kind: added
+          description: "Optional PrometheusRule with the operator's alerts (prometheusRule.enabled)"
+        - kind: changed
+          description: "Values are now validated against values.schema.json: a wrong type or an unknown key fails install and upgrade"
+      artifacthub.io/crds: |
+        - kind: Migration
+          version: v1alpha1
+          name: migrations.flyway.davidkarlsen.com
+          displayName: Migration
+          description: Declarative Flyway database migration, run as a Kubernetes Job.
+      artifacthub.io/crdsExamples: |
+        - apiVersion: flyway.davidkarlsen.com/v1alpha1
+          kind: Migration
+          metadata:
+            name: my-app
+          spec:
+            database:
+              username: myuser
+              credentials:
+                name: my-app-db
+                key: password
+              jdbcUrl: "jdbc:postgresql://my-db:5432/my_app"
+            retryLimit: 2
+            migrationSource:
+              imageRef: "registry.example.com/my-app-sql:1.4.0"
+            flywayConfiguration: {}
+      artifacthub.io/images: |
+        - name: flyway-operator
+          image: ghcr.io/davidkarlsen/flyway-operator:0.7.0
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: |
+        - name: Documentation
+          url: https://github.com/davidkarlsen/flyway-operator/tree/main/docs
+        - name: Installing
+          url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/installing.md
+        - name: Usage
+          url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/usage.md
+        - name: Metrics and alerts
+          url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/metrics.md
+        - name: Dashboards
+          url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/dashboards.md
+        - name: Verifying releases
+          url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/verifying.md
+        - name: Source
+          url: https://github.com/davidkarlsen/flyway-operator
+      artifacthub.io/operator: "true"
+      artifacthub.io/operatorCapabilities: Deep Insights
+    apiVersion: v2
+    appVersion: 0.7.0
+    created: "2026-11-08T20:02:53.421184687Z"
+    dependencies:
+    - name: common
+      repository: oci://registry-1.docker.io/bitnamicharts
+      tags:
+      - bitnami-common
+      version: 2.x.x
+    description: Flyway Operator - an operator to do declarative database schema migration.
+    digest: a2abdc13a3412187df985ff5504f1c232007840f4c8bb254171df677211f117b
+    icon: https://pbs.twimg.com/profile_images/1339525060999192576/9ltj0fpE_400x400.png
+    kubeVersion: '>=1.35.0-0'
+    maintainers:
+    - email: david@davidkarlsen.com
+      name: davidkarlsen
+    name: flyway-operator
+    type: application
+    urls:
+    - https://github.com/davidkarlsen/flyway-operator/releases/download/flyway-operator-0.6.0/flyway-operator-0.6.0.tgz
+    version: 0.6.0
+  - annotations:
+      artifacthub.io/changes: |
         - kind: added
           description: "Artifact Hub annotations: image scanning, CRD, example and links"
       artifacthub.io/crds: |
@@ -330,4 +406,4 @@ entries:
     urls:
     - https://github.com/davidkarlsen/flyway-operator/releases/download/flyway-operator-0.1.1/flyway-operator-0.1.1.tgz
     version: 0.1.1
-generated: "2026-11-08T15:17:38.087909691Z"
+generated: "2026-11-08T20:02:53.421254908Z"
