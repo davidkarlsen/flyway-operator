@@ -3,13 +3,13 @@
 The operator ships two Grafana dashboards built on its [metrics](metrics.md). Both need a Prometheus that scrapes
 the operator with the Migration series' `namespace` label kept ([Labels as scraped](metrics.md#labels-as-scraped)).
 
-| Dashboard | uid | For | Shows |
-|-----------|-----|-----|-------|
-| Flyway operator | `flyway-operator` | The team running the operator (`alert_audience: platform`) | Scrape targets up, reconcile rate, errors and error ratio, reconcile latency, work queue depth, Migrations by condition and paused. |
-| Flyway migrations | `flyway-migrations` | Teams owning Migrations (`alert_audience: workload`) | Per-Migration status, runs by result, last run duration, how long Migrations have been progressing, paused Migrations. |
+| Dashboard | uid | For |
+|-----------|-----|-----|
+| Flyway operator | `flyway-operator` | The team running the operator (`alert_audience: platform`) |
+| Flyway migrations | `flyway-migrations` | Teams owning Migrations (`alert_audience: workload`) |
 
 The JSON files under [`config/grafana/dashboards/`](../config/grafana/dashboards) are the source of truth. Every
-query uses a Prometheus `datasource` variable, so no datasource UID is hard-coded: pick it from the dropdown at the top.
+query uses a Prometheus `datasource` variable, so no datasource UID is hard-coded: pick it from the dropdown at the top; it lists the Grafana's Prometheus datasources and defaults to its default one.
 
 ## Flyway operator
 
@@ -41,11 +41,7 @@ namespaces).
   fires above 1h.
 - **Paused Migrations**: Migrations with the `flyway-operator.davidkarlsen.com/paused` annotation set to `true`.
 
-Runs by result and Last run duration come from series the operator holds in memory ([metrics](metrics.md#migration-metrics)).
-They start over after an operator restart or a leader change: the run counters restart at zero, so attempts that
-finished on the previous leader or while the operator was down are not shown, and durations are missing until the next
-run of each Migration finishes. The condition and paused panels are read from the Migrations themselves and are back
-right away.
+Runs by result and Last run duration start over after an operator restart or leader change, see [Migration metrics](metrics.md#migration-metrics). The condition and paused panels are back right away.
 
 ## The ConfigMap
 
@@ -109,9 +105,6 @@ operator's namespace (its `WATCH_NAMESPACE` or cluster-wide mode).
 Choose both fields before the first apply. `instanceSelector` is immutable, and changing `allowCrossNamespaceImport`
 from `true` to `false` is rejected as well: to change either, delete and recreate the `GrafanaDashboard`.
 
-The dashboard's `datasource` variable lists the Prometheus datasources of that Grafana and defaults to its default
-one.
-
 ## Grafana sidecar
 
 The Grafana Helm chart and kube-prometheus-stack can run a sidecar that loads dashboards from ConfigMaps with the
@@ -133,8 +126,7 @@ sidecar:
 
 In Grafana, open **Dashboards > New > Import**, upload
 [`flyway-operator.json`](../config/grafana/dashboards/flyway-operator.json) or
-[`flyway-migrations.json`](../config/grafana/dashboards/flyway-migrations.json), and pick the Prometheus datasource
-in the dashboard's `datasource` dropdown. To read them from a cluster:
+[`flyway-migrations.json`](../config/grafana/dashboards/flyway-migrations.json). To read them from a cluster:
 
 ```shell
 kubectl -n flyway-operator-system get configmap flyway-operator-dashboards \

@@ -1,11 +1,9 @@
 # Metrics
 
-The operator serves Prometheus metrics at `/metrics` on port 8443 over HTTPS. This is on by default in every
-install path.
+The operator serves Prometheus metrics at `/metrics` on port 8443 over HTTPS, on by default in every install path.
 
 ## What is served
 
-- HTTPS on `:8443`, path `/metrics`.
 - Every request is checked by the controller-runtime authn/authz filter
   ([`filters.WithAuthenticationAndAuthorization`](https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/metrics/filters)):
   a `TokenReview` validates the bearer token, then a `SubjectAccessReview` checks that the caller may `get` the
@@ -53,9 +51,6 @@ The bundle is generated from `config/` and ships the same Deployment args, metri
 | `metrics.serviceMonitor.interval` | `""` | Scrape interval. Empty uses the Prometheus default. |
 | `metrics.serviceMonitor.labels` | `{}` | Extra labels on the `ServiceMonitor`, for example to match a Prometheus `serviceMonitorSelector`. |
 
-The secure metrics server needs operator image 0.3.0 or newer. The chart defaults to 0.4.1. With an older
-`image.tag`, metrics are served as plain HTTP without auth.
-
 ## Granting Prometheus access
 
 Prometheus needs its ServiceAccount bound to the operator's `metrics-reader` ClusterRole. Without this binding,
@@ -75,8 +70,7 @@ scrapes return 403.
 ## Prometheus without the Prometheus Operator
 
 A plain `scrape_config` for a Prometheus running in-cluster under a ServiceAccount bound as described above. Replace
-`<metrics-service>` with the metrics Service name: `flyway-operator-controller-manager-metrics-service` (kustomize or
-OLM) or `<release-fullname>-metrics` (Helm).
+`<metrics-service>` with the metrics Service name (see [Labels as scraped](#labels-as-scraped)).
 
 ```yaml
 scrape_configs:
@@ -115,7 +109,7 @@ Create `$TOKEN` with `kubectl create token <serviceaccount> -n <namespace>`.
 | `401` | No bearer token, or the `TokenReview` rejected it (expired or wrong audience). |
 | `403` | The token is valid, but its ServiceAccount is not bound to the `metrics-reader` ClusterRole. |
 | `200` | The ServiceAccount is authenticated and authorized. |
-| `400` or a TLS error | Plain `http://` was used against the HTTPS port. A TLS error with `https://` means the server speaks plain HTTP with no auth: either `--metrics-secure=false` is set, or the image is older than 0.3.0. |
+| `400` or a TLS error | Plain `http://` was used against the HTTPS port. A TLS error with `https://` means the server speaks plain HTTP with no auth: `--metrics-secure=false` is set. |
 | Connection refused | kustomize or OLM with `--metrics-bind-address=0`: the Service exists, but nothing listens on 8443. |
 | `Could not resolve host` | Helm with `metrics.enabled=false`: the `<release-fullname>-metrics` Service is not rendered. |
 
@@ -145,11 +139,10 @@ Create `$TOKEN` with `kubectl create token <serviceaccount> -n <namespace>`.
   then deletes the Job does not count it. A retried attempt whose status write failed after its Job was deleted is
   counted once if the Job is still terminating at the next reconcile, and stays uncounted if the Job is already gone.
   Attempts of a superseded generation are not counted.
-- Counters start at zero when the operator restarts. Alert on the state gauges, and use `increase()` or `rate()` on
-  counters. An attempt that fails while the operator is down is counted before the first scrape after the restart, so
-  `increase()` misses it.
-- `last_run_duration_seconds` is held in memory: after an operator restart or failover it is missing until the next
-  run of that Migration finishes.
+- `runs_total` and `last_run_duration_seconds` are held in memory. Counters start at zero when the operator restarts
+  or the leader changes, and the duration is missing until the next run of that Migration finishes. Alert on the state
+  gauges, and use `increase()` or `rate()` on counters. An attempt that fails while the operator is down is counted
+  before the first scrape after the restart, so `increase()` misses it.
 - When the operator cannot list Migrations from its cache during a scrape, it logs the error and serves no state
   series for that scrape, so open alerts on them can resolve and fire again.
 - A timed-out final attempt counts once in `runs_total{result="failed"}`. `ImageVolumeUnsupported` runs no Job, so
@@ -196,13 +189,6 @@ diagnosis and mitigation.
   operator pod served the series. Only the elected leader serves the state series, so they can be briefly missing
   during a rollout or failover; `FlywayMigrationFailed` and `FlywayMigrationStuck` have `keep_firing_for: 5m` so a
   short gap does not resolve and re-fire them.
-- `FlywayMigrationFailed` matches `Failed=True`, so it covers `RetryLimitExceeded`, `TimedOut` and
-  `ImageVolumeUnsupported`, and a paused Migration still raises it (intended). Only `FlywayMigrationStuck` ignores
-  paused ones.
-- `FlywayMigrationStuck` measures time since `Progressing` turned true from its last-transition timestamp, so an
-  operator restart does not reset it. A run ends on its own within `spec.activeDeadline × (retryLimit + 1)`, see
-  [Deadline](usage.md#deadline). Keep the threshold below that to hear about a hung run before it times out, or above
-  it to hear only about Migrations still progressing after that.
 - All shipped alerts are `warning`. Raise `FlywayMigrationFailed` to `critical` where a failed migration blocks a
   release, by patching the `severity` as described in [Shipped rules](#shipped-rules).
 
@@ -215,10 +201,10 @@ without honoring the series' labels it renames theirs to `exported_namespace`. T
 own `ServiceMonitor` or scrape config needs `honorLabels: true` or `honor_labels: true`, as in the example
 [above](#prometheus-without-the-prometheus-operator).
 
-`FlywayOperatorMetricsAbsent` matches the scrape target's `job` label, which depends on how it is scraped: the Service
-name with a `ServiceMonitor` (`flyway-operator-controller-manager-metrics-service` for kustomize and OLM,
-`<release-fullname>-metrics` for Helm), or `job_name` with a plain scrape config. Adjust `job=~".*flyway-operator.*"`
-if your names differ.
+The metrics Service is `flyway-operator-controller-manager-metrics-service` (kustomize and OLM) or
+`<release-fullname>-metrics` (Helm). `FlywayOperatorMetricsAbsent` matches the scrape target's `job` label: the Service
+name with a `ServiceMonitor`, or `job_name` with a plain scrape config. Adjust `job=~".*flyway-operator.*"` if your
+names differ.
 
 ### Shipped rules
 

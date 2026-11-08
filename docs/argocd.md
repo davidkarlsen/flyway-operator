@@ -12,7 +12,7 @@ current spec:
 | --- | --- |
 | `Applied=True` for the current generation | Healthy |
 | a Job is created, running or retried | Progressing |
-| `Failed=True` (`retryLimit` exhausted) | Degraded |
+| `Failed=True` (`RetryLimitExceeded`, `TimedOut` or `ImageVolumeUnsupported`) | Degraded |
 | paused by annotation | Suspended |
 
 With plain Argo CD, add it to `argocd-cm`:
@@ -48,7 +48,7 @@ data:
     return hs
 ```
 
-With the Argo CD operator (OpenShift GitOps), which manages `argocd-cm`, set it in the `ArgoCD` resource instead:
+With the Argo CD operator (OpenShift GitOps), which manages `argocd-cm`, set it in the `ArgoCD` resource instead, with the script above as the `check`:
 
 ```yaml
 spec:
@@ -56,32 +56,7 @@ spec:
     - group: flyway.davidkarlsen.com
       kind: Migration
       check: |
-        hs = {}
-        if obj.metadata.annotations ~= nil and obj.metadata.annotations["flyway-operator.davidkarlsen.com/paused"] == "true" then
-          hs.status = "Suspended"
-          hs.message = "Migration is paused"
-          return hs
-        end
-        local applied, failed
-        if obj.status ~= nil and obj.status.conditions ~= nil then
-          for _, c in ipairs(obj.status.conditions) do
-            if c.observedGeneration == obj.metadata.generation then
-              if c.type == "Applied" then applied = c end
-              if c.type == "Failed" then failed = c end
-            end
-          end
-        end
-        if failed ~= nil and failed.status == "True" then
-          hs.status = "Degraded"
-          hs.message = failed.message
-        elseif applied ~= nil and applied.status == "True" then
-          hs.status = "Healthy"
-          hs.message = applied.message
-        else
-          hs.status = "Progressing"
-          hs.message = applied ~= nil and applied.message or "Waiting for the operator to observe the current spec"
-        end
-        return hs
+        # the same Lua script as above, indented under check:
 ```
 
 ## Apply the schema before the application

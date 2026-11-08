@@ -16,7 +16,8 @@ signing identity is the `build.yaml` workflow running on the release tag.
 `:alpha` points at the catalog of the newest release, so it has that release's `-catalog:v<version>` signature and
 attestation. Releases made before signing was added are not signed.
 
-Requires [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) v3 or later and the
+Requires [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) v3 or later (releases are signed
+with cosign v3) and the
 [GitHub CLI](https://cli.github.com/).
 
 ## Container images

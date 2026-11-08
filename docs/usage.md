@@ -135,7 +135,7 @@ ends the pod but reports a failure. Adding `podMetadata` does not unstick a Job 
 
 `spec.activeDeadline` is the maximum run time per Job attempt: a duration such as `30m`, between `1s` and `8760h`,
 default `1h`. It becomes the Job's `activeDeadlineSeconds`, rounded up to whole seconds, and includes image pulls and the
-pod's retries. A migration that legitimately runs longer than an hour must set a higher value.
+pod's retries.
 
 - At the deadline Kubernetes kills the pod and fails the Job with reason `DeadlineExceeded`. This counts against
   `retryLimit`, so a `Migration` can run up to `activeDeadline × (retryLimit + 1)` before it reports `Failed`. Set
@@ -315,13 +315,28 @@ kubectl get migration my-app -o jsonpath='{.status.conditions[?(@.type=="Progres
 # Job my-app attempt 1 of 3 is running; pod not created: pods "my-app-" is forbidden: exceeded quota: ...
 ```
 
-| Message after "is running;" | Source | Cause |
+| Message after "is running;" | Source | Cause and fix |
 | --- | --- | --- |
-| `pod not created: ...` | the newest `FailedCreate` event of the Job | quota, missing `ServiceAccount` or `PriorityClass`, Pod Security or SCC admission |
-| `no pod created yet, see kubectl describe job` | the Job is over 30s old and no `FailedCreate` event can be read | as above; the operator has no RBAC for events (see below) or the event expired |
-| `pod unschedulable: ...` | the pod's `PodScheduled` condition (`FailedScheduling`) | `nodeSelector`, `affinity`, `tolerations` or `resources` fit no node |
-| `image pull failed: ...` | `ImagePullBackOff`, `ErrImagePull` or `InvalidImageName` of a container | wrong image or registry credentials |
-| `container cannot start: ...` | `CreateContainerConfigError` or `CreateContainerError` | for example a missing Secret or a `runAsNonRoot` conflict |
+| `pod not created: ...` | the newest `FailedCreate` event of the Job | Admission rejected the pod, see below. |
+| `no pod created yet, see kubectl describe job` | the Job is over 30s old and no `FailedCreate` event can be read | As above; the operator has no RBAC for events (see below) or the event expired. |
+| `pod unschedulable: ...` | the pod's `PodScheduled` condition (`FailedScheduling`; `kubectl describe pod` shows it, the Job does not) | `nodeSelector`, `affinity`, `tolerations` or `resources` fit no node. Fix them. |
+| `image pull failed: ...` | `ImagePullBackOff`, `ErrImagePull` or `InvalidImageName` of a container | Wrong image or registry credentials. |
+| `container cannot start: ...` | `CreateContainerConfigError` or `CreateContainerError` | For example a missing Secret, or `container has runAsNonRoot and image will run as root`: no UID was assigned (for example by `anyuid`) and the image has no non-root `USER`. Set `podSecurityContext.runAsUser`. |
+
+`FailedCreate` causes and fixes:
+
+| `FailedCreate` message | Cause and fix |
+| --- | --- |
+| `exceeded quota` or `must specify limits.cpu` | A `ResourceQuota` and no `resources`: see [ResourceQuota](#resourcequota). |
+| `serviceaccount "..." not found` or `no PriorityClass with name ... was found` | `serviceAccountName` or `priorityClassName` names something that does not exist. Creating it is enough, since the Job controller keeps retrying; correcting the `Migration` works too (see below). |
+| `violates PodSecurity "restricted"` or `unable to validate against any security context constraint` | An override dropped part of the restricted context, the image needs a UID the SCC does not allow, or OpenShift chose an SCC that assigns no UID. Pin the SCC with the pod annotation below. |
+
+```yaml
+spec:
+  podMetadata:
+    annotations:
+      openshift.io/required-scc: restricted-v2
+```
 
 Messages are cut at 300 characters, so `kubectl describe` still has the full text. The operator needs `list` on `pods`
 and on the Job's `events`; kustomize and OLM grant it, for Helm see [Before you upgrade](installing.md#before-you-upgrade).
@@ -338,28 +353,6 @@ in `kubectl describe pod`. Look at the details by hand:
 kubectl describe job my-app     # FailedCreate: the pod was not admitted
 kubectl describe pod -l batch.kubernetes.io/job-name=my-app   # CreateContainerConfigError and container errors
 ```
-
-- `FailedCreate` with `violates PodSecurity "restricted"` or `unable to validate against any security context constraint`:
-  an override dropped part of the restricted context, the image needs a UID the SCC does not allow, or OpenShift chose
-  an SCC that assigns no UID. Pin the SCC with a pod annotation:
-
-  ```yaml
-  spec:
-    podMetadata:
-      annotations:
-        openshift.io/required-scc: restricted-v2
-  ```
-
-- `CreateContainerConfigError` with `container has runAsNonRoot and image will run as root`: no UID was assigned
-  (for example by `anyuid`) and the image has no non-root `USER`. Set `podSecurityContext.runAsUser`.
-
-- `FailedCreate` with `exceeded quota` or `must specify limits.cpu`: the namespace has a `ResourceQuota` and the pod
-  sets no `resources`. Set `flywayConfiguration.resources` (see [ResourceQuota](#resourcequota)).
-- `FailedCreate` with `serviceaccount "..." not found` or `no PriorityClass with name ... was found`:
-  `serviceAccountName` or `priorityClassName` names something that does not exist. Creating the missing object is
-  enough, since the Job controller keeps retrying the pod creation. Correcting the `Migration` works too (see below).
-- A pod that stays `Pending` with `FailedScheduling` (shown by `kubectl describe pod`, not on the Job): the
-  `nodeSelector`, `affinity` or `tolerations` match no node, or the requested `resources` fit on none.
 
 Failed pod creations do not count against the Job's `backoffLimit`, so such a Job does not fail by itself. The
 [deadline](#deadline) bounds it once per attempt: with the defaults (`activeDeadline` 1h, `retryLimit` 2) a pod that
@@ -394,17 +387,11 @@ that generation) are also set.
 | `Progressing` | a Job for the current generation is created, running, or being retried |
 | `Failed` | the Job for the current generation failed and `retryLimit` is exhausted, or the cluster dropped its image volume |
 
-All three share one reason:
-
-| Reason | Meaning |
-| --- | --- |
-| `JobCreated`, `JobRunning`, `JobSucceeded` | the Job was created, is running, succeeded |
-| `Retrying` | an attempt failed and another follows |
-| `RetryLimitExceeded` | the last attempt failed |
-| `TimedOut` | the last attempt exceeded `spec.activeDeadline` |
-| `PreviousJobRunning` | a Job for an older generation is still running |
-| `PreviousJobReplaced` | a Job for an older generation was replaced; also for an older Job that never started a container |
-| `ImageVolumeUnsupported` | the cluster dropped the image volume |
+All three share one reason: `JobCreated`, `JobRunning`, `JobSucceeded`, `Retrying` (an attempt failed and another
+follows), `RetryLimitExceeded` (the last attempt failed), `TimedOut` (the last attempt exceeded `spec.activeDeadline`,
+see [Deadline](#deadline)), `PreviousJobRunning` (a Job for an older generation is still running), `PreviousJobReplaced`
+(an older Job was replaced, also one that never started a container) or `ImageVolumeUnsupported` (the cluster dropped
+the image volume).
 
 On failure the message holds the Job's own failure reason and message, followed by Flyway's error when it can be read
 (see below).

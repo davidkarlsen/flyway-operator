@@ -1,13 +1,9 @@
 # Installing
 
 The operator watches all namespaces. Choose one of the methods below, then continue with [usage](usage.md).
+Metrics are on by default in every install path; see [Metrics](metrics.md) for scraping, RBAC and verification.
 
 ## Requirements
-
-**Breaking (v0.6.0):** requires Kubernetes 1.35 or later and containerd 2.1 or later / CRI-O 1.31 or later.
-v0.5.x is the last release for older clusters. The SQL files are mounted at `/flyway/migration-source`, not
-`/flyway/sql`: update a `FLYWAY_LOCATIONS` you set yourself. A location that does not exist fails the Job
-(`FLYWAY_FAIL_ON_MISSING_LOCATIONS=true`).
 
 - Kubernetes 1.35 or later; on OpenShift, 4.22 or later. Migration Jobs mount the SQL image as an
   [image volume](https://kubernetes.io/docs/tasks/configure-pod-container/image-volumes/); the `ImageVolume`
@@ -57,6 +53,8 @@ v0.5.x is the last release for older clusters. The SQL files are mounted at `/fl
 
    `stable-v0` follows every 0.x release. To stay on one minor version, subscribe to `stable-v0.<minor>`
    (e.g. `stable-v0.5`) instead, and switch channels to upgrade.
+   From v0.7.0, `stable-v0` is the package's default channel. A subscription without `channel` follows it; one with an
+   explicit `channel` keeps it.
 
 3. Check that the install succeeded:
 
@@ -124,8 +122,7 @@ Remove it again with `make undeploy` (controller) and `make uninstall` (CRDs).
 - **Alerts.** A `PrometheusRule` with four alerts is now installed by default with OLM and kustomize (it needs the
   Prometheus Operator CRDs), and is opt-in in Helm with the same chart release. To turn it off, see
   [Shipped rules](metrics.md#shipped-rules); the alerts are explained in the [runbook](runbook.md).
-- **OLM channel.** `stable-v0` is now the package's default channel. A subscription without `channel` follows it; one
-  with an explicit `channel` keeps it.
+- **OLM channel.** `stable-v0` is now the default channel, see [OpenShift (OLM)](#openshift-olm).
 
 ### New in 0.7.0
 
@@ -138,11 +135,15 @@ Remove it again with `make undeploy` (controller) and `make uninstall` (CRDs).
 - The `Progressing` message says why the pod does not start, and a Job that never started a container is replaced
   when the spec changes; see [When the pod does not start](usage.md#when-the-pod-does-not-start).
 
+## Upgrading to 0.6.0
+
+v0.6.0 requires Kubernetes 1.35 or later, see [Requirements](#requirements); v0.5.x is the last release for older
+clusters. The SQL files are mounted at `/flyway/migration-source`, not `/flyway/sql`: update a `FLYWAY_LOCATIONS` you set
+yourself. A location that does not exist fails the Job (`FLYWAY_FAIL_ON_MISSING_LOCATIONS=true`).
+
 ## Upgrading to 0.5.0
 
 - Jobs no longer carry `app.kubernetes.io/name: flyway` and `app.kubernetes.io/instance: <migration>`. Selectors on
   those Job labels (e.g. `kubectl get jobs -l`) must switch to `flyway-operator.davidkarlsen.com/migration: <migration>`.
   Job pods now carry that label and `app.kubernetes.io/managed-by: flyway-operator` too, so NetworkPolicies and
   monitoring can select them; see [Job and pod metadata](usage.md#job-and-pod-metadata).
-
-Metrics are on by default in every install path; see [Metrics](metrics.md) for scraping, RBAC and verification.
