@@ -45,6 +45,15 @@ jobs:
             exit 1
           fi
 
+      - name: check chart values schema is up to date
+        run: |
+          make helm-schema
+          if [ -n "$(git status --porcelain -- config/helm-chart)" ]; then
+            git diff -- config/helm-chart
+            echo "::error::values.schema.json is stale; run make helm-schema and commit"
+            exit 1
+          fi
+
       - name: Shellcheck
         uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
 

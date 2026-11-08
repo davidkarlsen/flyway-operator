@@ -104,6 +104,10 @@ helm-dashboards: ## Copy the Grafana dashboards into the Helm chart's dashboards
 	rm -f config/helm-chart/flyway-operator/dashboards/*.json
 	cp config/grafana/dashboards/*.json config/helm-chart/flyway-operator/dashboards/
 
+.PHONY: helm-schema
+helm-schema: helm-schema-bin ## Generate the Helm chart's values.schema.json from values.yaml and its @schema annotations.
+	cd config/helm-chart/flyway-operator && $(HELM_SCHEMA) --no-dependencies --append-newline --skip-auto-generation required
+
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
@@ -283,6 +287,20 @@ bundle-build: ## Build the bundle image.
 .PHONY: bundle-push
 bundle-push: ## Push the bundle image.
 	$(MAKE) docker-push IMG=$(BUNDLE_IMG)
+
+HELM_SCHEMA_VERSION ?= 0.24.0
+HELM_SCHEMA ?= $(LOCALBIN)/helm-schema
+.PHONY: helm-schema-bin
+helm-schema-bin: ## Download the pinned helm-schema locally if necessary. If another version is installed in ./bin, it will be overwritten.
+	@test -x $(HELM_SCHEMA) && $(HELM_SCHEMA) --version 2>/dev/null | grep -q '$(HELM_SCHEMA_VERSION)' || { \
+	set -e ;\
+	mkdir -p $(LOCALBIN) ;\
+	OS=$$(uname -s) && ARCH=$$(uname -m | sed 's/aarch64/arm64/') && \
+	TMP=$$(mktemp -d) && \
+	curl -fsSL https://github.com/dadav/helm-schema/releases/download/$(HELM_SCHEMA_VERSION)/helm-schema_$(HELM_SCHEMA_VERSION)_$${OS}_$${ARCH}.tar.gz | tar -xz -C $$TMP helm-schema ;\
+	mv $$TMP/helm-schema $(HELM_SCHEMA) ;\
+	rm -rf $$TMP ;\
+	}
 
 OPM_VERSION ?= v1.74.0
 OPM ?= $(LOCALBIN)/opm

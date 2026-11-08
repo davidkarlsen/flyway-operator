@@ -26,7 +26,7 @@ Kustomize bases and overlays consumed by `make install`, `make deploy`, `make ma
 ### Working In This Directory
 - Most files are generated or kustomize-managed. After changing API types or RBAC markers, run `make manifests` rather than hand-editing CRDs/Roles.
 - Use `kustomize` (vendored to `./bin/kustomize` by `make kustomize`) to render — do not assume `kubectl apply -k` works identically across kustomize versions.
-- Helm chart in `helm-chart/` is a separate distribution path; updates to RBAC/Deployment in `config/` should be mirrored there if the chart exposes the same surface; `make helm-crds` copies the generated CRD into the chart.
+- Helm chart in `helm-chart/` is a separate distribution path; updates to RBAC/Deployment in `config/` should be mirrored there if the chart exposes the same surface; `make helm-crds` copies the generated CRD into the chart. After changing the chart's `values.yaml`, run `make helm-schema` to regenerate `values.schema.json` (types and enums come from `# @schema` annotations; chart CI fails if it is stale).
 
 ## Manual Notes
 

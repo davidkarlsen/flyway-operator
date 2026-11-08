@@ -9,7 +9,7 @@ Kubernetes operator that reconciles a `Migration` CRD (`flyway.davidkarlsen.com/
 
 | File | Description |
 |------|-------------|
-| `Makefile` | Canonical build/test/release entry points; auto-downloads `controller-gen`, `kustomize`, `envtest`, `operator-sdk`, `opm` into `./bin/` on first use. `make help` lists all targets |
+| `Makefile` | Canonical build/test/release entry points; auto-downloads `controller-gen`, `kustomize`, `envtest`, `operator-sdk`, `opm`, `helm-schema` into `./bin/` on first use. `make help` lists all targets |
 | `PROJECT` | Kubebuilder project descriptor (domain, layout, tracked resources), generated, do not hand-edit |
 | `go.mod` / `go.sum` | Go module + dependency graph |
 | `Dockerfile` | Operator image build (distroless `static:nonroot` base) |
