@@ -35,14 +35,14 @@ Reconciliation logic for the `Migration` CRD. The reconciler owns child Kubernet
 - Changes to the Job spec must stay Pod Security "restricted" compliant (every container gets the security context and the `/tmp` mount in `setSecurityContext`).
 
 ### Testing Requirements
-- Pure unit subset: `go test -count=1 -run "TestCreateJobSpec|TestGithubactionRunnerController|TestStatus|TestMetrics" ./internal/controller/`.
+- Pure unit subset: `go test -count=1 -run "TestCreateJobSpec|TestGithubactionRunnerController|TestStatus|TestMetrics|TestReconcile" ./internal/controller/`.
 - Full suite (Ginkgo + envtest): `make test`. Direct invocation requires `KUBEBUILDER_ASSETS` (set by `make envtest`).
 - Tests that need scheme registration call `s.AddKnownTypes(flywayv1alpha1.GroupVersion, migration)`; note `flywayv1alpha1.GroupVersion`, not `flywayv1alpha1.SchemeBuilder.GroupVersion`.
 - Anything a real cluster would show (Job behaviour, image volumes, retries) also needs the kind e2e suite in `test/e2e/` (`make test-e2e`).
 
 ### Common Patterns
 - Use `r.Recorder` to emit events; tests inject `record.NewFakeRecorder(N)`.
-- Status is computed with the `set*` helpers, then saved by `r.manageSuccess` (optionally with a requeue) or `r.manageError` (`reconcile_result.go`). They take the status as read at the start of the reconcile and write only when it changed, with `Status().Update` (no `Patch`): `outcomeIsNew` relies on a Conflict from a stale cache. `manageError` emits a `ProcessingError` Warning event and sets the `ReconcileError` condition; `manageSuccess` removes it, and removes the `ReconcileSuccess` condition older versions wrote.
+- Status is computed with the `set*` helpers, then saved by `r.manageSuccess` (optionally with a requeue) or `r.manageError` (`reconcile_result.go`). They take the status as read at the start of the reconcile and write only when it changed, with `Status().Update` (no `Patch`): `outcomeIsNew` relies on a Conflict from a stale cache. `manageError` emits a `ProcessingError` Warning event and sets the `ReconcileError` condition; `manageSuccess` removes it, and removes the `ReconcileSuccess` condition older versions wrote. The one direct `r.Status().Update` is intentional: the old-generation path persists `status.lastApplied*` before it deletes the succeeded Job, the only record of that success, and then refreshes `prev` so the final save does not write again.
 - Job names and labels are derived deterministically from the `Migration` so reconciles are idempotent.
 
 ## Dependencies

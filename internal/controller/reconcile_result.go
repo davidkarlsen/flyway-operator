@@ -24,6 +24,7 @@ import (
 	flywayv1alpha1 "github.com/davidkarlsen/flyway-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -48,7 +49,7 @@ func (r *MigrationReconciler) manageSuccess(ctx context.Context, migration *flyw
 	meta.RemoveStatusCondition(&migration.Status.Conditions, conditionReconcileError)
 	meta.RemoveStatusCondition(&migration.Status.Conditions, legacyConditionReconcileSuccess)
 	if err := r.saveStatus(ctx, migration, prev); err != nil {
-		return ctrl.Result{RequeueAfter: requeueAfter}, err
+		return ctrl.Result{}, err
 	}
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
@@ -59,7 +60,10 @@ func (r *MigrationReconciler) manageError(ctx context.Context, migration *flyway
 	if issue == nil {
 		issue = errors.New("reconcile failed")
 	}
-	r.Recorder.Event(migration, corev1.EventTypeWarning, eventReasonProcessingError, issue.Error())
+	// a Conflict is a stale cache that the retry resolves, not a failure worth an event
+	if !apierrors.IsConflict(issue) {
+		r.Recorder.Event(migration, corev1.EventTypeWarning, eventReasonProcessingError, issue.Error())
+	}
 	meta.SetStatusCondition(&migration.Status.Conditions, metav1.Condition{
 		Type:               conditionReconcileError,
 		Status:             metav1.ConditionTrue,

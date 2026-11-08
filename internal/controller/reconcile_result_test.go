@@ -1,3 +1,19 @@
+/*
+Copyright 2023.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package controller
 
 import (
@@ -104,5 +120,34 @@ func TestReconcileRemovesLegacyReconcileSuccess(t *testing.T) {
 
 	if meta.FindStatusCondition(got.Status.Conditions, legacyConditionReconcileSuccess) != nil {
 		t.Errorf("legacy ReconcileSuccess condition kept: %v", got.Status.Conditions)
+	}
+}
+
+// A failed status write returns the error alone, without a RequeueAfter that controller-runtime warns about.
+func TestManageSuccessReturnsNoRequeueWithStatusError(t *testing.T) {
+	h := newStatusHarness(t, nil)
+	m := h.migration()
+	prev := m.Status.DeepCopy()
+	m.Status.Attempts = 5
+	h.failStatusUpdates = 1
+
+	res, err := h.r.manageSuccess(context.TODO(), m, prev, deletionRequeue)
+
+	if !apierrors.IsConflict(err) || res != (reconcile.Result{}) {
+		t.Errorf("result = %+v, err = %v, want an empty result and the conflict", res, err)
+	}
+}
+
+// A Conflict is a stale cache, retried at once: it gets no ProcessingError event.
+func TestManageErrorSkipsEventForConflict(t *testing.T) {
+	h := newStatusHarness(t, nil)
+	conflict := apierrors.NewConflict(metav1.SchemeGroupVersion.WithResource("migrations").GroupResource(), "m", errors.New("stale"))
+
+	m := h.migration()
+	if _, err := h.r.manageError(context.TODO(), m, m.Status.DeepCopy(), conflict); !apierrors.IsConflict(err) {
+		t.Fatalf("err = %v, want the conflict", err)
+	}
+	if ev := h.events(); len(ev) != 0 {
+		t.Errorf("events for a conflict = %v, want none", ev)
 	}
 }

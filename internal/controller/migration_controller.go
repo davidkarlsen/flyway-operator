@@ -138,6 +138,8 @@ func (r *MigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				if err := r.Status().Update(ctx, migration); err != nil {
 					return ctrl.Result{}, err
 				}
+				// saved: the final save compares against this, not the status read at the start. This path records no outcome.
+				prev = migration.Status.DeepCopy()
 			}
 		}
 		setConditions(migration, flywayv1alpha1.ReasonPreviousJobReplaced,

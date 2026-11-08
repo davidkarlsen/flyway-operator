@@ -106,7 +106,7 @@ Remove it again with `make undeploy` (controller) and `make uninstall` (CRDs).
 ## Upgrading to 0.7.0
 
 - The `ReconcileSuccess` condition is gone. It was rewritten with a new timestamp on every reconcile and only meant that
-  the reconcile loop ran; the operator removes it from existing Migrations. Read `Applied`, `Progressing` and `Failed`
+  the reconcile loop ran; the operator removes it from an existing Migration at its next successful reconcile. Read `Applied`, `Progressing` and `Failed`
   instead (the [Argo CD health check](argocd.md) already does).
 - `ReconcileError` is now removed again by the next successful reconcile; before, it stayed forever once set. Its
   `lastTransitionTime` only moves when the condition appears. Failures still emit a `ProcessingError` Warning event.
