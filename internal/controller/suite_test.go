@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/client-go/kubernetes/scheme"
+	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -86,6 +87,8 @@ var _ = BeforeSuite(func() {
 		Scheme:    k8sManager.GetScheme(),
 		OpenShift: openShift,
 		APIReader: k8sManager.GetAPIReader(),
+		// envtest runs no kubelet and serves an empty log: the specs see the degraded path of the real reader
+		LogReader: PodsLogReader{Pods: corev1client.NewForConfigOrDie(cfg)},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 

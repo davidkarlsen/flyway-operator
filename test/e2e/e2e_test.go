@@ -63,6 +63,7 @@ var _ = Describe("Migration", func() {
 			Expect(psql("SELECT version, success FROM happy.flyway_schema_history WHERE type = 'SQL' ORDER BY installed_rank")).
 				To(Equal("1|t"))
 			Expect(psql("SELECT to_regclass('happy.person')")).To(Equal("happy.person"))
+			expectSchemaVersion("happy", "1")
 		})
 
 		It("applies a new migration when the source image changes", func() {
@@ -76,6 +77,7 @@ var _ = Describe("Migration", func() {
 				To(Equal("1|t\n2|t"))
 			Expect(psql("SELECT count(*) FROM information_schema.columns " +
 				"WHERE table_schema = 'happy' AND table_name = 'person' AND column_name = 'email'")).To(Equal("1"))
+			expectSchemaVersion("happy", "2")
 		})
 	})
 
@@ -91,13 +93,18 @@ var _ = Describe("Migration", func() {
 		Expect(psql("SELECT to_regclass('broken.broken')")).To(BeEmpty())
 		Expect(psql("SELECT to_regclass('broken.flyway_schema_history')")).To(Equal("broken.flyway_schema_history"))
 		Expect(psql("SELECT count(*) FROM broken.flyway_schema_history WHERE version = '1' AND success")).To(Equal("0"))
+		// Flyway's error from the pod log is in the condition message
+		Expect(meta.FindStatusCondition(m.Status.Conditions, flywayv1alpha1.ConditionFailed).Message).
+			To(ContainSubstring(`; flyway: Failed to execute script V1__broken.sql SQL State : 42601 Error Code : 0 Message : ERROR: syntax error at or near "THIS"`))
 	})
 
 	It("reports Failed when the database password is wrong", func() {
 		retryLimit := 0
 		applyMigration("wrong-password", "v1", "wrongpw", "postgres-wrong", "", &retryLimit)
 
-		waitForCondition("wrong-password", flywayv1alpha1.ConditionFailed, flywayv1alpha1.ReasonRetryLimitExceeded, 0)
+		m := waitForCondition("wrong-password", flywayv1alpha1.ConditionFailed, flywayv1alpha1.ReasonRetryLimitExceeded, 0)
+		Expect(meta.FindStatusCondition(m.Status.Conditions, flywayv1alpha1.ConditionFailed).Message).
+			To(MatchRegexp(`; flyway: Unable to obtain connection from database .*password authentication failed`))
 
 		Expect(mustRun(exec.Command("kubectl", "-n", namespace, "logs", "-l", "batch.kubernetes.io/job-name=wrong-password",
 			"-c", "flyway", "--tail=-1"))).To(ContainSubstring("password authentication failed"))
@@ -328,6 +335,17 @@ func waitForCondition(name, condType, reason string, minGeneration int64) *flywa
 	_, _ = fmt.Fprintf(GinkgoWriter, "migration %s: %s=True reason=%s generation=%d attempts=%d\n",
 		name, condType, reason, m.Generation, m.Status.Attempts)
 	return m
+}
+
+// expectSchemaVersion checks status.schemaVersion and its printer column against the schema history table.
+func expectSchemaVersion(name, want string) {
+	GinkgoHelper()
+	Expect(psql("SELECT version FROM " + name + ".flyway_schema_history WHERE success AND version IS NOT NULL " +
+		"ORDER BY installed_rank DESC LIMIT 1")).To(Equal(want))
+	Expect(getMigration(name).Status.SchemaVersion).To(Equal(want))
+	columns := strings.Fields(mustRun(exec.Command("kubectl", "-n", namespace, "get", "migration", name, "--no-headers")))
+	Expect(columns).To(HaveLen(3)) // name, schema version, age
+	Expect(columns[1]).To(Equal(want))
 }
 
 func getMigration(name string) *flywayv1alpha1.Migration {

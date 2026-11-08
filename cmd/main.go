@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -171,12 +172,18 @@ func main() {
 		os.Exit(1)
 	}
 	setupLog.Info("detected platform", "openShift", openShift)
+	coreClient, err := corev1client.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to create the client for pod logs")
+		os.Exit(1)
+	}
 	if err = (&controller.MigrationReconciler{
 		Recorder:  mgr.GetEventRecorderFor("Migration"), //nolint:staticcheck // SA1019 - GetEventRecorderFor is deprecated
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
 		OpenShift: openShift,
 		APIReader: mgr.GetAPIReader(),
+		LogReader: controller.PodsLogReader{Pods: coreClient},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Migration")
 		os.Exit(1)

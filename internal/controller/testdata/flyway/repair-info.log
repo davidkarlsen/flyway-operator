@@ -1,0 +1,52 @@
+{
+  "individualResults" : [ {
+    "database" : null,
+    "flywayVersion" : "13.12.1",
+    "migrationsAligned" : [ ],
+    "migrationsDeleted" : [ ],
+    "migrationsRemoved" : [ ],
+    "operation" : "repair",
+    "repairActions" : [ ],
+    "warnings" : [ ]
+  }, {
+    "allSchemasEmpty" : false,
+    "database" : "",
+    "exception" : null,
+    "flywayVersion" : "13.12.1",
+    "licenseFailed" : false,
+    "migrations" : [ {
+      "category" : "Versioned",
+      "description" : "init",
+      "executionTime" : 8,
+      "filepath" : "/sql/V1__init.sql",
+      "installedBy" : "",
+      "installedOnUTC" : "2026-11-08T17:34:12.646Z",
+      "rawVersion" : "1",
+      "shouldExecuteExpression" : null,
+      "state" : "Success",
+      "type" : "SQL",
+      "undoFilepath" : "",
+      "undoable" : "No",
+      "version" : "1"
+    }, {
+      "category" : "Versioned",
+      "description" : "b",
+      "executionTime" : 3,
+      "filepath" : "/sql/V2__b.sql",
+      "installedBy" : "",
+      "installedOnUTC" : "2026-11-08T17:34:12.662Z",
+      "rawVersion" : "2",
+      "shouldExecuteExpression" : null,
+      "state" : "Success",
+      "type" : "SQL",
+      "undoFilepath" : "",
+      "undoable" : "No",
+      "version" : "2"
+    } ],
+    "operation" : "info",
+    "schemaName" : "",
+    "schemaVersion" : "2",
+    "timestamp" : "2026-11-08T17:34:41.843117004Z"
+  } ],
+  "schemaVersion" : 1
+}

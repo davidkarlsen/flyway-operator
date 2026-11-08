@@ -427,15 +427,41 @@ that generation) are also set.
 All three share one reason: `JobCreated`, `JobRunning`, `JobSucceeded`, `Retrying`, `RetryLimitExceeded`, `TimedOut`
 (the last attempt exceeded `spec.activeDeadline`), `PreviousJobRunning` (a Job for an older generation is still
 running), `PreviousJobReplaced` (also for an older Job that never started a container) or `ImageVolumeUnsupported` (the cluster dropped the image volume). On failure the message
-holds the Job's own failure reason and message.
+holds the Job's own failure reason and message, followed by Flyway's error when it can be read (see below).
 
 A reconcile that fails (for example the API server rejects the Job) also sets a `ReconcileError` condition with the error
 as its message, and emits a `ProcessingError` Warning event. The next reconcile that succeeds removes the condition.
 
 `status.lastAppliedImageRef` holds the `migrationSource.imageRef` of the last Job that succeeded, taken from that Job, and
 `status.lastAppliedGeneration` the generation it ran for. Both keep their value while a later run is in progress or after
-it fails. This is the image the SQL files came from, not the schema version in the database; for that, query Flyway's
-schema history table, or read the Job's logs while the Job still exists.
+it fails. This is the image the SQL files came from, not the schema version in the database.
+
+`status.schemaVersion` is the database's Flyway schema version as the last succeeded Job reported it, and
+`kubectl get migration` shows it in the `SCHEMA VERSION` column. It comes from the last `info` or `migrate` result in
+the Flyway output (`info`: `schemaVersion`; `migrate`: the version it migrated to, or the version it started from when
+nothing was pending). Like `lastAppliedImageRef`, it keeps its value while a later run is in progress or after it fails,
+and also when a run reports no version (for example `commands: [validate]`, or `info` on an empty schema). Commands such
+as `clean`, `undo` or `baseline` and a changed `jdbcUrl` can therefore leave a value that no longer matches the database.
+
+When a Job fails, Flyway's error message is appended to the `Retrying`, `RetryLimitExceeded` or `TimedOut` message
+after `; flyway: `, cut at 300 characters, without Flyway's separator lines and its `Statement` line:
+
+```shell
+kubectl get migration my-app -o jsonpath='{.status.conditions[?(@.type=="Failed")].message}'
+# Job my-app failed on attempt 3 of 3: BackoffLimitExceeded: Job has reached the specified backoff limit; flyway: Failed to execute script V2__add_column.sql SQL State : 42601 ...
+```
+
+The text names the failing script, the database's error and, for connection errors, the user and a masked JDBC URL.
+Anyone who can read the `Migration` can read it, not only those who can read the pod's log.
+
+Both come from the log of the Flyway container of the Job's newest pod (`pods/log`; the operator always runs Flyway
+with `-outputType=json`), read once when the Job finishes, at most 4 MiB from its start and for at most 10 seconds.
+Reading the log is best effort and never changes the result: when the log cannot be read (no RBAC, the pod is gone, a
+timeout) or holds no complete Flyway JSON result (an `envVars` or command override of the output type, a log over
+4 MiB), `status.schemaVersion` keeps its value and the message carries no Flyway error. The operator needs `get` on
+`pods/log` for this, which lets it read the logs of every pod it can see. The kustomize and OLM installs grant it with
+the operator; the Helm chart's ClusterRole gains it in the chart release after this change. Migrations that succeeded
+before the upgrade get a `schemaVersion` with their next run.
 
 For an Argo CD health check, see [Argo CD](argocd.md).
 

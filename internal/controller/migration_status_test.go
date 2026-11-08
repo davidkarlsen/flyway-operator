@@ -40,6 +40,8 @@ type statusHarness struct {
 	jobDeletes int
 	// statusUpdates counts the status writes that reached the client.
 	statusUpdates int
+	// statusWrites holds the Migration status of each write that reached the client.
+	statusWrites []flywayv1alpha1.MigrationStatus
 	// lastJobDeletePropagation is the propagation policy of the latest Job delete that reached the client.
 	lastJobDeletePropagation metav1.DeletionPropagation
 	// lastJobDeletePreconditions are the preconditions of the latest Job delete that reached the client.
@@ -92,6 +94,9 @@ func newStatusHarness(t *testing.T, retryLimit *int32, extra ...interceptor.Func
 				return apierrors.NewConflict(schema.GroupResource{Resource: "migrations"}, obj.GetName(), errors.New("injected"))
 			}
 			h.statusUpdates++
+			if m, ok := obj.(*flywayv1alpha1.Migration); ok {
+				h.statusWrites = append(h.statusWrites, *m.Status.DeepCopy())
+			}
 			return c.SubResource(sub).Update(ctx, obj, opts...)
 		},
 	}

@@ -1,0 +1,31 @@
+{
+  "database" : null,
+  "databaseType" : "SQLite",
+  "exception" : null,
+  "flywayVersion" : "13.12.1",
+  "initialSchemaVersion" : null,
+  "licenseFailed" : false,
+  "migrations" : [ {
+    "category" : "Versioned",
+    "description" : "init",
+    "executionTime" : 7,
+    "filepath" : "/sql/V1__init.sql",
+    "type" : "SQL",
+    "version" : "1"
+  }, {
+    "category" : "Versioned",
+    "description" : "b",
+    "executionTime" : 6,
+    "filepath" : "/sql/V2__b.sql",
+    "type" : "SQL",
+    "version" : "2"
+  } ],
+  "migrationsExecuted" : 2,
+  "operation" : "migrate",
+  "schemaName" : "",
+  "success" : true,
+  "targetSchemaVersion" : "2",
+  "timestamp" : "2026-11-08T17:41:33.794183416Z",
+  "totalMigrationTime" : 13,
+  "warnings" : [ ]
+}

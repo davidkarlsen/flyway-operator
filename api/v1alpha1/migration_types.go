@@ -90,6 +90,11 @@ type MigrationStatus struct {
 	// +optional
 	LastAppliedGeneration int64 `json:"lastAppliedGeneration,omitempty"`
 
+	// The database's Flyway schema version as reported by the last Job that succeeded: the last info or migrate
+	// result in its JSON output. Kept when a later run fails, is in progress, or reports no version.
+	// +optional
+	SchemaVersion string `json:"schemaVersion,omitempty"`
+
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +listType=map
@@ -126,6 +131,8 @@ func (m *Migration) GetActiveDeadline() time.Duration {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:printcolumn:name="Schema Version",type=string,JSONPath=`.status.schemaVersion`
+//+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 //+kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 63",message="metadata.name must be at most 63 characters (it is used as the Job name and as a pod label value)"
 
 // Migration is the Schema for the migrations API

@@ -14,7 +14,14 @@ spec:
     singular: migration
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.schemaVersion
+      name: Schema Version
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Migration is the Schema for the migrations API
@@ -4079,6 +4086,11 @@ spec:
                 description: The metadata.generation the status was computed for.
                 format: int64
                 type: integer
+              schemaVersion:
+                description: |-
+                  The database's Flyway schema version as reported by the last Job that succeeded: the last info or migrate
+                  result in its JSON output. Kept when a later run fails, is in progress, or reports no version.
+                type: string
             type: object
         required:
         - spec

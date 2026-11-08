@@ -467,6 +467,30 @@ var _ = Describe("Migration controller (envtest)", func() {
 			Expect(meta.IsStatusConditionFalse(m.Status.Conditions, flywayv1alpha1.ConditionFailed)).To(BeTrue())
 		})
 
+		It("keeps the result when the Flyway log cannot be read", func(ctx SpecContext) {
+			m := newMigration(ns, key.Name)
+			m.Spec.RetryLimit = ptr.To[int32](0)
+			Expect(k8sClient.Create(ctx, m)).To(Succeed())
+			job := waitForJob(ctx, key, "")
+			createJobPod(ctx, job, "failed", func(p *corev1.Pod) { p.Status.Phase = corev1.PodFailed })
+
+			finishJob(ctx, key, false)
+
+			got := expectCondition(ctx, key, flywayv1alpha1.ConditionFailed, metav1.ConditionTrue, flywayv1alpha1.ReasonRetryLimitExceeded)
+			Expect(meta.FindStatusCondition(got.Status.Conditions, flywayv1alpha1.ConditionFailed).Message).
+				To(HaveSuffix("Job has reached the specified backoff limit"))
+			Expect(meta.FindStatusCondition(got.Status.Conditions, "ReconcileError")).To(BeNil())
+
+			updateMigration(ctx, key, func(m *flywayv1alpha1.Migration) { m.Spec.MigrationSource.ImageRef = "somereg.io/someimage:2" })
+			job = waitForJob(ctx, key, job.UID)
+			createJobPod(ctx, job, "succeeded", func(p *corev1.Pod) { p.Status.Phase = corev1.PodSucceeded })
+			finishJob(ctx, key, true)
+
+			got = expectCondition(ctx, key, flywayv1alpha1.ConditionApplied, metav1.ConditionTrue, flywayv1alpha1.ReasonJobSucceeded)
+			Expect(got.Status.SchemaVersion).To(BeEmpty())
+			Expect(meta.FindStatusCondition(got.Status.Conditions, "ReconcileError")).To(BeNil())
+		})
+
 		It("replaces a failed Job with the next attempt while under retryLimit", func(ctx SpecContext) {
 			Expect(k8sClient.Create(ctx, newMigration(ns, key.Name))).To(Succeed())
 			first := waitForJob(ctx, key, "")
