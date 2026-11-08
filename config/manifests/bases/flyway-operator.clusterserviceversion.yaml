@@ -3,7 +3,7 @@ kind: ClusterServiceVersion
 metadata:
   annotations:
     alm-examples: '[]'
-    capabilities: Seamless Upgrades
+    capabilities: Deep Insights
     categories: Database,Developer Tools
   name: flyway-operator.v0.0.0
   namespace: placeholder
