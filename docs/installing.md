@@ -80,14 +80,15 @@ Configurable values (image, resources, node selector, tolerations, etc.) are in 
 
 Helm creates the CRD on install but never updates it on `helm upgrade`. An old CRD schema silently drops fields it does
 not know, for example `flywayConfiguration.resources` or `serviceAccountName`, and the migration then runs without
-them. After each upgrade that changes the API, apply the CRD of the release yourself. Use server-side apply, since the
-CRD is larger than the annotation client-side apply keeps:
+them. After each upgrade that changes the API, apply the CRD of the release yourself. Use server-side apply, which
+keeps the CRD out of the 256 KiB last-applied annotation as it grows:
 
 ```shell
 kubectl apply --server-side --force-conflicts -f https://raw.githubusercontent.com/davidkarlsen/flyway-operator/<tag>/config/crd/bases/flyway.davidkarlsen.com_migrations.yaml
 ```
 
-Replace `<tag>` with the release tag. The chart's own copy of the CRD
+Replace `<tag>` with the operator version prefixed with `v` (the chart's `appVersion`), for example `v0.6.0`. The
+chart's own copy of the CRD
 (`config/helm-chart/flyway-operator/crds/`) is only updated by the chart release pull request after the tag, so at the
 tag itself it is still the previous release's. OLM updates the CRD with the operator.
 
