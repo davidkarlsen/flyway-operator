@@ -17,3 +17,9 @@ is not available, so no ServiceMonitor was created. Install the Prometheus Opera
 upgrade, or disable it.
 {{- end }}
 {{- end }}
+{{- if and .Values.prometheusRule.enabled (not (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/PrometheusRule")) }}
+
+WARNING: prometheusRule.enabled=true but the monitoring.coreos.com/v1 PrometheusRule API
+is not available, so no PrometheusRule was created. Install the Prometheus Operator CRDs and
+upgrade, or disable it.
+{{- end }}

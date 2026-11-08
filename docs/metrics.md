@@ -52,6 +52,9 @@ tested.
 | `metrics.serviceMonitor.enabled` | `false` | Render a `ServiceMonitor`. This is opt-in and needs the Prometheus Operator CRDs. |
 | `metrics.serviceMonitor.interval` | `""` | Scrape interval. Empty uses the Prometheus default. |
 | `metrics.serviceMonitor.labels` | `{}` | Extra labels on the `ServiceMonitor`, for example to match a Prometheus `serviceMonitorSelector`. |
+| `prometheusRule.enabled` | `false` | Render the alert `PrometheusRule`, see [Shipped rules](#shipped-rules). Opt-in; needs the Prometheus Operator CRDs. |
+| `prometheusRule.namespace` | `""` | Namespace of the `PrometheusRule`. Empty uses the release namespace. |
+| `prometheusRule.additionalLabels` | `{}` | Extra labels on the `PrometheusRule`, for example to match a Prometheus `ruleSelector`. |
 
 The secure metrics server needs operator image 0.3.0 or newer. The chart defaults to 0.4.1. With an older
 `image.tag`, metrics are served as plain HTTP without auth.
@@ -223,15 +226,15 @@ and OLM, `<release-fullname>-metrics` for Helm), or `job_name` with a plain scra
 
 ### Shipped rules
 
-The rules are a `PrometheusRule` in `config/prometheus/rules.yaml`. The alerts and their thresholds are in that
-file; the table above lists them, and each alert's `runbook_url` points at its section of the
-[alert runbook](runbook.md).
+The rules are a `PrometheusRule` in `config/prometheus/rules.yaml`, and the same groups in the Helm chart
+(`files/rules.yaml`). The alerts and their thresholds are in those files; the table above lists them, and each
+alert's `runbook_url` points at its section of the [alert runbook](runbook.md).
 
 | Install path | Rules | Disable or override |
 |--------------|-------|---------------------|
 | kustomize (`make deploy`) | On by default, as `controller-manager-alerts` in the operator namespace. | Remove `rules.yaml` from `config/prometheus/kustomization.yaml`, or patch the `PrometheusRule` in your overlay (for example to raise a `severity` or change a `for:`). |
 | OLM | On by default, shipped in the bundle. | Delete the `PrometheusRule` after install, or add your own rules with different thresholds. A deletion or edit is undone by the next upgrade. |
-| Helm | Arrives with the next chart release, opt-in. | Not shipped yet. Until then, apply `config/prometheus/rules.yaml` yourself. |
+| Helm | Off by default. | `prometheusRule.enabled=true` renders the `PrometheusRule`; `prometheusRule.namespace` sets its namespace (default: the release namespace) and `prometheusRule.additionalLabels` adds labels, for example `release: kube-prometheus-stack` for a Prometheus `ruleSelector`. Without the `monitoring.coreos.com/v1` `PrometheusRule` API nothing is rendered and the install notes warn; for offline rendering pass `--api-versions monitoring.coreos.com/v1/PrometheusRule` to `helm template`. |
 
 Like the `ServiceMonitor`, the kustomize and OLM rule needs the Prometheus Operator CRDs. To use a different
 threshold or a per-namespace scope, copy the groups from `config/prometheus/rules.yaml`, add a `namespace`

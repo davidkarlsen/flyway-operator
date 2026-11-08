@@ -61,6 +61,17 @@ metrics:
     # Extra labels on the ServiceMonitor, e.g. to match a Prometheus serviceMonitorSelector.
     labels: {}
 
+prometheusRule:
+  # Opt-in: requires the monitoring.coreos.com/v1 CRDs (Prometheus Operator). Rendered only when the
+  # cluster serves the PrometheusRule API; for offline rendering pass
+  # `--api-versions monitoring.coreos.com/v1/PrometheusRule` to `helm template`.
+  # The alerts (see docs/metrics.md) use the operator's metrics, so enable metrics too.
+  enabled: false
+  # Namespace of the PrometheusRule. Empty uses the release namespace.
+  namespace: ""
+  # Extra labels on the PrometheusRule, e.g. to match a Prometheus ruleSelector.
+  additionalLabels: {}
+
 resources:
   limits:
     cpu: 500m

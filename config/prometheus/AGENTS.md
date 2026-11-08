@@ -11,7 +11,7 @@ Kustomize component adding a `ServiceMonitor` so Prometheus Operator scrapes the
 | File | Description |
 |------|-------------|
 | `monitor.yaml` | `ServiceMonitor` targeting the metrics Service from `config/default/metrics_service.yaml` |
-| `rules.yaml` | `PrometheusRule` with the operator and Migration alerts |
+| `rules.yaml` | `PrometheusRule` with the operator and Migration alerts; its groups must equal `config/helm-chart/flyway-operator/files/rules.yaml` (checked by `TestChartPrometheusRulesMatchKustomize`) |
 | `tests/rules_test.yaml` | `promtool test rules` unit tests for the alerts; run with `make test-rules` |
 | `kustomization.yaml` | Kustomize wiring |
 
