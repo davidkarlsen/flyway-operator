@@ -98,6 +98,12 @@ helm-crds: manifests ## Copy the generated CRDs into the Helm chart's crds/ dire
 	rm -f config/helm-chart/flyway-operator/crds/*.yaml
 	cp config/crd/bases/*.yaml config/helm-chart/flyway-operator/crds/
 
+.PHONY: helm-dashboards
+helm-dashboards: ## Copy the Grafana dashboards into the Helm chart's dashboards/ directory.
+	mkdir -p config/helm-chart/flyway-operator/dashboards
+	rm -f config/helm-chart/flyway-operator/dashboards/*.json
+	cp config/grafana/dashboards/*.json config/helm-chart/flyway-operator/dashboards/
+
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."

@@ -20,6 +20,8 @@ Helm templates for the operator workload and its RBAC. Equivalent to `config/man
 | `role.yaml` / `role_binding.yaml` | Reconciler RBAC |
 | `leader_election_role.yaml` / `leader_election_role_binding.yaml` | Leader-election lease RBAC |
 | `migration_editor_role.yaml` / `migration_viewer_role.yaml` | User-facing aggregated roles; names are per-release (`<fullname>-migration-editor/-viewer`) and intentionally differ from `config/rbac/` (kustomize/OLM is a single install) |
+| `grafana-dashboards-configmap.yaml` | Dashboards ConfigMap, gated on `grafana.dashboards.enabled`; one key per file in `dashboards/` |
+| `grafana-dashboards.yaml` | Two grafana-operator `GrafanaDashboard`s, also gated on `grafana.dashboards.grafanaDashboard.enabled` and the `grafana.integreatly.org/v1beta1` API |
 | `NOTES.txt` | Post-install message rendered by `helm install` |
 
 ## For AI Agents

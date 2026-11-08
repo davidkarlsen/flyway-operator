@@ -61,6 +61,29 @@ metrics:
     # Extra labels on the ServiceMonitor, e.g. to match a Prometheus serviceMonitorSelector.
     labels: {}
 
+grafana:
+  dashboards:
+    # Opt-in: ship the operator and Migrations dashboards as a ConfigMap (<fullname>-dashboards) with one
+    # key per dashboard. See docs/dashboards.md.
+    enabled: false
+    # Labels on the ConfigMap; the Grafana sidecar discovers dashboards by grafana_dashboard.
+    labels:
+      grafana_dashboard: "1"
+    grafanaDashboard:
+      # Also render a GrafanaDashboard per dashboard. Only rendered when the cluster serves
+      # grafana.integreatly.org/v1beta1; for `helm template` pass
+      # `--api-versions grafana.integreatly.org/v1beta1`. Use one import path per Grafana: when the
+      # sidecar loads the ConfigMap, set this to false.
+      enabled: true
+      # Must match the labels of your Grafana resource. Immutable once created.
+      instanceSelector:
+        matchLabels:
+          dashboards: grafana
+      # Needed when Grafana runs in another namespace. Immutable once created.
+      allowCrossNamespaceImport: true
+      # Optional Grafana folder.
+      folder: ""
+
 resources:
   limits:
     cpu: 500m

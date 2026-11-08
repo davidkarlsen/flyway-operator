@@ -36,6 +36,15 @@ jobs:
             exit 1
           fi
 
+      - name: check chart dashboards are up to date
+        run: |
+          make helm-dashboards
+          if [ -n "$(git status --porcelain -- config/helm-chart)" ]; then
+            git diff -- config/helm-chart
+            echo "::error::chart dashboards are stale; run make helm-dashboards and commit"
+            exit 1
+          fi
+
       - name: Shellcheck
         uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
 
