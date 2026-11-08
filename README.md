@@ -3,12 +3,32 @@
 **Database schema migrations as a Kubernetes resource.** Describe the migration your application needs, and the
 operator runs it with [Flyway](https://flywaydb.org/), reports the result, and runs it again only when something changes.
 
+**Build and quality**
 [![build](https://github.com/davidkarlsen/flyway-operator/actions/workflows/build.yaml/badge.svg?branch=main)](https://github.com/davidkarlsen/flyway-operator/actions/workflows/build.yaml)
+[![CodeQL](https://github.com/davidkarlsen/flyway-operator/actions/workflows/codeql.yaml/badge.svg?branch=main)](https://github.com/davidkarlsen/flyway-operator/actions/workflows/codeql.yaml)
+[![codecov](https://codecov.io/gh/davidkarlsen/flyway-operator/branch/main/graph/badge.svg)](https://codecov.io/gh/davidkarlsen/flyway-operator)
+[![chart release](https://img.shields.io/github/actions/workflow/status/davidkarlsen/flyway-operator/chart-release.yaml?branch=main&label=chart%20release)](https://github.com/davidkarlsen/flyway-operator/actions/workflows/chart-release.yaml)
+[![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/davidkarlsen/flyway-operator)](go.mod)
+
+**Releases and distribution**
 [![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/davidkarlsen/flyway-operator?sort=semver&filter=v*)](https://github.com/davidkarlsen/flyway-operator/releases)
+[![Helm chart](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fartifacthub.io%2Fapi%2Fv1%2Fpackages%2Fhelm%2Fflyway-operator%2Fflyway-operator&query=%24.version&label=helm%20chart&logo=helm)](https://artifacthub.io/packages/helm/flyway-operator/flyway-operator)
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/flyway-operator)](https://artifacthub.io/packages/search?repo=flyway-operator)
+[![CRD Docs](https://img.shields.io/badge/CRD-Docs-brightgreen)](https://doc.crds.dev/github.com/davidkarlsen/flyway-operator)
+
+**Platform and security**
+[![Kubernetes](https://img.shields.io/badge/k8s-%E2%89%A51.35-326ce5?logo=kubernetes&logoColor=white)](docs/installing.md#requirements)
+[![OpenShift](https://img.shields.io/badge/OpenShift-%E2%89%A54.22-EE0000?logo=redhatopenshift&logoColor=white)](docs/installing.md#requirements)
+[![signed with cosign](https://img.shields.io/badge/signed-cosign-blue?logo=sigstore)](docs/verifying.md)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/davidkarlsen/flyway-operator/badge)](https://scorecard.dev/viewer/?uri=github.com/davidkarlsen/flyway-operator)
 [![License](https://img.shields.io/github/license/davidkarlsen/flyway-operator)](LICENSE)
+
+**Community**
 [![GitHub stars](https://img.shields.io/github/stars/davidkarlsen/flyway-operator?style=social)](https://github.com/davidkarlsen/flyway-operator)
+[![contributors](https://img.shields.io/github/contributors/davidkarlsen/flyway-operator)](https://github.com/davidkarlsen/flyway-operator/graphs/contributors)
+[![commit activity](https://img.shields.io/github/commit-activity/m/davidkarlsen/flyway-operator)](https://github.com/davidkarlsen/flyway-operator/commits/main)
+[![last commit](https://img.shields.io/github/last-commit/davidkarlsen/flyway-operator)](https://github.com/davidkarlsen/flyway-operator/commits/main)
+[![open issues](https://img.shields.io/github/issues/davidkarlsen/flyway-operator)](https://github.com/davidkarlsen/flyway-operator/issues)
 
 ## Why
 
