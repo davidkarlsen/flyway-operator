@@ -256,16 +256,37 @@ spec:
 
 A complete `Migration` is in [examples/azure-sql-workload-identity.md](examples/azure-sql-workload-identity.md).
 
-On a node with a managed identity, `authentication=ActiveDirectoryManagedIdentity` (add `msiClientId=<client id>` for a
-user-assigned identity) needs no service account. The identity needs a database user, created by an Entra admin of the
-database: `CREATE USER [my-identity] FROM EXTERNAL PROVIDER; ALTER ROLE db_ddladmin ADD MEMBER [my-identity];`.
+If the service account lacks the `azure.workload.identity/client-id` annotation or the pod lacks the label, no token is
+injected and the Job fails with an Azure identity error from the driver in its logs (`kubectl logs job/my-app`).
+
+On Azure Red Hat OpenShift the Azure Workload Identity webhook is not part of the platform (to verify for your
+cluster): install it, or project the service account token yourself, and create a federated credential for the
+identity against the cluster's service account issuer.
+
+`authentication=ActiveDirectoryManagedIdentity` (add `msiClientId=<client id>` for a user-assigned identity) uses the
+node's managed identity through IMDS and needs no service account. Every pod on that node can then reach the database
+with that identity, so prefer workload identity. On AKS, with several identities on the node pool, `msiClientId` is
+effectively required.
+
+With either mode the identity needs a database user, created by an Entra admin of the database, and the same rights a
+password user would have. Flyway must read and write `flyway_schema_history` and run your DDL; `db_owner` is often what
+it takes:
+
+```sql
+CREATE USER [my-identity] FROM EXTERNAL PROVIDER;
+ALTER ROLE db_datareader ADD MEMBER [my-identity];
+ALTER ROLE db_datawriter ADD MEMBER [my-identity];
+ALTER ROLE db_ddladmin ADD MEMBER [my-identity];
+```
+
 
 ### AWS RDS with IAM
 
 RDS IAM authentication needs the [AWS Advanced JDBC Wrapper](https://github.com/aws/aws-advanced-jdbc-wrapper) and its
 dependencies in `/flyway/drivers` of a custom image (`flywayConfiguration.flywayImage`). The service account is bound to
 an IAM role (IRSA or EKS Pod Identity) that allows `rds-db:connect`. `username` is the database user, created with
-`GRANT rds_iam TO` on PostgreSQL.
+`GRANT rds_iam TO` on PostgreSQL. With IRSA the wrapper's IAM plugin also needs `software.amazon.awssdk:sts` on the
+classpath (to verify).
 
 ```yaml
 spec:
