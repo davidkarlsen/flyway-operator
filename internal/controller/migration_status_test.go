@@ -40,6 +40,10 @@ type statusHarness struct {
 	jobDeletes int
 	// statusUpdates counts the status writes that reached the client.
 	statusUpdates int
+	// lastJobDeletePropagation is the propagation policy of the latest Job delete that reached the client.
+	lastJobDeletePropagation metav1.DeletionPropagation
+	// lastJobDeletePreconditions are the preconditions of the latest Job delete that reached the client.
+	lastJobDeletePreconditions *metav1.Preconditions
 }
 
 func newStatusHarness(t *testing.T, retryLimit *int32, extra ...interceptor.Funcs) *statusHarness {
@@ -73,6 +77,12 @@ func newStatusHarness(t *testing.T, retryLimit *int32, extra ...interceptor.Func
 			}
 			if isJob {
 				h.jobDeletes++
+				o := &client.DeleteOptions{}
+				o.ApplyOptions(opts)
+				h.lastJobDeletePreconditions = o.Preconditions
+				if o.PropagationPolicy != nil {
+					h.lastJobDeletePropagation = *o.PropagationPolicy
+				}
 			}
 			return c.Delete(ctx, obj, opts...)
 		},
@@ -89,8 +99,14 @@ func newStatusHarness(t *testing.T, retryLimit *int32, extra ...interceptor.Func
 		if f.Create != nil {
 			funcs.Create = f.Create
 		}
+		if f.List != nil {
+			funcs.List = f.List
+		}
 	}
 	h.c = fake.NewClientBuilder().WithScheme(s).WithObjects(migration).WithStatusSubresource(migration).
+		WithIndex(&corev1.Event{}, "involvedObject.name", func(o client.Object) []string {
+			return []string{o.(*corev1.Event).InvolvedObject.Name}
+		}).
 		WithInterceptorFuncs(funcs).Build()
 	h.r = &MigrationReconciler{
 		Recorder: record.NewFakeRecorder(100),
@@ -378,6 +394,7 @@ func TestStatusLastAppliedImageComesFromJob(t *testing.T) {
 func TestStatusLastAppliedFromPreviousGenerationJob(t *testing.T) {
 	h := newStatusHarness(t, nil)
 	h.reconcile()
+	h.addPod("p", running) // Flyway runs, so the Job is waited for
 
 	// the spec moves on while the gen-1 Job runs; that Job then succeeds
 	h.updateImage("somereg.io/someimage:2", 2)
@@ -484,6 +501,7 @@ func (h *statusHarness) failJobDeadlineExceeded() {
 func TestStatusLastAppliedFromPreviousGenerationJobSurvivesStatusConflict(t *testing.T) {
 	h := newStatusHarness(t, nil)
 	h.reconcile()
+	h.addPod("p", running) // Flyway runs, so the Job is waited for
 	h.updateImage("somereg.io/someimage:2", 2)
 	h.reconcile() // previous job running
 	h.finishJob(batchv1.JobComplete, 0)
