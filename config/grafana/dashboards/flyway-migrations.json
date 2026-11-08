@@ -233,7 +233,7 @@
     {
       "type": "stat",
       "title": "Retrying (30m)",
-      "description": "Migrations with a failed attempt in the last 30m that is retried. Matches FlywayMigrationRetrying.",
+      "description": "Migrations with a failed attempt in the last 30m that is retried. A dashboard threshold; no shipped alert.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -301,7 +301,7 @@
     {
       "type": "stat",
       "title": "Slow over 15m",
-      "description": "The last successful run took more than 15m. Matches FlywayMigrationSlow; missing after an operator restart until the next run finishes.",
+      "description": "The last successful run took more than 15m. A dashboard threshold; no shipped alert. Missing after an operator restart until the next run finishes.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -925,7 +925,7 @@
     {
       "type": "bargauge",
       "title": "Last run duration",
-      "description": "Run time of the last finished attempt of each Migration, by result. Held in memory by the operator, so missing after a restart until the next run finishes. FlywayMigrationSlow fires when the succeeded value is over 15m.",
+      "description": "Run time of the last finished attempt of each Migration, by result. Held in memory by the operator, so missing after a restart until the next run finishes. The 15m threshold on the succeeded value is a dashboard threshold; no alert ships for it.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"

@@ -31,9 +31,9 @@ datasource from the dropdown at the top of the dashboard.
 Variables: `datasource`, `namespace` (multi-select) and `migration` (multi-select, limited to the selected
 namespaces).
 
-- **Counters** at the top mirror the workload alerts: Failed (`FlywayMigrationFailed`), Stuck over 1h
-  (`FlywayMigrationStuck`), Retrying in the last 30m (`FlywayMigrationRetrying`) and Slow over 15m
-  (`FlywayMigrationSlow`), plus the number of Migrations and of paused ones. They show the alert expression now;
+- **Counters** at the top: Failed (`FlywayMigrationFailed`) and Stuck over 1h (`FlywayMigrationStuck`) mirror the
+  shipped workload alerts; Retrying in the last 30m and Slow over 15m have no shipped alert. Further counts are the
+  number of Migrations and of paused ones. They show the alert expression now;
   an alert with a `for:` duration fires only after the expression has held that long.
 - **Migration status**: one row per Migration with its `Applied`, `Progressing` and `Failed` conditions (True,
   False, or Unknown when not yet set), whether it is paused, the time since its most recent condition change, and

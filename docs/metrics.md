@@ -30,17 +30,17 @@ Manager flags (`cmd/main.go`):
 
 - the `flyway-operator-controller-manager-metrics-service` Service (port `https`, 8443);
 - the metrics RBAC;
-- a `ServiceMonitor` from `config/prometheus`;
+- a `ServiceMonitor` and the alert `PrometheusRule` from `config/prometheus`, see [Shipped rules](#shipped-rules);
 - the `flyway-operator-dashboards` ConfigMap from `config/grafana`, see [Grafana dashboards](dashboards.md).
 
-The `ServiceMonitor` is always applied, so the cluster needs the Prometheus Operator CRDs
-(`monitoring.coreos.com/v1`). Without them the apply fails with `no matches for kind "ServiceMonitor"`. On such
+The `ServiceMonitor` and `PrometheusRule` are always applied, so the cluster needs the Prometheus Operator CRDs
+(`monitoring.coreos.com/v1`). Without them the apply fails with `no matches for kind "ServiceMonitor"` (or `"PrometheusRule"`). On such
 clusters, remove `- ../prometheus` from `config/default/kustomization.yaml` first.
 
 ### OLM
 
 The bundle is generated from `config/`. It ships the same Deployment args, the metrics Service, the metrics
-RBAC, the `ServiceMonitor` and the dashboards ConfigMap. An OLM install on a cluster without the `ServiceMonitor` CRD has not been
+RBAC, the `ServiceMonitor`, the alert `PrometheusRule` and the dashboards ConfigMap. An OLM install on a cluster without the `ServiceMonitor` CRD has not been
 tested.
 
 ### Helm
@@ -149,11 +149,11 @@ Create `$TOKEN` with `kubectl create token <serviceaccount> -n <namespace>`.
   `rate()` on counters. An attempt that fails while the operator is down is counted before the first scrape
   after the restart, so `increase()` misses it.
 - `last_run_duration_seconds` is held in memory: after an operator restart or failover it is missing until the
-  next run of that Migration finishes, and `FlywayMigrationSlow` resolves meanwhile.
+  next run of that Migration finishes.
 - When the operator cannot list Migrations from its cache during a scrape, it logs the error and serves no
   state series for that scrape, so open alerts on them can resolve and fire again.
 
-See [Alerting](#alerting) for rules built on these metrics, and [Grafana dashboards](dashboards.md) for
+See [Alerting](#alerting) for the shipped rules built on these metrics, and [Grafana dashboards](dashboards.md) for
 dashboards that mirror them.
 
 ### Standard metrics
@@ -184,10 +184,13 @@ The rules come in two groups with different audiences, set in the `alert_audienc
 | Group | `alert_audience` | Alerts | Goes to |
 |-------|------------------|--------|---------|
 | `flyway-operator.operator` | `platform` | `FlywayOperatorMetricsAbsent` (no operator scrape target is up), `FlywayOperatorReconcileErrors` (over 10% of Migration reconciles fail) | The team running the operator. |
-| `flyway-operator.migrations` | `workload` | `FlywayMigrationFailed` (`Failed=True`: retries exhausted, or image volumes unsupported), `FlywayMigrationStuck` (`Progressing` for over 1h), `FlywayMigrationRetrying` (an attempt failed in the last 30m), `FlywayMigrationSlow` (the last successful run took over 15m; an example to tune) | The team owning the Migration, by its `namespace` label. |
+| `flyway-operator.migrations` | `workload` | `FlywayMigrationFailed` (`Failed=True`: retries exhausted, or image volumes unsupported), `FlywayMigrationStuck` (`Progressing` for over 1h) | The team owning the Migration, by its `namespace` label. |
 
-- Migration alerts aggregate with `max by (namespace, migration)` or `sum by (namespace, migration)`, so they
-  keep those two labels and are not reset when the operator pod changes during a rollout or failover.
+- Migration alerts aggregate with `max by (namespace, migration)`, so they keep those two labels and ignore which
+  operator pod served the series. Only the elected leader serves the state series, so they can be briefly missing
+  during a rollout or failover; `FlywayMigrationFailed` and `FlywayMigrationStuck` have `keep_firing_for: 5m` so a
+  short gap does not resolve and re-fire them.
+- A paused Migration still raises `FlywayMigrationFailed` (intended); only `FlywayMigrationStuck` ignores paused ones.
 - `FlywayMigrationStuck` measures time since `Progressing` turned true from its last-transition timestamp, so an
   operator restart does not reset it. `Progressing` stays true across retries, and every Job attempt is bounded by
   `spec.activeDeadline` (default `1h`), so a run ends on its own within `activeDeadline × (retryLimit + 1)`. Keep the
@@ -201,8 +204,8 @@ The rules come in two groups with different audiences, set in the `alert_audienc
   volume from the Job (Kubernetes older than 1.35, or the `ImageVolume` feature gate off), and the operator deleted the
   Job. No Job attempt ran, so `runs_total` does not count it; it shows only in `status_condition` and the
   `ImageVolumeUnsupported` Warning event.
-- Default severities are `warning` and `info`. Raise `FlywayMigrationFailed` to `critical` where a failed
-  migration blocks a release, as in the per-namespace example below.
+- All shipped alerts are `warning`. Raise `FlywayMigrationFailed` to `critical` where a failed migration blocks a
+  release, by patching the `severity` as described in [Shipped rules](#shipped-rules).
 
 ### Labels as scraped
 
@@ -218,255 +221,43 @@ the Service name with a `ServiceMonitor` (`flyway-operator-controller-manager-me
 and OLM, `<release-fullname>-metrics` for Helm), or `job_name` with a plain scrape config. Adjust
 `job=~".*flyway-operator.*"` if your names differ.
 
-### Cluster-wide rules
+### Shipped rules
 
-With the Prometheus Operator, set `metadata.namespace` and `metadata.labels` so your Prometheus
-`ruleNamespaceSelector` and `ruleSelector` pick the rule up:
+The rules are a `PrometheusRule` in `config/prometheus/rules.yaml`. The alerts and their thresholds are in that
+file; the table above lists them.
 
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: flyway-operator
-  namespace: <prometheus-rules-namespace>
-  labels: {} # match your Prometheus ruleSelector, e.g. release: kube-prometheus-stack
-spec:
-  groups:
-    - name: flyway-operator.operator
-      rules:
-        - alert: FlywayOperatorMetricsAbsent
-          expr: absent(up{job=~".*flyway-operator.*"} == 1)
-          for: 10m
-          labels:
-            severity: warning
-            alert_audience: platform
-          annotations:
-            summary: No flyway-operator metrics target is up, so no migration alert can fire.
-        - alert: FlywayOperatorReconcileErrors
-          expr: |
-            sum(rate(controller_runtime_reconcile_errors_total{controller="migration"}[15m]))
-              / sum(rate(controller_runtime_reconcile_total{controller="migration"}[15m])) > 0.1
-          for: 15m
-          labels:
-            severity: warning
-            alert_audience: platform
-          annotations:
-            summary: More than 10% of Migration reconciles failed over 15m. Check the operator logs.
-    - name: flyway-operator.migrations
-      rules:
-        - alert: FlywayMigrationFailed
-          expr: |
-            max by (namespace, migration) (
-              flyway_operator_migration_status_condition{condition="Failed", status="true"}
-            ) == 1
-          for: 1m
-          labels:
-            severity: warning
-            alert_audience: workload
-          annotations:
-            summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} failed and is not retried.
-            description: >-
-              retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline, else RetryLimitExceeded), or the cluster does not support image volumes (ImageVolumeUnsupported). Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}`
-              and `kubectl -n {{ $labels.namespace }} logs job/{{ $labels.migration }} -c flyway`.
-              A spec change starts a new run.
-        - alert: FlywayMigrationStuck
-          expr: |
-            max by (namespace, migration) (
-              flyway_operator_migration_status_condition{condition="Progressing", status="true"}
-            ) == 1
-            and on (namespace, migration)
-            time() - max by (namespace, migration) (
-              flyway_operator_migration_status_condition_last_transition_timestamp_seconds{condition="Progressing"}
-            ) > 3600
-            unless on (namespace, migration) max by (namespace, migration) (flyway_operator_migration_paused) == 1
-          for: 5m
-          labels:
-            severity: warning
-            alert_audience: workload
-          annotations:
-            summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} has been progressing for more than 1h.
-            description: >-
-              The Job may be waiting on a database lock, an unreachable database or an unschedulable pod.
-              Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}` and the Job's pods.
-        - alert: FlywayMigrationRetrying
-          expr: |
-            sum by (namespace, migration) (
-              increase(flyway_operator_migration_runs_total{result="retrying"}[30m])
-            ) > 0
-          labels:
-            severity: info
-            alert_audience: workload
-          annotations:
-            summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} had a failed attempt in the last 30m and is retrying.
-        - alert: FlywayMigrationSlow
-          expr: |
-            max by (namespace, migration) (
-              flyway_operator_migration_last_run_duration_seconds{result="succeeded"}
-            ) > 900
-          labels:
-            severity: info
-            alert_audience: workload
-          annotations:
-            summary: The last successful run of migration {{ $labels.namespace }}/{{ $labels.migration }} took {{ $value | humanizeDuration }}.
+| Install path | Rules | Disable or override |
+|--------------|-------|---------------------|
+| kustomize (`make deploy`) | On by default, as `controller-manager-alerts` in the operator namespace. | Remove `rules.yaml` from `config/prometheus/kustomization.yaml`, or patch the `PrometheusRule` in your overlay (for example to raise a `severity` or change a `for:`). |
+| OLM | On by default, shipped in the bundle. | Delete the `PrometheusRule` after install, or add your own rules with different thresholds. A deletion or edit is undone by the next upgrade. |
+| Helm | Arrives with the next chart release, opt-in. | Not shipped yet. Until then, apply `config/prometheus/rules.yaml` yourself. |
+
+Like the `ServiceMonitor`, the kustomize and OLM rule needs the Prometheus Operator CRDs. To use a different
+threshold or a per-namespace scope, copy the groups from `config/prometheus/rules.yaml`, add a `namespace`
+matcher to the selectors, and disable the shipped rule. With a Prometheus that enforces the rule namespace as a
+`namespace` label (for example OpenShift user-workload monitoring, or Prometheus Operator with
+`enforcedNamespaceLabel`), the series match only when they carry the Migration's namespace in `namespace`, as
+described in [Labels as scraped](#labels-as-scraped). A Prometheus that enforces the `namespace` label on the
+operator's own `ServiceMonitor` overrides `honorLabels`.
+
+On OpenShift, the rules need the operator namespace to be monitored by the platform Prometheus: the label
+`openshift.io/cluster-monitoring=true` and a `prometheus-k8s` Role and RoleBinding for service discovery. Check them
+with `oc get ns <ns> --show-labels` and `oc get rolebinding prometheus-k8s -n <ns>`. The platform Prometheus needs
+no metrics-reader binding: its own `prometheus-k8s` ClusterRole grants `get` on `/metrics`. Under user-workload
+monitoring the namespace is enforced, so the Migration alerts only see their own namespace.
+
+For a Prometheus without the Prometheus Operator, use the `spec` of `config/prometheus/rules.yaml` (the
+`groups:` list, for example from `yq '.spec'`) as a rules file in `rule_files`.
+
+To check the rules, extract the groups from the `PrometheusRule` first, then run promtool on the result:
+
+```shell
+yq '.spec' config/prometheus/rules.yaml > /tmp/rules.yaml
+promtool check rules /tmp/rules.yaml
 ```
 
-The same rules as a plain Prometheus rules file, for `rule_files`:
-
-```yaml
-groups:
-  - name: flyway-operator.operator
-    rules:
-      - alert: FlywayOperatorMetricsAbsent
-        expr: absent(up{job=~".*flyway-operator.*"} == 1)
-        for: 10m
-        labels:
-          severity: warning
-          alert_audience: platform
-        annotations:
-          summary: No flyway-operator metrics target is up, so no migration alert can fire.
-      - alert: FlywayOperatorReconcileErrors
-        expr: |
-          sum(rate(controller_runtime_reconcile_errors_total{controller="migration"}[15m]))
-            / sum(rate(controller_runtime_reconcile_total{controller="migration"}[15m])) > 0.1
-        for: 15m
-        labels:
-          severity: warning
-          alert_audience: platform
-        annotations:
-          summary: More than 10% of Migration reconciles failed over 15m. Check the operator logs.
-  - name: flyway-operator.migrations
-    rules:
-      - alert: FlywayMigrationFailed
-        expr: |
-          max by (namespace, migration) (
-            flyway_operator_migration_status_condition{condition="Failed", status="true"}
-          ) == 1
-        for: 1m
-        labels:
-          severity: warning
-          alert_audience: workload
-        annotations:
-          summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} failed and is not retried.
-          description: >-
-            retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline, else RetryLimitExceeded), or the cluster does not support image volumes (ImageVolumeUnsupported). Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}`
-            and `kubectl -n {{ $labels.namespace }} logs job/{{ $labels.migration }} -c flyway`.
-            A spec change starts a new run.
-      - alert: FlywayMigrationStuck
-        expr: |
-          max by (namespace, migration) (
-            flyway_operator_migration_status_condition{condition="Progressing", status="true"}
-          ) == 1
-          and on (namespace, migration)
-          time() - max by (namespace, migration) (
-            flyway_operator_migration_status_condition_last_transition_timestamp_seconds{condition="Progressing"}
-          ) > 3600
-          unless on (namespace, migration) max by (namespace, migration) (flyway_operator_migration_paused) == 1
-        for: 5m
-        labels:
-          severity: warning
-          alert_audience: workload
-        annotations:
-          summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} has been progressing for more than 1h.
-          description: >-
-            The Job may be waiting on a database lock, an unreachable database or an unschedulable pod.
-            Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}` and the Job's pods.
-      - alert: FlywayMigrationRetrying
-        expr: |
-          sum by (namespace, migration) (
-            increase(flyway_operator_migration_runs_total{result="retrying"}[30m])
-          ) > 0
-        labels:
-          severity: info
-          alert_audience: workload
-        annotations:
-          summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} had a failed attempt in the last 30m and is retrying.
-      - alert: FlywayMigrationSlow
-        expr: |
-          max by (namespace, migration) (
-            flyway_operator_migration_last_run_duration_seconds{result="succeeded"}
-          ) > 900
-        labels:
-          severity: info
-          alert_audience: workload
-        annotations:
-          summary: The last successful run of migration {{ $labels.namespace }}/{{ $labels.migration }} took {{ $value | humanizeDuration }}.
-```
-
-### Per-namespace rules
-
-A team can instead deploy the migration rules in its own namespace, with every expression filtered to that
-namespace. Replace `team-a`:
-
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: flyway-migrations
-  namespace: team-a
-spec:
-  groups:
-    - name: flyway-migrations.team-a
-      rules:
-        - alert: FlywayMigrationFailed
-          expr: |
-            max by (namespace, migration) (
-              flyway_operator_migration_status_condition{namespace="team-a", condition="Failed", status="true"}
-            ) == 1
-          for: 1m
-          labels:
-            severity: critical  # raised from the default warning: a failed migration blocks this team's releases
-            alert_audience: workload
-          annotations:
-            summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} failed and is not retried.
-            description: >-
-              retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline, else RetryLimitExceeded), or the cluster does not support image volumes (ImageVolumeUnsupported). Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}`
-              and `kubectl -n {{ $labels.namespace }} logs job/{{ $labels.migration }} -c flyway`.
-              A spec change starts a new run.
-        - alert: FlywayMigrationStuck
-          expr: |
-            max by (namespace, migration) (
-              flyway_operator_migration_status_condition{namespace="team-a", condition="Progressing", status="true"}
-            ) == 1
-            and on (namespace, migration)
-            time() - max by (namespace, migration) (
-              flyway_operator_migration_status_condition_last_transition_timestamp_seconds{namespace="team-a", condition="Progressing"}
-            ) > 3600
-            unless on (namespace, migration) max by (namespace, migration) (flyway_operator_migration_paused{namespace="team-a"}) == 1
-          for: 5m
-          labels:
-            severity: warning
-            alert_audience: workload
-          annotations:
-            summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} has been progressing for more than 1h.
-            description: >-
-              The Job may be waiting on a database lock, an unreachable database or an unschedulable pod.
-              Check `kubectl -n {{ $labels.namespace }} describe migration {{ $labels.migration }}` and the Job's pods.
-        - alert: FlywayMigrationRetrying
-          expr: |
-            sum by (namespace, migration) (
-              increase(flyway_operator_migration_runs_total{namespace="team-a", result="retrying"}[30m])
-            ) > 0
-          labels:
-            severity: info
-            alert_audience: workload
-          annotations:
-            summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} had a failed attempt in the last 30m and is retrying.
-        - alert: FlywayMigrationSlow
-          expr: |
-            max by (namespace, migration) (
-              flyway_operator_migration_last_run_duration_seconds{namespace="team-a", result="succeeded"}
-            ) > 900
-          labels:
-            severity: info
-            alert_audience: workload
-          annotations:
-            summary: The last successful run of migration {{ $labels.namespace }}/{{ $labels.migration }} took {{ $value | humanizeDuration }}.
-```
-
-Where namespaced rules are evaluated with the rule's namespace enforced as a label filter (for example OpenShift
-user-workload monitoring, or Prometheus Operator with `enforcedNamespaceLabel`), the series match only when they
-carry the Migration's namespace in `namespace`, as described in [Labels as scraped](#labels-as-scraped). A
-Prometheus that enforces the `namespace` label on the operator's own `ServiceMonitor` overrides `honorLabels`.
+`make test-rules` does this and also runs the unit tests in `config/prometheus/tests/rules_test.yaml` (needs `yq`;
+promtool runs through `go run`). CI runs it in the build job.
 
 ### Alertmanager routing
 

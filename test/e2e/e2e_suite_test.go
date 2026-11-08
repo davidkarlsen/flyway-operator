@@ -47,8 +47,8 @@ var (
 	registry = env.GetDefault("E2E_REGISTRY", "localhost:5001")
 	// flywayImage mirrors the operator's default Flyway image into the local registry. The operator pulls it with
 	// imagePullPolicy Always, so a `kind load`ed image would not be used.
-	flywayImage = registry + "/" + strings.TrimPrefix(controller.DefaultFlywayImage, "docker.io/")
-	serviceMon  = regexp.MustCompile(`(?m)^kind: ServiceMonitor$`)
+	flywayImage       = registry + "/" + strings.TrimPrefix(controller.DefaultFlywayImage, "docker.io/")
+	promOperatorKinds = regexp.MustCompile(`(?m)^kind: (ServiceMonitor|PrometheusRule)$`)
 	// setupComplete is false when BeforeSuite failed, so AfterSuite dumps diagnostics.
 	setupComplete bool
 )
@@ -119,12 +119,12 @@ var _ = AfterSuite(func() {
 	_, _ = utils.Run(del)
 })
 
-// operatorManifests renders test/e2e/config. ServiceMonitors are dropped: kind has no prometheus-operator CRDs.
+// operatorManifests renders test/e2e/config. ServiceMonitors and PrometheusRules are dropped: kind has no prometheus-operator CRDs.
 func operatorManifests() string {
 	out := mustRun(exec.Command(env.GetDefault("KUSTOMIZE", "kustomize"), "build", "test/e2e/config"))
 	var docs []string
 	for _, doc := range strings.Split(out, "\n---\n") {
-		if !serviceMon.MatchString(doc) {
+		if !promOperatorKinds.MatchString(doc) {
 			docs = append(docs, doc)
 		}
 	}
