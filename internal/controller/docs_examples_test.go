@@ -60,11 +60,27 @@ func documentedMigrations(files ...string) map[string]*unstructured.Unstructured
 				if u.GetKind() != "Migration" {
 					continue
 				}
-				out[fmt.Sprintf("%s#%d.%d", filepath.Base(f), bi, di)] = u
+				key := fmt.Sprintf("%s#%d.%d", f, bi, di)
+				Expect(out).NotTo(HaveKey(key), "duplicate documented example key %s", key)
+				out[key] = u
 			}
 		}
 	}
 	return out
+}
+
+// referenceMigration returns the single Migration named name, failing when there are none or several.
+func referenceMigration(docs map[string]*unstructured.Unstructured, name string) (*unstructured.Unstructured, error) {
+	var matches []*unstructured.Unstructured
+	for _, u := range docs {
+		if u.GetName() == name {
+			matches = append(matches, u)
+		}
+	}
+	if len(matches) != 1 {
+		return nil, fmt.Errorf("docs/usage.md needs exactly one Migration named %q as the OLM sample's reference, found %d", name, len(matches))
+	}
+	return matches[0], nil
 }
 
 func loadSample() *unstructured.Unstructured {
@@ -120,16 +136,30 @@ var _ = Describe("Documented examples", func() {
 		Expect(createDryRun(u)).NotTo(Succeed())
 	})
 
+	It("accepts additional differently named Migrations next to the reference", func() {
+		sample := loadSample()
+		tmp := filepath.Join(GinkgoT().TempDir(), "usage.md")
+		md := "```yaml\napiVersion: flyway.davidkarlsen.com/v1alpha1\nkind: Migration\nmetadata:\n  name: " + sample.GetName() + "\n```\n" +
+			"```yaml\napiVersion: flyway.davidkarlsen.com/v1alpha1\nkind: Migration\nmetadata:\n  name: other-use-case\n```\n"
+		Expect(os.WriteFile(tmp, []byte(md), 0o600)).To(Succeed())
+		docs := documentedMigrations(tmp)
+		Expect(docs).To(HaveLen(2))
+		ref, err := referenceMigration(docs, sample.GetName())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ref.GetName()).To(Equal(sample.GetName()))
+		_, err = referenceMigration(docs, "missing")
+		Expect(err).To(MatchError(ContainSubstring("exactly one Migration named")))
+		docs["dup"] = ref
+		_, err = referenceMigration(docs, sample.GetName())
+		Expect(err).To(HaveOccurred())
+	})
+
 	It("keeps the OLM sample a subset of the docs/usage.md example", func() {
 		docs := documentedMigrations(usageDocPath)
-		Expect(docs).To(HaveLen(1), "docs/usage.md should have exactly one reference Migration example")
-		var reference *unstructured.Unstructured
-		for _, u := range docs {
-			reference = u
-		}
 		sample := loadSample()
+		reference, err := referenceMigration(docs, sample.GetName())
+		Expect(err).NotTo(HaveOccurred())
 		Expect(sample.GetAPIVersion()).To(Equal(reference.GetAPIVersion()))
-		Expect(sample.GetName()).To(Equal(reference.GetName()))
 		sampleSpec, found, err := unstructured.NestedMap(sample.Object, "spec")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(found).To(BeTrue(), "OLM sample has no spec")

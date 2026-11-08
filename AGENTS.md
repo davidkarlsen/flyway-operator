@@ -56,7 +56,7 @@ All commands are driven through the `Makefile`.
 
 ### Working In This Directory
 - Pre-PR checklist (from `CONTRIBUTING.md`): run `make manifests fmt vet` before opening a PR; `make test` and `golangci-lint run --build-tags e2e ./...` are what CI runs (default golangci-lint config, there is no repo-level `.golangci.*`). CI fails if `make manifests generate` leaves a diff, so commit regenerated files.
-- Use kubebuilder validation markers (`+kubebuilder:validation:Required|Optional|Pattern`, `+kubebuilder:default`) for all spec fields. After editing API types, run `make manifests generate` and update the examples in `docs/usage.md` if the public shape changed. `config/samples/` is only the OLM `alm-examples` source; keep it minimal and valid, not a second set of docs.
+- Use kubebuilder validation markers (`+kubebuilder:validation:Required|Optional|Pattern`, `+kubebuilder:default`) for all spec fields. After editing API types, run `make manifests generate` and update the examples in `docs/usage.md` if the public shape changed. `config/samples/` is only the OLM `alm-examples` source; keep it minimal and valid, not a second set of docs. `docs/usage.md` holds one reference `Migration` named like the sample, plus any number of per-use-case examples with their own names.
 - Operator-owned annotations and labels use the `Prefix = "flyway-operator.davidkarlsen.com"` constant from `api/v1alpha1/migration_types.go`; do not hardcode the domain.
 - Apache 2.0 license header (see `hack/boilerplate.go.txt`) on new Go files; `controller-gen` also enforces it.
 - Env-var defaults use `github.com/caitlinelfring/go-env-default`.
