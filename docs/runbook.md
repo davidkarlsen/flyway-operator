@@ -91,8 +91,15 @@ kubectl -n <ns> logs job/<name> -c flyway                # the Flyway error of t
 kubectl -n <ns> describe job <name>
 ```
 
-The message holds the Job's own failure reason. The Job of the last attempt is kept, so its logs are readable; the
-Jobs of earlier attempts were deleted for the retry.
+The message holds the Job's own failure reason, followed by `; flyway: ` and Flyway's own error text (the failing
+script and the database's error) when the Flyway log was readable. That needs `get` on `pods/log`: the kustomize and
+OLM installs grant it, Helm users get it with the next chart release, and without it the message has no Flyway error.
+The text can quote values from the failing statement; see [Status](usage.md#status). The Job of the last attempt is
+kept, so its logs are readable; the Jobs of earlier attempts were deleted for the retry.
+
+`status.schemaVersion` (the `SCHEMA VERSION` column of `kubectl get migration`) is the Flyway schema version the last
+succeeded Job reported. It does not move on a failed run, so it tells which version the database was at before the
+failure; on a database without transactional DDL a partly applied script is not reflected in it.
 
 | Reason | Look at |
 | --- | --- |
@@ -148,7 +155,8 @@ Read the reason:
   [When the pod does not start](usage.md#when-the-pod-does-not-start).
 - `JobRunning` without such a detail: Flyway is running. Check the log for a long script, a database lock held by
   another session, or an unreachable database.
-- `Retrying`: an attempt failed and another follows; read the failure in the message.
+- `Retrying`: an attempt failed and another follows; the message holds the failure and, when the log was readable,
+  Flyway's error after `; flyway: ` (needs `pods/log`, see [FlywayMigrationFailed](#flywaymigrationfailed)).
 - `PreviousJobRunning`: a Job of an older generation is still running and the new spec waits for it.
 
 **Mitigation.**
