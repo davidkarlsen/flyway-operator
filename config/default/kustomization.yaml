@@ -25,6 +25,8 @@ resources:
 #- ../certmanager
 # [PROMETHEUS] To enable prometheus monitor, uncomment all sections with 'PROMETHEUS'.
 - ../prometheus
+# Grafana dashboards ConfigMap, see docs/dashboards.md.
+- ../grafana
 # [METRICS] Expose the controller manager metrics service.
 - metrics_service.yaml
 

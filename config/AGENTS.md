@@ -16,6 +16,7 @@ Kustomize bases and overlays consumed by `make install`, `make deploy`, `make ma
 | `rbac/` | ClusterRole/Role bindings for the manager and the metrics endpoint (see `rbac/AGENTS.md`) |
 | `samples/` | Minimal Migration used only as the OLM CSV `alm-examples` source (see `samples/AGENTS.md`); documented examples live in `docs/` |
 | `prometheus/` | `ServiceMonitor` for Prometheus Operator scraping, included by `default/` (see `prometheus/AGENTS.md`) |
+| `grafana/` | Grafana dashboard JSON and the `flyway-operator-dashboards` ConfigMap generator, included by `default/` (see `grafana/AGENTS.md`) |
 | `manifests/` | OLM `ClusterServiceVersion` base (including `minKubeVersion`), used by `make bundle` (see `manifests/AGENTS.md`) |
 | `scorecard/` | Operator-SDK scorecard test config (see `scorecard/AGENTS.md`) |
 | `helm-chart/` | Helm chart source for `flyway-operator/flyway-operator` (see `helm-chart/AGENTS.md`) |

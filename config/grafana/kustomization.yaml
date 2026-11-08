@@ -1,0 +1,14 @@
+# Grafana dashboards as one ConfigMap, a key per dashboard. The JSON files under dashboards/ are the source of
+# truth. The grafana_dashboard label is picked up by the Grafana sidecar; grafana-operator v5 reads the
+# ConfigMap through GrafanaDashboard.spec.configMapRef (see docs/dashboards.md).
+generatorOptions:
+  # keep the name stable for configMapRef
+  disableNameSuffixHash: true
+  labels:
+    grafana_dashboard: "1"
+
+configMapGenerator:
+- name: dashboards
+  files:
+  - dashboards/flyway-operator.json
+  - dashboards/flyway-migrations.json
