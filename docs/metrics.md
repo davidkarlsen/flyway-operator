@@ -224,7 +224,8 @@ and OLM, `<release-fullname>-metrics` for Helm), or `job_name` with a plain scra
 ### Shipped rules
 
 The rules are a `PrometheusRule` in `config/prometheus/rules.yaml`. The alerts and their thresholds are in that
-file; the table above lists them.
+file; the table above lists them, and each alert's `runbook_url` points at its section of the
+[alert runbook](runbook.md).
 
 | Install path | Rules | Disable or override |
 |--------------|-------|---------------------|

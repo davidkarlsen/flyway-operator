@@ -104,7 +104,8 @@ Releases are signed and come with build provenance: [verifying releases](docs/ve
 |---|---|
 | [Installing](docs/installing.md) | OLM, Helm and kustomize, requirements, upgrade notes |
 | [Usage](docs/usage.md) | The `Migration` resource, status, retries, time limits, security context, labels |
-| [Metrics and alerts](docs/metrics.md) | Prometheus metrics and copy-paste alert rules |
+| [Metrics and alerts](docs/metrics.md) | Prometheus metrics and the shipped alert rules |
+| [Alert runbook](docs/runbook.md) | What each shipped alert means and how to diagnose and fix it |
 | [Dashboards](docs/dashboards.md) | Grafana dashboards for the operator and for migrations |
 | [Argo CD](docs/argocd.md) | Make Argo CD wait for a migration |
 | [Verifying releases](docs/verifying.md) | Check signatures and provenance |
