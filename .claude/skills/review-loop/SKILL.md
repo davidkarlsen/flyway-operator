@@ -49,7 +49,7 @@ Re-review rounds reuse the same reviewer agents (SendMessage) so they keep their
 - **Conflicting values** between PRs (e.g. two PRs setting `minKubeVersion`): ask the user which wins; don't let merge order decide.
 - Drafts that wait for a release stay drafts until the user confirms the gate.
 - Before merging, check the PR body still matches the final diff; fix the body, not with a comment.
-- Before merging, check `gh pr view <n> --json closingIssuesReferences` lists the PR's issue(s), and that each issue has a type label (`enhancement` or `bug`) and at least one `area/*` label. Add a missing `Closes #N` or label first.
+- Before merging, unless the PR is exempt per `issue-to-pr` §1: `gh pr view <n> --json closingIssuesReferences -q '[.closingIssuesReferences[].number]'` lists the PR's issue(s) (or the body has `Refs #N` for partial work), and each issue has a type and an `area/*` label (`gh issue view <N> --json labels -q '[.labels[].name]'`). Add a missing `Closes #N` or label first.
 - PRs that edit the same files: merge one at a time; rebase the next onto `main` and let CI and the reviewers re-check it.
 
 After merge: confirm the linked issue closed. Close superseded PRs/issues with a comment linking the replacement.
