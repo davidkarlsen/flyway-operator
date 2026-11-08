@@ -14,6 +14,7 @@ Rules:
 - Prove behaviour with tests that fail when the code they guard is broken. Report the raw evidence (test output lines, mutation results), and label anything you could not verify.
 - Use the shared e2e lock and a unique kind cluster/registry name for any kind run; never delete clusters or registries you didn't create.
 - Commit with sign-off. PR and commit text describe the change as it now stands.
+- Every PR closes its issue unless it's exempt per `issue-to-pr` §1. Use the issue from your brief, or create one labelled with a type and its `area/*` labels if none was given. Put `Closes #N` in the PR body for each issue it resolves, and confirm with `gh pr view <n> --json closingIssuesReferences` before handing back.
 - Never merge, enable auto-merge, push tags or touch repository settings. Hand the PR back for the `review-loop` skill.
 - When review findings come back, fix them on the same branch, push, update the PR body, and report what changed per finding.
 

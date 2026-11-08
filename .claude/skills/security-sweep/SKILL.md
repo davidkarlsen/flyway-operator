@@ -27,4 +27,4 @@ govulncheck finds reachable vulnerabilities that Dependabot may not alert on (De
 - Scorecard: `Code-Review` stays low for a solo maintainer (self-merged PRs). Don't game it. Keep `Pinned-Dependencies` (SHA pins), `Token-Permissions` (top-level `contents: read`), `Security-Policy` (`SECURITY.md`) and `Signed-Releases` (signed tag releases and chart releases) intact when editing workflows.
 - Dependabot malware alerts only cover npm today; not relevant for this repo's Go/Docker/Actions ecosystems.
 
-Open fixes via `issue-to-pr` (issue optional for routine bumps) and review with `review-loop`.
+Open fixes via `issue-to-pr` (routine bumps are exempt from the issue step, see `issue-to-pr` §1; vulnerability fixes beyond a plain bump get an issue labelled `bug` and `area/security`) and review with `review-loop`.
