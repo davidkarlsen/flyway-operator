@@ -31,6 +31,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
@@ -287,6 +288,35 @@ var _ = Describe("Migration controller (envtest)", func() {
 				Expect(c.SecurityContext.ReadOnlyRootFilesystem).To(Equal(ptr.To(true)), c.Name)
 				Expect(c.VolumeMounts).To(ContainElement(corev1.VolumeMount{Name: tmpVolumeName, MountPath: tmpPath}), c.Name)
 			}
+		})
+
+		It("sets resources, scheduling fields and the service account on the Job's pod", func(ctx SpecContext) {
+			m := newMigration(ns, key.Name)
+			m.Spec.FlywayConfiguration.Resources = &corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("256Mi")},
+				Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("512Mi")},
+			}
+			m.Spec.FlywayConfiguration.NodeSelector = map[string]string{"disktype": "ssd"}
+			m.Spec.FlywayConfiguration.Tolerations = []corev1.Toleration{{Key: "dedicated", Operator: corev1.TolerationOpExists}}
+			m.Spec.FlywayConfiguration.Affinity = &corev1.Affinity{NodeAffinity: &corev1.NodeAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{NodeSelectorTerms: []corev1.NodeSelectorTerm{
+					{MatchExpressions: []corev1.NodeSelectorRequirement{{Key: "zone", Operator: corev1.NodeSelectorOpIn, Values: []string{"a"}}}},
+				}},
+			}}
+			m.Spec.FlywayConfiguration.PriorityClassName = "system-cluster-critical"
+			m.Spec.FlywayConfiguration.ServiceAccountName = "flyway"
+			Expect(k8sClient.Create(ctx, m)).To(Succeed())
+
+			pod := waitForJob(ctx, key, "").Spec.Template.Spec
+
+			Expect(pod.Containers[0].Resources.Requests.Cpu().String()).To(Equal("100m"))
+			Expect(pod.Containers[0].Resources.Requests.Memory().String()).To(Equal("256Mi"))
+			Expect(pod.Containers[0].Resources.Limits.Memory().String()).To(Equal("512Mi"))
+			Expect(pod.NodeSelector).To(Equal(map[string]string{"disktype": "ssd"}))
+			Expect(pod.Tolerations).To(ConsistOf(HaveField("Key", "dedicated")))
+			Expect(pod.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms).To(HaveLen(1))
+			Expect(pod.PriorityClassName).To(Equal("system-cluster-critical"))
+			Expect(pod.ServiceAccountName).To(Equal("flyway"))
 		})
 
 		It("sets jobMetadata on the Job and podMetadata and the operator labels on its pod template", func(ctx SpecContext) {
@@ -594,6 +624,15 @@ var _ = Describe("Migration controller (envtest)", func() {
 			Entry("negative retryLimit", func(spec map[string]any) {
 				spec["retryLimit"] = int64(-1)
 			}, "spec.retryLimit"),
+			Entry("serviceAccountName that is not a DNS name", func(spec map[string]any) {
+				spec["flywayConfiguration"] = map[string]any{"serviceAccountName": "My_SA"}
+			}, "spec.flywayConfiguration.serviceAccountName"),
+			Entry("priorityClassName that is not a DNS name", func(spec map[string]any) {
+				spec["flywayConfiguration"] = map[string]any{"priorityClassName": "-bad-"}
+			}, "spec.flywayConfiguration.priorityClassName"),
+			Entry("resources.claims", func(spec map[string]any) {
+				spec["flywayConfiguration"] = map[string]any{"resources": map[string]any{"claims": []any{map[string]any{"name": "gpu"}}}}
+			}, "spec.flywayConfiguration.resources", "resources.claims is not supported"),
 			Entry("reserved pod label job-name", func(spec map[string]any) {
 				spec["podMetadata"] = map[string]any{"labels": map[string]any{"job-name": "x"}}
 			}, "spec.podMetadata.labels", "must not contain a reserved key"),
