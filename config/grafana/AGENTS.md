@@ -18,7 +18,7 @@ Grafana dashboards for the operator's metrics. A kustomize `configMapGenerator` 
 
 ### Working In This Directory
 - The JSON files are the source of truth. Use only metrics listed in `docs/metrics.md`, keep the panels that mirror alerts in step with the alert expressions there, and keep the `${datasource}` variable instead of a datasource UID.
-- After a change, check that `kustomize build config/manifests` still emits the ConfigMap, and regenerate its bundle file with `make bundle`. See `docs/dashboards.md`.
+- After a change, run `make helm-dashboards` and commit the chart copy under `config/helm-chart/flyway-operator/dashboards/` (chart CI fails on chart PRs if it is stale), then check that `kustomize build config/manifests` still emits the ConfigMap, and regenerate its bundle file with `make bundle`. See `docs/dashboards.md`.
 
 ## Manual Notes
 

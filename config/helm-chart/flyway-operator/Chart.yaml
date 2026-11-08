@@ -62,6 +62,4 @@ annotations:
   artifacthub.io/operatorCapabilities: Basic Install
   artifacthub.io/changes: |
     - kind: added
-      description: "Artifact Hub annotations: image scanning, CRD, example and links"
-    - kind: added
       description: "Optional Grafana dashboards (grafana.dashboards.enabled): a ConfigMap and, when grafana-operator is installed, GrafanaDashboards"

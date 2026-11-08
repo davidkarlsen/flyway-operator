@@ -1,7 +1,7 @@
 # flyway-operator
 
 **Parent context:** `../AGENTS.md`
-**Generated:** 2026-05-09 · **Updated:** 2026-11-07
+**Generated:** 2026-05-09 · **Updated:** 2026-11-08
 
 ## Purpose
 Helm chart for installing the operator outside of OLM. Mirrors the deployment surface in `config/manager/` and `config/rbac/` but expressed as Go templates.
@@ -12,8 +12,7 @@ Helm chart for installing the operator outside of OLM. Mirrors the deployment su
 |------|-------------|
 | `Chart.yaml` | Chart metadata (name, `version`, `appVersion`, `kubeVersion: ">=1.35.0-0"`) |
 | `Chart.lock` | Pinned dependency versions |
-| `values.yaml` | User-facing knobs (image, resources, replicas, security context, `metrics.*` including the opt-in `metrics.serviceMonitor` and `grafana.dashboards`) |
-| `dashboards/` | Copy of `config/grafana/dashboards/*.json`, read by the dashboards ConfigMap template. Never edit it by hand: run `make helm-dashboards` (chart CI fails if it is stale) |
+| `values.yaml` | User-facing knobs (image, resources, replicas, security context, `metrics.*` including the opt-in `metrics.serviceMonitor`, and the opt-in `grafana.dashboards`) |
 | `README.md` | Chart-specific README rendered on Artifact Hub |
 
 ## Subdirectories
@@ -21,6 +20,7 @@ Helm chart for installing the operator outside of OLM. Mirrors the deployment su
 | Directory | Purpose |
 |-----------|---------|
 | `crds/` | CRD copy installed by Helm pre-install (see `crds/AGENTS.md`) |
+| `dashboards/` | Copy of `config/grafana/dashboards/*.json`, read by the dashboards templates. Never edit it by hand: run `make helm-dashboards` (chart CI fails on chart PRs if it is stale) |
 | `templates/` | Deployment, RBAC, ServiceAccount, NOTES, helpers (see `templates/AGENTS.md`) |
 
 ## For AI Agents

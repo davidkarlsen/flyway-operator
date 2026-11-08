@@ -79,7 +79,7 @@ grafana:
       instanceSelector:
         matchLabels:
           dashboards: grafana
-      # Needed when Grafana runs in another namespace. Immutable once created.
+      # Needed when Grafana runs in another namespace. Changing it from true to false is rejected once created; recreate the GrafanaDashboard.
       allowCrossNamespaceImport: true
       # Optional Grafana folder.
       folder: ""
