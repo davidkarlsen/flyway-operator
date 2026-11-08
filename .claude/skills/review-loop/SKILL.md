@@ -14,7 +14,7 @@ Run in parallel, as separate background agents, each **independently** (never pa
 | Feature or behaviour change | `oh-my-claudecode:critic` + `oh-my-claudecode:code-reviewer` (+ `oh-my-claudecode:architect` for design-heavy changes) |
 | Bug fix, CI/workflow, dependency, chart | `oh-my-claudecode:critic` + `oh-my-claudecode:code-reviewer` |
 | Docs-only (`docs/`, `README.md`, `CONTRIBUTING.md`, `SECURITY.md`) | none required; for `docs/` changes run `make test` locally first (the docs-examples envtest doesn't run in CI for docs-only PRs) |
-| Agent policy (`.claude/**`, `CLAUDE.md`, `**/AGENTS.md`, `.github/copilot-instructions.md`) | `oh-my-claudecode:critic` |
+| Agent policy (`.claude/**`, `CLAUDE.md`, `**/AGENTS.md`) | `oh-my-claudecode:critic` |
 | Dependabot | `oh-my-claudecode:code-reviewer` (light model); the critic only for major-version bumps |
 
 **Fork PRs from other contributors**: review statically only. Reviewers must not run `make`, `go test`, `docker` or any script from the PR on this machine, and the merge is the user's decision.

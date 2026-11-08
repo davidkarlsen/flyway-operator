@@ -30,7 +30,7 @@ Kubernetes operator that reconciles a `Migration` CRD (`flyway.davidkarlsen.com/
 | `hack/` | License header boilerplate consumed by `controller-gen` (see `hack/AGENTS.md`) |
 | `docs/` | User documentation: `installing.md`, `usage.md`, `argocd.md`, `metrics.md`, `dashboards.md`, `verifying.md`, `examples/` |
 | `test/e2e/` | kind end-to-end suite (build tag `e2e`) running real Flyway Jobs against Postgres; `test/utils/` holds its helpers |
-| `.github/` | GitHub Actions workflows, Dependabot config, issue templates, Copilot rules (`copilot-instructions.md`) |
+| `.github/` | GitHub Actions workflows, Dependabot config, issue templates |
 | `.claude/` | Claude Code repo workflows: `skills/` (`issue-to-pr`, `review-loop`, `operator-release`, `tooling-upgrade`, `security-sweep`) and `agents/` (`operator-developer`, `operator-release-manager`) |
 
 ## For AI Agents
@@ -55,7 +55,7 @@ All commands are driven through the `Makefile`.
 | OLM bundle | `make bundle` / `make bundle-build` / `make bundle-push` |
 
 ### Working In This Directory
-- Pre-PR checklist (from `CONTRIBUTING.md` and `.github/copilot-instructions.md`): run `make manifests fmt vet` before opening a PR; `make test` and `golangci-lint run --build-tags e2e ./...` are what CI runs (default golangci-lint config, there is no repo-level `.golangci.*`). CI fails if `make manifests generate` leaves a diff, so commit regenerated files.
+- Pre-PR checklist (from `CONTRIBUTING.md`): run `make manifests fmt vet` before opening a PR; `make test` and `golangci-lint run --build-tags e2e ./...` are what CI runs (default golangci-lint config, there is no repo-level `.golangci.*`). CI fails if `make manifests generate` leaves a diff, so commit regenerated files.
 - Use kubebuilder validation markers (`+kubebuilder:validation:Required|Optional|Pattern`, `+kubebuilder:default`) for all spec fields. After editing API types, run `make manifests generate` and update the examples in `docs/usage.md` if the public shape changed. `config/samples/` is only the OLM `alm-examples` source; keep it minimal and valid, not a second set of docs.
 - Operator-owned annotations and labels use the `Prefix = "flyway-operator.davidkarlsen.com"` constant from `api/v1alpha1/migration_types.go`; do not hardcode the domain.
 - Apache 2.0 license header (see `hack/boilerplate.go.txt`) on new Go files; `controller-gen` also enforces it.
