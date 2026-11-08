@@ -115,6 +115,31 @@ Remove it again with `make undeploy` (controller) and `make uninstall` (CRDs).
 - The operator writes a Migration's status only when it changed, so idle Migrations no longer see a status update on
   every reconcile.
 
+### Before you upgrade
+
+- **Helm: apply the CRD first.** Helm does not update CRDs, and the new CRD adds `status.schemaVersion`, the Job pod
+  fields and optional credentials; the API server drops them until you apply it. Use the command in
+  [Upgrading the CRD](#upgrading-the-crd) with tag `v0.7.0`. OLM and kustomize update the CRD themselves.
+- **RBAC.** The operator needs `pods: list` and `events: list` (to say why a pod does not start) and `pods/log: get`
+  (to read Flyway's output). OLM and kustomize grant them. Helm gets them with the chart release that follows the
+  v0.7.0 tag; until then the Migrations still run, but the status shows plain messages, a never-started Job is waited
+  for rather than replaced, and there is no `schemaVersion` and no Flyway error.
+- **Alerts.** A `PrometheusRule` with four alerts is now installed by default with OLM and kustomize (it needs the
+  Prometheus Operator CRDs), and is opt-in in Helm with the same chart release. To turn it off, see
+  [Shipped rules](metrics.md#shipped-rules); the alerts are explained in the [runbook](runbook.md).
+- **OLM channel.** The catalog's default channel is now `stable-v0`. A subscription without `channel` follows it from v0.7.0; one with an explicit `channel` keeps it.
+
+### New in 0.7.0
+
+- `database.username` and `credentials` are optional. With an empty username the Job sets no `FLYWAY_USER`; see
+  [Passwordless authentication](usage.md#passwordless-authentication).
+- Resources, node selector, affinity, tolerations, priority class and service account for the Job's pod; see
+  [Resources, scheduling and service account](usage.md#resources-scheduling-and-service-account).
+- `status.schemaVersion` and the `SCHEMA VERSION` column, and Flyway's error in the failure message; see
+  [Status](usage.md#status).
+- The `Progressing` message says why the pod does not start, and a Job that never started a container is replaced
+  when the spec changes; see [When the pod does not start](usage.md#when-the-pod-does-not-start).
+
 ## Upgrading to 0.5.0
 
 - Jobs no longer carry `app.kubernetes.io/name: flyway` and `app.kubernetes.io/instance: <migration>`. Selectors on
