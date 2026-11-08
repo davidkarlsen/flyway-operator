@@ -6,7 +6,7 @@ After [installing](installing.md) the operator, create `Migration` resources in 
 
 Put your Flyway SQL files (`V1__init.sql`, ...) in a container image, by default under `/sql`.
 The Job mounts the image read-only as an [image volume](https://kubernetes.io/docs/concepts/storage/volumes/#image)
-into the Flyway container, and Flyway reads the SQL files from `migrationSource.path` inside it.
+into the Flyway container, and Flyway reads the files from `migrationSource.path`.
 The image needs no shell or other tools. A minimal image:
 
 ```dockerfile
@@ -66,40 +66,39 @@ spec:
 ```
 
 The default Flyway image is `docker.io/flyway/flyway:13`. The operator's `FLYWAY_IMAGE` environment variable
-changes the default for all migrations, and `flywayImage` changes it for one migration.
-Any Flyway setting not covered above can be set with `envVars`
-(see [Flyway environment variables](https://documentation.red-gate.com/fd/environment-variables-184127165.html)).
+changes the default for all migrations, and `flywayImage` for one. Set any other Flyway setting with `envVars`
+([Flyway environment variables](https://documentation.red-gate.com/fd/environment-variables-184127165.html)).
 
 ## Job and pod metadata
 
-`jobMetadata` sets labels and annotations on the Job, `podMetadata` on the Job's pod template. Use them for sidecar
-and injector annotations, or for cost, team and NetworkPolicy labels. Nothing is copied from the `Migration`'s own
-labels or annotations: an `app` label shared with your Deployment would let its Services, PodDisruptionBudgets and
-NetworkPolicies select the migration pod, and GitOps tracking metadata would leak onto the Job.
+`jobMetadata` sets labels and annotations on the Job, `podMetadata` on its pod template. Use them for sidecar and
+injector annotations, or for cost, team and NetworkPolicy labels. Nothing is copied from the `Migration`'s own labels
+or annotations: a shared `app` label would let your Deployment's Services, PodDisruptionBudgets and NetworkPolicies
+select the migration pod, and GitOps tracking metadata would leak onto the Job.
 
-The operator sets these labels on both the Job and its pod template, and its own annotations on the Job:
+The operator sets these labels on the Job and its pod template, and its own annotations on the Job:
 
 | Label | Value |
 | --- | --- |
 | `app.kubernetes.io/managed-by` | `flyway-operator` |
 | `flyway-operator.davidkarlsen.com/migration` | the `Migration`'s name |
 
-Select migration pods, e.g. in a NetworkPolicy, on these labels. The operator does not set `app.kubernetes.io/name` or
-`app.kubernetes.io/instance`, so selectors on a Helm release name don't match migration pods; you can set them yourself.
+Select migration pods, for example in a NetworkPolicy, on these labels. The operator sets no
+`app.kubernetes.io/name` or `app.kubernetes.io/instance`, so selectors on a Helm release name don't match; set them yourself.
 
-These keys are reserved and a `Migration` using them in either map is rejected:
+A `Migration` using a reserved key in either map is rejected:
 
 - keys under `flyway-operator.davidkarlsen.com/` and `batch.kubernetes.io/`
 - `controller-uid` and `job-name`, which Kubernetes sets on Job pods
 - `app.kubernetes.io/managed-by`
 
-Keys must be valid label or annotation keys, and label values valid label values (at most 63 characters).
-Each map holds at most 64 entries. Kubernetes limits all annotations on an object to 256 KiB in total; the CRD does not
-check this, and a Job rejected for it shows up in the `Migration`'s status and events.
+Keys must be valid label or annotation keys, and label values valid label values (at most 63 characters). Each map
+holds at most 64 entries. Kubernetes limits all annotations on an object to 256 KiB; the CRD does not check this, and a
+Job rejected for it shows up in the `Migration`'s status and events.
 
 ### Istio
 
-An Istio sidecar keeps running after Flyway exits, so the Job never completes. Disable injection for the migration pod:
+An Istio sidecar keeps running after Flyway exits, so the Job never completes. Disable injection for the pod:
 
 ```yaml
 spec:
@@ -108,61 +107,49 @@ spec:
       sidecar.istio.io/inject: "false"
 ```
 
-Istio in native sidecar mode (Kubernetes 1.29+) runs the proxy as a native sidecar, which does not keep the Job running.
-
-Adding `podMetadata` does not unstick a Job that already hangs: the operator waits for a running Job of an older
-generation to finish before it creates the new one, and a Job held by a sidecar never finishes. Delete it by hand:
-
-```shell
-kubectl delete job my-app
-```
+Istio in native sidecar mode (Kubernetes 1.29+) does not keep the Job running. Without either, the [deadline](#deadline)
+ends the pod but reports a failure. Adding `podMetadata` does not unstick a Job that already hangs, see
+[Hung Jobs](#hung-jobs).
 
 ## What happens
 
-- The operator creates a Job with the same name as the `Migration`, owned by the `Migration`. A `Migration` name
-  longer than 63 characters is rejected, because the name is used as the Job name and as a pod label value.
-- The Job's pod mounts the
-  migration source image read-only at `/flyway/migration-source` and sets
+- The operator creates a Job with the `Migration`'s name, owned by the `Migration`. A name longer than 63 characters is
+  rejected, because it is the Job name and a pod label value.
+- The pod mounts the source image read-only at `/flyway/migration-source` and sets
   `FLYWAY_LOCATIONS=filesystem:/flyway/migration-source/<path>` and `FLYWAY_FAIL_ON_MISSING_LOCATIONS=true`, so a wrong
-  `path` fails the Job instead of applying nothing. An entry with the same name in `envVars` replaces either one
-  (for example to add more locations).
+  `path` fails the Job instead of applying nothing. An `envVars` entry of the same name replaces either (for example to
+  add locations).
 - If the API server stores the Job without the image volume (Kubernetes older than 1.35, or the `ImageVolume` feature
   gate off), the operator deletes the Job and the `Migration` reports `Failed=True` with reason `ImageVolumeUnsupported`.
   Change the spec to try again.
-- The Job is annotated with the `Migration`'s generation. A spec change creates a new Job; an unchanged spec does not rerun it.
-  This includes `jobMetadata` and `podMetadata`: changing them re-runs the migration, which is a no-op for `migrate` when
-  nothing is pending. Existing Jobs are never patched in place.
+- The Job is annotated with the `Migration`'s generation. A spec change creates a new Job, including a change of
+  `jobMetadata`, `podMetadata` or `activeDeadline`; Flyway runs again, a no-op for `migrate` when nothing is pending.
+  An unchanged spec does not rerun it. Existing Jobs are never patched in place.
 - The Job retries its pod twice (`backoffLimit: 2`) before it fails.
-- The Job's pod runs with a [restricted security context](#security-context).
 - A failed Job is re-created up to `spec.retryLimit` times (default `2`) for the same generation. After that the
   `Migration` reports `Failed=True` and no new Job starts until the spec changes. Deleting the failed Job starts one more attempt.
-- Each Job runs for at most `spec.activeDeadline` (default `1h`), see [Deadline](#deadline).
+- Each Job runs at most `spec.activeDeadline`, see [Deadline](#deadline).
+- The pod runs with a [restricted security context](#security-context).
 
 ## Deadline
 
 `spec.activeDeadline` is the maximum run time per Job attempt: a duration such as `30m`, between `1s` and `8760h`,
 default `1h`. It becomes the Job's `activeDeadlineSeconds`, rounded up to whole seconds, and includes image pulls and the
-Job's pod retries. A migration that legitimately runs longer than an hour must set a higher value.
+pod's retries.
 
-- When the deadline is reached, Kubernetes kills the pod and fails the Job with reason `DeadlineExceeded`. This counts
-  against `retryLimit` like any other failure, so a `Migration` can run for up to `activeDeadline × (retryLimit + 1)`
-  before it reports `Failed`. Set `retryLimit: 0` to not retry after a timeout.
+- At the deadline Kubernetes kills the pod and fails the Job with reason `DeadlineExceeded`. This counts against
+  `retryLimit`, so a `Migration` can run up to `activeDeadline × (retryLimit + 1)` before it reports `Failed`. Set
+  `retryLimit: 0` to not retry after a timeout.
 - While retries remain the reason is `Retrying`. When the last attempt times out, the `Migration` reports `Failed=True`
-  with reason `TimedOut` instead of `RetryLimitExceeded`, and a `TimedOut` Warning event instead of `Failed`. The
-  message says `timed out (activeDeadline ...)` and holds the Job's `DeadlineExceeded` reason. Anything matching
-  `RetryLimitExceeded` to detect a failed `Migration` must also match `TimedOut`, or match `Failed=True` instead.
+  with reason `TimedOut` instead of `RetryLimitExceeded`, and a `TimedOut` Warning event instead of `Failed`. The message
+  says `timed out (activeDeadline ...)` and holds the Job's `DeadlineExceeded` reason. Anything matching
+  `RetryLimitExceeded` to detect a failed `Migration` must also match `TimedOut`, or match `Failed=True`.
 - Killing Flyway mid-migration is only safe where DDL is transactional (PostgreSQL, SQL Server). On MySQL, Oracle and DB2 a
   killed migration can leave a script partly applied and a failed row in the schema history table, which needs
   `flyway repair` and manual cleanup. Prefer database-side limits that fail cleanly, such as `lock_timeout` /
-  `statement_timeout` set through `jdbcUrl` or `jdbcProperties`, and Flyway's `FLYWAY_CONNECT_RETRIES` and
+  `statement_timeout` through `jdbcUrl` or `jdbcProperties`, and Flyway's `FLYWAY_CONNECT_RETRIES` and
   `FLYWAY_LOCK_RETRY_COUNT` (in `envVars`), and keep `activeDeadline` as the outer bound.
-- Changing only `activeDeadline` is a spec change: it starts a new Job, which runs Flyway again (a no-op when nothing is
-  pending).
-- The deadline only applies to Jobs created with it. A Job that is already hung keeps running and blocks later spec
-  changes (`PreviousJobRunning`); delete it with `kubectl delete job <name>`.
-- With Istio, an injected sidecar that never exits keeps the pod running after Flyway has finished. The deadline bounds
-  this but reports it as a failure; disable injection for the Job's pod (`podMetadata` annotation
-  `sidecar.istio.io/inject: "false"`) or run the proxy as a native sidecar so the pod completes.
+- The deadline only applies to Jobs created with it. A Job already hung keeps running, see [Hung Jobs](#hung-jobs).
 
 ## Resources, scheduling and service account
 
@@ -175,48 +162,33 @@ default scheduler and runs as the namespace's `default` service account.
 | `nodeSelector`, `tolerations`, `affinity`, `priorityClassName` | the pod |
 | `serviceAccountName` | the pod |
 
-```yaml
-spec:
-  flywayConfiguration:
-    resources:
-      requests: {cpu: 100m, memory: 256Mi}
-      limits: {memory: 512Mi}
-    serviceAccountName: flyway
-    nodeSelector:
-      kubernetes.io/os: linux
-    tolerations:
-      - {key: dedicated, operator: Equal, value: batch, effect: NoSchedule}
-    priorityClassName: batch-low
-```
-
-A complete, validated `Migration` with these fields is in [examples/resources-and-quota.md](examples/resources-and-quota.md).
+A complete, validated `Migration` with `resources`, `serviceAccountName`, `nodeSelector`, `tolerations` and
+`priorityClassName` is in [examples/resources-and-quota.md](examples/resources-and-quota.md).
 
 The operator sets no default `resources`. Flyway runs on the JVM, so the right size depends on your migrations; the
-numbers above are a starting point, not a measured recommendation. `resources.claims` is rejected: the operator does
+numbers in [examples/resources-and-quota.md](examples/resources-and-quota.md) are a starting point, not a measured recommendation. `resources.claims` is rejected: the operator does
 not define the pod's `resourceClaims` that a claim would refer to.
 
 ### ResourceQuota
 
 A namespace with a `ResourceQuota` on `requests.*` or `limits.*` rejects pods that do not set them (unless a
-`LimitRange` supplies defaults). Set `resources` with every resource the quota covers. Without it the Job cannot create
-its pod; see [When the pod does not start](#when-the-pod-does-not-start).
+`LimitRange` supplies defaults). Set `resources` for every resource the quota covers. Without it the Job cannot create
+its pod, see [When the pod does not start](#when-the-pod-does-not-start).
 
 `serviceAccountName` lets a `Migration` author run the pod as any service account of the namespace, including its
 cloud identity. Grant `Migration` edit rights accordingly. Workload identity systems may also need a pod label or
 annotation, set with `podMetadata` (for example `azure.workload.identity/use: "true"` for Azure Workload Identity).
 
-A change to any of these fields creates a new Job, which runs the configured `commands` again.
-
-Helm does not update the CRD of an existing install; see [Upgrading the CRD](installing.md#upgrading-the-crd).
+A change to any of these fields creates a new Job, which runs the configured `commands` again. Helm does not update the
+CRD of an existing install, see [Upgrading the CRD](installing.md#upgrading-the-crd).
 
 ## Passwordless authentication
 
-`database.credentials` is optional. When it is unset the operator does not set `FLYWAY_PASSWORD`, and the JDBC driver
-authenticates by other means: the `jdbcUrl` and `flywayConfiguration.jdbcProperties` select the mode, and the pod's
-workload identity supplies the credential. `database.username` is optional too and, when unset, `FLYWAY_USER` is left
-out. Pair this with `flywayConfiguration.serviceAccountName`, and with `podMetadata` where your identity system needs a
-pod label or annotation. The snippets below show only the fields that matter; combine them with the rest of the
-`Migration` above.
+`database.credentials` is optional. When unset, the operator does not set `FLYWAY_PASSWORD` and the JDBC driver
+authenticates by other means: `jdbcUrl` and `flywayConfiguration.jdbcProperties` select the mode, and the pod's workload
+identity supplies the credential. `database.username` is optional too; when unset, `FLYWAY_USER` is left out. Pair this
+with `flywayConfiguration.serviceAccountName`, and with `podMetadata` where your identity system needs a pod label or
+annotation. The snippets below show only the fields that matter; combine them with the `Migration` above.
 
 What was checked against `docker.io/flyway/flyway:13` (Flyway 13.12.1) by listing its files, not by logging in:
 
@@ -243,18 +215,9 @@ metadata:
     azure.workload.identity/client-id: "00000000-0000-0000-0000-000000000000"
 ```
 
-```yaml
-spec:
-  database:
-    jdbcUrl: "jdbc:sqlserver://myserver.database.windows.net:1433;database=mydb;encrypt=true;authentication=ActiveDirectoryDefault"
-  podMetadata:
-    labels:
-      azure.workload.identity/use: "true"
-  flywayConfiguration:
-    serviceAccountName: flyway
-```
-
-A complete `Migration` is in [examples/azure-sql-workload-identity.md](examples/azure-sql-workload-identity.md).
+The `Migration` needs the `authentication=ActiveDirectoryDefault` JDBC URL, the pod label
+`azure.workload.identity/use: "true"` and `serviceAccountName: flyway`; a complete one is in
+[examples/azure-sql-workload-identity.md](examples/azure-sql-workload-identity.md).
 
 If the service account lacks the `azure.workload.identity/client-id` annotation or the pod lacks the label, no token is
 injected and the Job fails with an Azure identity error from the driver in its logs (`kubectl logs job/my-app`).
@@ -268,7 +231,7 @@ node's managed identity through IMDS and needs no service account. Every pod on 
 with that identity, so prefer workload identity. On AKS, with several identities on the node pool, `msiClientId` is
 effectively required.
 
-With either mode the identity needs a database user, created by an Entra admin of the database, and the same rights a
+With either mode the identity needs a database user, created by an Entra admin of the database, with the rights a
 password user would have. Flyway must read and write `flyway_schema_history` and run your DDL; `db_owner` is often what
 it takes:
 
@@ -300,7 +263,7 @@ Whether Flyway accepts the `jdbc:aws-wrapper:` URL with the wrapper jar on the d
 
 ## Security context
 
-By default the Job's pod complies with the `restricted`
+By default the pod complies with the `restricted`
 [Pod Security Standard](https://kubernetes.io/docs/concepts/security/pod-security-standards/), so it is admitted in
 namespaces labelled `pod-security.kubernetes.io/enforce=restricted`:
 
@@ -309,16 +272,16 @@ namespaces labelled `pod-security.kubernetes.io/enforce=restricted`:
     fsGroup.
   - Elsewhere the pod sets `runAsUser: 1001` and `fsGroup: 1001`.
 - The `flyway` container: `allowPrivilegeEscalation: false`, all capabilities dropped, `readOnlyRootFilesystem: true`.
-  The migration source image volume is read-only either way: image volumes are always mounted read-only.
-- An `emptyDir` volume named `flyway-operator-tmp` is mounted at `/tmp` in the `flyway` container, because JDBC drivers such as
-  SQLite unpack native libraries into it. The name is reserved: if `volumes` already defines `flyway-operator-tmp`,
-  that volume is used instead. A container that already mounts something at `/tmp` keeps its own mount.
+  The source image volume is always read-only.
+- An `emptyDir` volume named `flyway-operator-tmp` is mounted at `/tmp` in the `flyway` container, because JDBC drivers
+  such as SQLite unpack native libraries into it. The name is reserved: a `volumes` entry of that name is used instead.
+  A container that already mounts something at `/tmp` keeps its own mount.
 
 What your images and volumes must allow:
 
 - The Flyway image must run as a UID that does not own its files, with group `0` (OpenShift) or `1001` as fsGroup, and
   write only to `/tmp` or mounted volumes. Its files must be world-readable. The Flyway image meets this.
-- The SQL files in the migration source image must be readable by that UID, for example world-readable.
+- The SQL files in the source image must be readable by that UID, for example world-readable.
 - Volumes in `volumes`/`volumeMounts` must be readable, or writable where needed, by that user. Kubernetes gives the
   fsGroup group access to Secret, ConfigMap, emptyDir and most persistent volumes (including a Secret with
   `defaultMode: 0400`); volume types that ignore fsGroup, such as `hostPath` or some NFS servers, must allow the UID.
@@ -326,8 +289,8 @@ What your images and volumes must allow:
 ### Overriding
 
 `flywayConfiguration.podSecurityContext` replaces the pod default and `flywayConfiguration.securityContext` the default
-of the Flyway container. Each replaces its default as a whole, so repeat every field you still want. For example, for a
-Flyway image that needs a writable root filesystem, keep the rest of the restricted container context:
+of the Flyway container. Each replaces its default as a whole, so repeat every field you still want. For a Flyway image
+that needs a writable root filesystem, keep the rest of the restricted container context:
 
 ```yaml
   flywayConfiguration:
@@ -352,22 +315,36 @@ kubectl get migration my-app -o jsonpath='{.status.conditions[?(@.type=="Progres
 # Job my-app attempt 1 of 3 is running; pod not created: pods "my-app-" is forbidden: exceeded quota: ...
 ```
 
-| Message after "is running;" | Source | Cause |
+| Message after "is running;" | Source | Cause and fix |
 | --- | --- | --- |
-| `pod not created: ...` | the newest `FailedCreate` event of the Job | quota, missing `ServiceAccount` or `PriorityClass`, Pod Security or SCC admission |
-| `no pod created yet, see kubectl describe job` | the Job is over 30s old and no `FailedCreate` event can be read | as above; the operator has no RBAC for events (see below) or the event expired |
-| `pod unschedulable: ...` | the pod's `PodScheduled` condition (`FailedScheduling`) | `nodeSelector`, `affinity`, `tolerations` or `resources` fit no node |
-| `image pull failed: ...` | `ImagePullBackOff`, `ErrImagePull` or `InvalidImageName` of a container | wrong image or registry credentials |
-| `container cannot start: ...` | `CreateContainerConfigError` or `CreateContainerError` | for example a missing Secret or a `runAsNonRoot` conflict |
+| `pod not created: ...` | the newest `FailedCreate` event of the Job | Admission rejected the pod, see below. |
+| `no pod created yet, see kubectl describe job` | the Job is over 30s old and no `FailedCreate` event can be read | As above; the operator has no RBAC for events (see below) or the event expired. |
+| `pod unschedulable: ...` | the pod's `PodScheduled` condition (`FailedScheduling`; `kubectl describe pod` shows it, the Job does not) | `nodeSelector`, `affinity`, `tolerations` or `resources` fit no node. Fix them. |
+| `image pull failed: ...` | `ImagePullBackOff`, `ErrImagePull` or `InvalidImageName` of a container | Wrong image or registry credentials. |
+| `container cannot start: ...` | `CreateContainerConfigError` or `CreateContainerError` | For example a missing Secret, or `container has runAsNonRoot and image will run as root`: no UID was assigned (for example by `anyuid`) and the image has no non-root `USER`. Set `podSecurityContext.runAsUser`. |
 
-Messages are cut at 300 characters, so `kubectl describe` still has the full text. The operator reads pods and the
-Job's events from the API server and needs the `list` verb on both. A missing permission degrades differently:
+`FailedCreate` causes and fixes:
+
+| `FailedCreate` message | Cause and fix |
+| --- | --- |
+| `exceeded quota` or `must specify limits.cpu` | A `ResourceQuota` and no `resources`: see [ResourceQuota](#resourcequota). |
+| `serviceaccount "..." not found` or `no PriorityClass with name ... was found` | `serviceAccountName` or `priorityClassName` names something that does not exist. Creating it is enough, since the Job controller keeps retrying; correcting the `Migration` works too (see below). |
+| `violates PodSecurity "restricted"` or `unable to validate against any security context constraint` | An override dropped part of the restricted context, the image needs a UID the SCC does not allow, or OpenShift chose an SCC that assigns no UID. Pin the SCC with the pod annotation below. |
+
+```yaml
+spec:
+  podMetadata:
+    annotations:
+      openshift.io/required-scc: restricted-v2
+```
+
+Messages are cut at 300 characters, so `kubectl describe` still has the full text. The operator needs `list` on `pods`
+and on the Job's `events`; kustomize and OLM grant it, for Helm see [Before you upgrade](installing.md#before-you-upgrade).
+A missing permission degrades differently:
 
 - **`events` forbidden:** the cause of a missing pod is not shown; the message says `no pod created yet`.
-- **`pods` forbidden:** the message is the plain `is running` text, and the operator also cannot tell whether an old
-  Job ever started, so it keeps waiting for it (`PreviousJobRunning`) and never does the replacement described below.
-  The Helm chart's ClusterRole gains both verbs in the chart release after this change, so until a chart with them is
-  installed Helm users see this case; the kustomize and OLM installs get them with the operator.
+- **`pods` forbidden:** the message is the plain `is running` text, and the operator cannot tell whether an old Job ever
+  started, so it keeps waiting for it (`PreviousJobRunning`) and never does the replacement described below.
 
 A failure to pull the *migration source* image volume is not named: the pod shows `ContainerCreating` and the reason is
 in `kubectl describe pod`. Look at the details by hand:
@@ -377,30 +354,8 @@ kubectl describe job my-app     # FailedCreate: the pod was not admitted
 kubectl describe pod -l batch.kubernetes.io/job-name=my-app   # CreateContainerConfigError and container errors
 ```
 
-- `FailedCreate` with `violates PodSecurity "restricted"` or `unable to validate against any security context constraint`:
-  an override dropped part of the restricted context, the image needs a UID the SCC does not allow, or OpenShift chose
-  an SCC that assigns no UID. Pin the SCC with a pod annotation:
-
-  ```yaml
-  spec:
-    podMetadata:
-      annotations:
-        openshift.io/required-scc: restricted-v2
-  ```
-
-- `CreateContainerConfigError` with `container has runAsNonRoot and image will run as root`: no UID was assigned
-  (for example by `anyuid`) and the image has no non-root `USER`. Set `podSecurityContext.runAsUser`.
-
-- `FailedCreate` with `exceeded quota` or `must specify limits.cpu`: the namespace has a `ResourceQuota` and the pod
-  sets no `resources`. Set `flywayConfiguration.resources` (see [ResourceQuota](#resourcequota)).
-- `FailedCreate` with `serviceaccount "..." not found` or `no PriorityClass with name ... was found`:
-  `serviceAccountName` or `priorityClassName` names something that does not exist. Creating the missing object is
-  enough, since the Job controller keeps retrying the pod creation. Correcting the `Migration` works too (see below).
-- A pod that stays `Pending` with `FailedScheduling` (shown by `kubectl describe pod`, not on the Job): the
-  `nodeSelector`, `affinity` or `tolerations` match no node, or the requested `resources` fit on none.
-
 Failed pod creations do not count against the Job's `backoffLimit`, so such a Job does not fail by itself. The
-[deadline](#deadline) bounds it, once per attempt: with the defaults (`activeDeadline` 1h, `retryLimit` 2) a pod that
+[deadline](#deadline) bounds it once per attempt: with the defaults (`activeDeadline` 1h, `retryLimit` 2) a pod that
 can never be created takes 3 hours to report `TimedOut`, because each retry hits the same cause.
 
 Correcting the spec does not need a manual delete. When the `Migration` changes while an older generation's Job exists
@@ -408,9 +363,17 @@ and **no Flyway container of it ever started** (it has no pod, or only `Pending`
 ran or ended), the operator deletes that Job with foreground propagation and creates the new generation's Job once the
 old pods are gone (condition reason `PreviousJobReplaced`, a `PreviousJobReplaced` event; it counts no run in the
 metrics, since nothing ran). A Job whose Flyway container started, or whose pods cannot be listed, is still waited for
-(`PreviousJobRunning`), so two migrations never run against the database at once. In that case, and for a Job that is
-hung while running, fix the cause and delete the Job by hand (`kubectl delete job my-app`) to start the new one
-immediately.
+(`PreviousJobRunning`), so two migrations never run against the database at once.
+
+### Hung Jobs
+
+A Job whose Flyway container started and hangs (for example behind an Istio sidecar) blocks later spec changes, because
+the operator waits for a running Job of an older generation (`PreviousJobRunning`). Fix the cause and delete the Job by
+hand to start the new one at once:
+
+```shell
+kubectl delete job my-app
+```
 
 ## Status
 
@@ -424,13 +387,17 @@ that generation) are also set.
 | `Progressing` | a Job for the current generation is created, running, or being retried |
 | `Failed` | the Job for the current generation failed and `retryLimit` is exhausted, or the cluster dropped its image volume |
 
-All three share one reason: `JobCreated`, `JobRunning`, `JobSucceeded`, `Retrying`, `RetryLimitExceeded`, `TimedOut`
-(the last attempt exceeded `spec.activeDeadline`), `PreviousJobRunning` (a Job for an older generation is still
-running), `PreviousJobReplaced` (also for an older Job that never started a container) or `ImageVolumeUnsupported` (the cluster dropped the image volume). On failure the message
-holds the Job's own failure reason and message, followed by Flyway's error when it can be read (see below).
+All three share one reason: `JobCreated`, `JobRunning`, `JobSucceeded`, `Retrying` (an attempt failed and another
+follows), `RetryLimitExceeded` (the last attempt failed), `TimedOut` (the last attempt exceeded `spec.activeDeadline`,
+see [Deadline](#deadline)), `PreviousJobRunning` (a Job for an older generation is still running), `PreviousJobReplaced`
+(an older Job was replaced, also one that never started a container) or `ImageVolumeUnsupported` (the cluster dropped
+the image volume).
 
-A reconcile that fails (for example the API server rejects the Job) also sets a `ReconcileError` condition with the error
-as its message, and emits a `ProcessingError` Warning event. The next reconcile that succeeds removes the condition.
+On failure the message holds the Job's own failure reason and message, followed by Flyway's error when it can be read
+(see below).
+
+A reconcile that fails (for example the API server rejects the Job) also sets a `ReconcileError` condition with the
+error as its message, and emits a `ProcessingError` Warning event. The next successful reconcile removes the condition.
 
 `status.lastAppliedImageRef` holds the `migrationSource.imageRef` of the last Job that succeeded, taken from that Job, and
 `status.lastAppliedGeneration` the generation it ran for. Both keep their value while a later run is in progress or after
@@ -461,14 +428,12 @@ Both come from the log of the Flyway container of the Job's newest pod (`pods/lo
 with `-outputType=json`), read once when the Job finishes, at most 4 MiB from its start and for at most 10 seconds.
 Reading the log is best effort and never changes the result: when the log cannot be read (no RBAC, the pod is gone, a
 timeout) or holds no complete Flyway JSON result (an `envVars` or command override of the output type, a log over
-4 MiB), `status.schemaVersion` keeps its value and the message carries no Flyway error. The JSON comes at the end of the log,
-and every `info` lists each migration with about 450 bytes, so the 4 MiB limit is reached at roughly 4000 migrations
-with the default `info migrate info`, or sooner with debug output (`-X`). The operator needs `get` on
-`pods/log` for this, which lets it read the logs of every pod it can see. The kustomize and OLM installs grant it with
-the operator; the Helm chart's ClusterRole gains it in the chart release after this change. Migrations that succeeded
-before the upgrade get a `schemaVersion` with their next run.
-
-For an Argo CD health check, see [Argo CD](argocd.md).
+4 MiB), `status.schemaVersion` keeps its value and the message carries no Flyway error. The JSON comes at the end of the
+log, and every `info` lists each migration with about 450 bytes, so the 4 MiB limit is reached at roughly 4000 migrations
+with the default `info migrate info`, or sooner with debug output (`-X`). The operator needs `get` on `pods/log`, which
+lets it read the logs of every pod it can see. Kustomize and OLM grant it; for Helm see
+[Before you upgrade](installing.md#before-you-upgrade). Migrations that succeeded before the upgrade get a
+`schemaVersion` with their next run.
 
 Check the result:
 
@@ -476,6 +441,8 @@ Check the result:
 kubectl get migration my-app -o jsonpath='{.status.conditions}'
 kubectl logs job/my-app -c flyway
 ```
+
+For an Argo CD health check, see [Argo CD](argocd.md).
 
 ## Pausing
 

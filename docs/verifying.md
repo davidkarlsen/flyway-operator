@@ -13,9 +13,8 @@ signing identity is the `build.yaml` workflow running on the release tag.
 | `flyway-operator-bundle-<tag>.tar.gz` and `images-<tag>.txt` release assets (listed in `checksums.txt`) | via `checksums.txt` | `flyway-operator-<tag>.intoto.jsonl` |
 | Helm chart releases (`flyway-operator-<chart version>.tgz`) | `<chart>.tgz.sigstore.json`, made by `chart-release.yaml` | `flyway-operator-<chart version>.intoto.jsonl` |
 
-`:alpha` points at the catalog of the newest release, so it has the same signature and attestation as that release's `-catalog:v<version>`.
-
-Releases made before signing was added are not signed.
+`:alpha` points at the catalog of the newest release, so it has that release's `-catalog:v<version>` signature and
+attestation. Releases made before signing was added are not signed.
 
 Requires [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) v3 or later (releases are signed
 with cosign v3) and the [GitHub CLI](https://cli.github.com/).
@@ -33,9 +32,9 @@ gh attestation verify oci://ghcr.io/davidkarlsen/flyway-operator:${VERSION} -R d
 ```
 
 The operator image is multi-platform. `cosign verify` also works on a single platform image
-(`ghcr.io/davidkarlsen/flyway-operator@sha256:...`), because every platform manifest is signed.
-The provenance attestation is attached to the index digest, so run `gh attestation verify` against the
-tag or the index digest, not a platform digest.
+(`ghcr.io/davidkarlsen/flyway-operator@sha256:...`), because every platform manifest is signed. The provenance
+attestation is attached to the index digest: run `gh attestation verify` against the tag or the index digest, not a
+platform digest.
 
 The bundle and catalog images use the `v`-prefixed tag:
 

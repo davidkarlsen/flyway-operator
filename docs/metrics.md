@@ -1,15 +1,13 @@
 # Metrics
 
-The operator serves Prometheus metrics at `/metrics` on port 8443 over HTTPS. This is on by default in every
-install path.
+The operator serves Prometheus metrics at `/metrics` on port 8443 over HTTPS, on by default in every install path.
 
 ## What is served
 
-- HTTPS on `:8443`, path `/metrics`.
 - Every request is checked by the controller-runtime authn/authz filter
-  ([`filters.WithAuthenticationAndAuthorization`](https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/metrics/filters)).
-  The bearer token is validated with a `TokenReview`, then a `SubjectAccessReview` checks that the caller may
-  `get` the non-resource URL `/metrics`.
+  ([`filters.WithAuthenticationAndAuthorization`](https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/metrics/filters)):
+  a `TokenReview` validates the bearer token, then a `SubjectAccessReview` checks that the caller may `get` the
+  non-resource URL `/metrics`.
 - The certificate is self-signed and generated at startup, unless `--metrics-cert-path` points at a certificate.
 
 Manager flags (`cmd/main.go`):
@@ -34,14 +32,14 @@ Manager flags (`cmd/main.go`):
 - the `flyway-operator-dashboards` ConfigMap from `config/grafana`, see [Grafana dashboards](dashboards.md).
 
 The `ServiceMonitor` and `PrometheusRule` are always applied, so the cluster needs the Prometheus Operator CRDs
-(`monitoring.coreos.com/v1`). Without them the apply fails with `no matches for kind "ServiceMonitor"` (or `"PrometheusRule"`). On such
-clusters, remove `- ../prometheus` from `config/default/kustomization.yaml` first.
+(`monitoring.coreos.com/v1`). Without them the apply fails with `no matches for kind "ServiceMonitor"` (or `"PrometheusRule"`).
+On such clusters, remove `- ../prometheus` from `config/default/kustomization.yaml` first.
 
 ### OLM
 
-The bundle is generated from `config/`. It ships the same Deployment args, the metrics Service, the metrics
-RBAC, the `ServiceMonitor`, the alert `PrometheusRule` and the dashboards ConfigMap. An OLM install on a cluster without the `ServiceMonitor` CRD has not been
-tested.
+The bundle is generated from `config/` and ships the same Deployment args, metrics Service, metrics RBAC,
+`ServiceMonitor`, alert `PrometheusRule` and dashboards ConfigMap. An OLM install on a cluster without the
+`ServiceMonitor` CRD has not been tested.
 
 ### Helm
 
@@ -49,12 +47,9 @@ tested.
 |-------|---------|---------|
 | `metrics.enabled` | `true` | Serve metrics, and render the `<fullname>-metrics` Service, the metrics-auth ClusterRole and binding, and the `<fullname>-metrics-reader` ClusterRole. `false` passes `--metrics-bind-address=0`. |
 | `metrics.port` | `8443` | Metrics port on the container and the Service. |
-| `metrics.serviceMonitor.enabled` | `false` | Render a `ServiceMonitor`. This is opt-in and needs the Prometheus Operator CRDs. |
+| `metrics.serviceMonitor.enabled` | `false` | Render a `ServiceMonitor`. Opt-in; needs the Prometheus Operator CRDs. |
 | `metrics.serviceMonitor.interval` | `""` | Scrape interval. Empty uses the Prometheus default. |
 | `metrics.serviceMonitor.labels` | `{}` | Extra labels on the `ServiceMonitor`, for example to match a Prometheus `serviceMonitorSelector`. |
-
-The secure metrics server needs operator image 0.3.0 or newer. The chart defaults to 0.4.1. With an older
-`image.tag`, metrics are served as plain HTTP without auth.
 
 ## Granting Prometheus access
 
@@ -74,9 +69,8 @@ scrapes return 403.
 
 ## Prometheus without the Prometheus Operator
 
-This is a plain `scrape_config` for a Prometheus running in-cluster under a ServiceAccount that is bound as
-described above. Replace `<metrics-service>` with the metrics Service name:
-`flyway-operator-controller-manager-metrics-service` (kustomize or OLM) or `<release-fullname>-metrics` (Helm).
+A plain `scrape_config` for a Prometheus running in-cluster under a ServiceAccount bound as described above. Replace
+`<metrics-service>` with the metrics Service name (see [Labels as scraped](#labels-as-scraped)).
 
 ```yaml
 scrape_configs:
@@ -115,7 +109,7 @@ Create `$TOKEN` with `kubectl create token <serviceaccount> -n <namespace>`.
 | `401` | No bearer token, or the `TokenReview` rejected it (expired or wrong audience). |
 | `403` | The token is valid, but its ServiceAccount is not bound to the `metrics-reader` ClusterRole. |
 | `200` | The ServiceAccount is authenticated and authorized. |
-| `400` or a TLS error | Plain `http://` was used against the HTTPS port. A TLS error with `https://` means the server speaks plain HTTP with no auth: either `--metrics-secure=false` is set, or the image is older than 0.3.0. |
+| `400` or a TLS error | Plain `http://` was used against the HTTPS port. A TLS error with `https://` means the server speaks plain HTTP with no auth: `--metrics-secure=false` is set. |
 | Connection refused | kustomize or OLM with `--metrics-bind-address=0`: the Service exists, but nothing listens on 8443. |
 | `Could not resolve host` | Helm with `metrics.enabled=false`: the `<release-fullname>-metrics` Service is not rendered. |
 
@@ -131,30 +125,31 @@ Create `$TOKEN` with `kubectl create token <serviceaccount> -n <namespace>`.
 | `flyway_operator_migration_runs_total` | counter | `namespace`, `migration`, `result` | Finished Job attempts. `result` is `succeeded`, `retrying` (the attempt failed and another follows) or `failed` (the attempt failed and `retryLimit` is exhausted). Failed attempts are `retrying` + `failed`. |
 | `flyway_operator_migration_last_run_duration_seconds` | gauge | `namespace`, `migration`, `result` | Run time of the last finished attempt with this result, from the Job's `status.startTime` to its `status.completionTime`, or to the time of its `Failed` condition. |
 
-- The state gauges (`status_condition`, `last_transition_timestamp_seconds`, `paused`) are read from the
-  operator's cache of Migrations at scrape time, and are served only by the elected leader. They match the
-  persisted status, are back right after a restart, and disappear with the Migration.
-- `runs_total` and `last_run_duration_seconds` are recorded by the reconciler, on the leader. The three
-  `runs_total` series of a Migration start at `0` when the operator first reconciles it, so `increase()` also
-  sees the first outcome. Both are removed when the Migration is deleted.
+- The state gauges (`status_condition`, `last_transition_timestamp_seconds`, `paused`) are read from the operator's
+  cache of Migrations at scrape time and served only by the elected leader. They match the persisted status, are back
+  right after a restart, and disappear with the Migration.
+- `runs_total` and `last_run_duration_seconds` are recorded by the reconciler, on the leader. The three `runs_total`
+  series of a Migration start at `0` when the operator first reconciles it, so `increase()` also sees the first
+  outcome. Both are removed when the Migration is deleted.
 - An attempt is counted once: when a reconcile moves the Migration's status to that outcome for the current
-  generation and attempt, and the status write succeeds. Further reconciles of the same finished Job, and
-  reconciles after an operator restart, do not count it again.
+  generation and attempt, and the status write succeeds. Further reconciles of the same finished Job, and reconciles
+  after an operator restart, do not count it again.
 - An attempt can go uncounted, never counted twice. This happens when the status write fails, or for a retried
-  attempt, when deleting its Job fails: the status already records `Retrying` for that attempt, so the
-  reconcile that then deletes the Job does not count it. A retried attempt whose status write failed after its
-  Job was deleted is counted once if the Job is still terminating at the next reconcile, and stays uncounted if
-  the Job is already gone. Attempts of a superseded generation are not counted.
-- Counters start at zero when the operator restarts. Alert on the state gauges, and use `increase()` or
-  `rate()` on counters. An attempt that fails while the operator is down is counted before the first scrape
-  after the restart, so `increase()` misses it.
-- `last_run_duration_seconds` is held in memory: after an operator restart or failover it is missing until the
-  next run of that Migration finishes.
-- When the operator cannot list Migrations from its cache during a scrape, it logs the error and serves no
-  state series for that scrape, so open alerts on them can resolve and fire again.
+  attempt, when deleting its Job fails: the status already records `Retrying` for that attempt, so the reconcile that
+  then deletes the Job does not count it. A retried attempt whose status write failed after its Job was deleted is
+  counted once if the Job is still terminating at the next reconcile, and stays uncounted if the Job is already gone.
+  Attempts of a superseded generation are not counted.
+- `runs_total` and `last_run_duration_seconds` are held in memory. Counters start at zero when the operator restarts
+  or the leader changes, and the duration is missing until the next run of that Migration finishes. Alert on the state
+  gauges, and use `increase()` or `rate()` on counters. An attempt that fails while the operator is down is counted
+  before the first scrape after the restart, so `increase()` misses it.
+- When the operator cannot list Migrations from its cache during a scrape, it logs the error and serves no state
+  series for that scrape, so open alerts on them can resolve and fire again.
+- A timed-out final attempt counts once in `runs_total{result="failed"}`. `ImageVolumeUnsupported` runs no Job, so
+  `runs_total` does not count it; it shows only in `status_condition` and the `ImageVolumeUnsupported` Warning event.
+  `status_condition` has no `reason` label: read the reason with `kubectl describe migration`.
 
-See [Alerting](#alerting) for the shipped rules built on these metrics, and [Grafana dashboards](dashboards.md) for
-dashboards that mirror them.
+[Alerting](#alerting) lists the shipped rules built on these metrics, and [Grafana dashboards](dashboards.md) mirror them.
 
 ### Standard metrics
 
@@ -179,53 +174,41 @@ curl -sk -H "Authorization: Bearer $TOKEN" "$URL" | grep '^# TYPE'
 
 ## Alerting
 
-The rules come in two groups with different audiences, set in the `alert_audience` label:
+The rules come in two groups with different audiences, set in the `alert_audience` label. Each alert's
+`runbook_url` points at its section of the [alert runbook](runbook.md), which explains its meaning, impact,
+diagnosis and mitigation.
 
-| Group | `alert_audience` | Alerts | Goes to |
-|-------|------------------|--------|---------|
-| `flyway-operator.operator` | `platform` | `FlywayOperatorMetricsAbsent` (no operator scrape target is up), `FlywayOperatorReconcileErrors` (over 10% of Migration reconciles fail) | The team running the operator. |
-| `flyway-operator.migrations` | `workload` | `FlywayMigrationFailed` (`Failed=True`: retries exhausted, or image volumes unsupported), `FlywayMigrationStuck` (`Progressing` for over 1h) | The team owning the Migration, by its `namespace` label. |
+| Group | `alert_audience` | Alert | Fires when | Goes to |
+|-------|------------------|-------|------------|---------|
+| `flyway-operator.operator` | `platform` | [`FlywayOperatorMetricsAbsent`](runbook.md#flywayoperatormetricsabsent) | no operator scrape target is up | The team running the operator. |
+| | | [`FlywayOperatorReconcileErrors`](runbook.md#flywayoperatorreconcileerrors) | over 10% of Migration reconciles fail | |
+| `flyway-operator.migrations` | `workload` | [`FlywayMigrationFailed`](runbook.md#flywaymigrationfailed) | `Failed=True`: retries exhausted, timed out, or image volumes unsupported | The team owning the Migration, by its `namespace` label. |
+| | | [`FlywayMigrationStuck`](runbook.md#flywaymigrationstuck) | `Progressing` for over 1h | |
 
 - Migration alerts aggregate with `max by (namespace, migration)`, so they keep those two labels and ignore which
   operator pod served the series. Only the elected leader serves the state series, so they can be briefly missing
   during a rollout or failover; `FlywayMigrationFailed` and `FlywayMigrationStuck` have `keep_firing_for: 5m` so a
   short gap does not resolve and re-fire them.
-- A paused Migration still raises `FlywayMigrationFailed` (intended); only `FlywayMigrationStuck` ignores paused ones.
-- `FlywayMigrationStuck` measures time since `Progressing` turned true from its last-transition timestamp, so an
-  operator restart does not reset it. `Progressing` stays true across retries, and every Job attempt is bounded by
-  `spec.activeDeadline` (default `1h`), so a run ends on its own within `activeDeadline × (retryLimit + 1)`. Keep the
-  threshold below that to hear about a hung run before it times out, or above it to hear only about Migrations that
-  are still progressing after that.
-- `FlywayMigrationFailed` covers both terminal reasons, `RetryLimitExceeded` and `TimedOut` (the last attempt
-  exceeded `spec.activeDeadline`): it matches `Failed=True`, and `status_condition` has no `reason` label. A timed-out
-  final attempt counts once in `flyway_operator_migration_runs_total{result="failed"}`. Read the reason with
-  `kubectl describe migration` or from the `TimedOut` Warning event.
-- `FlywayMigrationFailed` also covers `ImageVolumeUnsupported`: the API server dropped the migration source image
-  volume from the Job (Kubernetes older than 1.35, or the `ImageVolume` feature gate off), and the operator deleted the
-  Job. No Job attempt ran, so `runs_total` does not count it; it shows only in `status_condition` and the
-  `ImageVolumeUnsupported` Warning event.
 - All shipped alerts are `warning`. Raise `FlywayMigrationFailed` to `critical` where a failed migration blocks a
   release, by patching the `severity` as described in [Shipped rules](#shipped-rules).
 
 ### Labels as scraped
 
-The `namespace` label of the `flyway_operator_migration_*` series is the Migration's namespace. Prometheus
-attaches its own `namespace` label to targets discovered through a `ServiceMonitor` (and to custom scrape configs
-that map it), and without honoring the series' labels it renames theirs to `exported_namespace`. The shipped
-`ServiceMonitor` sets `honorLabels: true` in every install path; for the Helm chart, from the chart version that
-ships operator 0.5.0. Your own `ServiceMonitor` or scrape config needs `honorLabels: true` or
-`honor_labels: true`, as in the example [above](#prometheus-without-the-prometheus-operator).
+The `namespace` label of the `flyway_operator_migration_*` series is the Migration's namespace. Prometheus attaches its
+own `namespace` label to targets discovered through a `ServiceMonitor` (and to custom scrape configs that map it), and
+without honoring the series' labels it renames theirs to `exported_namespace`. The shipped `ServiceMonitor` sets
+`honorLabels: true` in every install path; for the Helm chart, from the chart version that ships operator 0.5.0. Your
+own `ServiceMonitor` or scrape config needs `honorLabels: true` or `honor_labels: true`, as in the example
+[above](#prometheus-without-the-prometheus-operator).
 
-`FlywayOperatorMetricsAbsent` matches the scrape target's `job` label, which depends on how it is scraped:
-the Service name with a `ServiceMonitor` (`flyway-operator-controller-manager-metrics-service` for kustomize
-and OLM, `<release-fullname>-metrics` for Helm), or `job_name` with a plain scrape config. Adjust
-`job=~".*flyway-operator.*"` if your names differ.
+The metrics Service is `flyway-operator-controller-manager-metrics-service` (kustomize and OLM) or
+`<release-fullname>-metrics` (Helm). `FlywayOperatorMetricsAbsent` matches the scrape target's `job` label: the Service
+name with a `ServiceMonitor`, or `job_name` with a plain scrape config. Adjust `job=~".*flyway-operator.*"` if your
+names differ.
 
 ### Shipped rules
 
-The rules are a `PrometheusRule` in `config/prometheus/rules.yaml`. The alerts and their thresholds are in that
-file; the table above lists them, and each alert's `runbook_url` points at its section of the
-[alert runbook](runbook.md).
+The rules are a `PrometheusRule` in `config/prometheus/rules.yaml`, which holds the alerts and their thresholds.
 
 | Install path | Rules | Disable or override |
 |--------------|-------|---------------------|
@@ -247,10 +230,9 @@ with `oc get ns <ns> --show-labels` and `oc get rolebinding prometheus-k8s -n <n
 no metrics-reader binding: its own `prometheus-k8s` ClusterRole grants `get` on `/metrics`. Under user-workload
 monitoring the namespace is enforced, so the Migration alerts only see their own namespace.
 
-For a Prometheus without the Prometheus Operator, use the `spec` of `config/prometheus/rules.yaml` (the
-`groups:` list, for example from `yq '.spec'`) as a rules file in `rule_files`.
-
-To check the rules, extract the groups from the `PrometheusRule` first, then run promtool on the result:
+For a Prometheus without the Prometheus Operator, use the `spec` of `config/prometheus/rules.yaml` (the `groups:`
+list, for example from `yq '.spec'`) as a rules file in `rule_files`. To check the rules, extract the groups first,
+then run promtool on the result:
 
 ```shell
 yq '.spec' config/prometheus/rules.yaml > /tmp/rules.yaml
@@ -285,4 +267,4 @@ receivers:
   - name: team-b
 ```
 
-Check rules with `promtool check rules <file>` and the Alertmanager config with `amtool check-config <file>`.
+Check the Alertmanager config with `amtool check-config <file>`.

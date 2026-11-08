@@ -25,7 +25,8 @@ kubectl -n <op-ns> get svc,servicemonitor                # metrics Service and S
 In Prometheus, look at the Targets page for the `flyway-operator` target: `403` means the Prometheus ServiceAccount is
 not bound to the metrics-reader ClusterRole, and no target at all means the `ServiceMonitor` is not picked up. For
 other scrape errors (`401`, `400`, TLS errors) see the table in
-[Verifying with curl](metrics.md#verifying-with-curl). If the `job` label of your target does not contain `flyway-operator`, the alert expression does not match it.
+[Verifying with curl](metrics.md#verifying-with-curl). If the `job` label of your target does not contain
+`flyway-operator`, the alert expression does not match it.
 
 **Mitigation.**
 - Operator down: fix the cause shown in its logs or pod events, then check that it is `Ready`.
@@ -59,9 +60,8 @@ call fail (`create` or `delete` on jobs, `update` on `migrations/status`), or th
 RBAC for pods, events or `pods/log` only degrades the status messages and does not raise this alert.
 
 **Mitigation.** Fix the cause named in the error. For a rejected Job, correct the Migration spec (a spec change starts
-a new reconcile). For RBAC, compare the operator's ClusterRole with the one in `config/rbac/role.yaml` of your release; a Helm
-chart's ClusterRole can lag the operator image, so upgrade to the chart release that adds the missing rules (after
-v0.7.0), or use kustomize or OLM. The alert resolves when the failing share drops
+a new reconcile). For RBAC, compare the operator's ClusterRole with the one in `config/rbac/role.yaml` of your release; for a
+lagging Helm chart see [Before you upgrade](installing.md#before-you-upgrade). The alert resolves when the failing share drops
 under 10% for the 15-minute window.
 
 ## FlywayMigrationFailed
@@ -90,8 +90,8 @@ kubectl -n <ns> logs job/<name> -c flyway                # the Flyway error of t
 kubectl -n <ns> describe job <name>
 ```
 
-The message ends with Flyway's own error after `; flyway: ` when the log was readable (needs `pods/log` RBAC, which
-Helm users get with a later chart release), see [Status](usage.md#status). The Job of the last attempt is kept, so its
+The message ends with Flyway's own error after `; flyway: ` when the log was readable (needs `pods/log` RBAC, see
+[Before you upgrade](installing.md#before-you-upgrade) for Helm), see [Status](usage.md#status). The Job of the last attempt is kept, so its
 logs are readable; the Jobs of earlier attempts were deleted for the retry.
 
 `status.schemaVersion` (the `SCHEMA VERSION` column of `kubectl get migration`) is the version from before the failed
@@ -129,9 +129,11 @@ If the Job never started a container, the cause shows in the `Progressing` messa
 held for 5 minutes (`for: 5m`); the alert keeps firing for 5 minutes after the series goes missing
 (`keep_firing_for: 5m`). It does not fire for a paused Migration. Severity `warning`, audience `workload`.
 
-`Progressing` stays `True` across retries, and each attempt is bounded by `spec.activeDeadline` (default `1h`), so a run
-ends on its own within `activeDeadline x (retryLimit + 1)`. With the defaults this alert can fire before the Migration
-times out.
+`Progressing` stays `True` across retries and each attempt is bounded by `spec.activeDeadline`, so a run ends on its own
+within `activeDeadline x (retryLimit + 1)` ([Deadline](usage.md#deadline)). With the defaults this alert can fire before
+the Migration times out. Keep the threshold below that to hear about a hung run before it times out, or above it to hear
+only about Migrations still progressing after that. The time comes from the condition's last-transition timestamp, so an
+operator restart does not reset it.
 
 **Impact.** The migration has not finished, so the schema is not at the expected version. A Job of an older generation
 that is still running also blocks the new one (`PreviousJobRunning`), so later spec changes wait.
@@ -162,10 +164,10 @@ Read the reason:
   the Migration spec replaces it (`PreviousJobReplaced`).
 - Waiting on a lock or the database: release the lock or restore connectivity. The attempt ends at
   `activeDeadline`; set `lock_timeout` or `statement_timeout` through `jdbcProperties` so it fails cleanly.
-- A hung Job of an older generation (`PreviousJobRunning`), or one whose Flyway container started and hangs, for
-  example behind an Istio sidecar: delete it with `kubectl delete job <name> -n <ns>` to start the new one at once.
-  Deleting a hung Job of the current generation starts the next attempt and so uses up one retry. Deleting a Job
-  whose Flyway container is mid-migration can leave a partly applied script on databases without transactional DDL;
-  check the schema history table afterwards.
+- A hung Job of an older generation (`PreviousJobRunning`), or one whose Flyway container started and hangs: delete it
+  with `kubectl delete job <name> -n <ns>` to start the new one at once, see [Hung Jobs](usage.md#hung-jobs). Deleting a
+  hung Job of the current generation starts the next attempt and so uses up one retry. Deleting a Job whose Flyway
+  container is mid-migration can leave a partly applied script on databases without transactional DDL; check the schema
+  history table afterwards.
 - A migration that legitimately runs longer than the alert threshold: this is expected; raise `spec.activeDeadline`
   to cover it, and silence or tune the alert for that Migration.
