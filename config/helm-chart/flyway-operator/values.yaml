@@ -67,6 +67,9 @@ grafana:
     # key per dashboard. See docs/dashboards.md.
     enabled: false
     # Labels on the ConfigMap; the Grafana sidecar discovers dashboards by grafana_dashboard.
+    # Helm merges your values into these defaults, so `labels: {}` keeps the label. To remove it, e.g. when
+    # grafana-operator imports the dashboards and a sidecar would import them again, set
+    # `grafana.dashboards.labels.grafana_dashboard: null`.
     labels:
       grafana_dashboard: "1"
     grafanaDashboard:
