@@ -42,7 +42,7 @@ When you change `api/v1alpha1/`:
 1. Use kubebuilder markers for validation and defaults (`+kubebuilder:validation:...`, `+kubebuilder:default`).
 2. Run `make manifests generate`.
 3. Update the examples in [`docs/usage.md`](docs/usage.md).
-4. Keep `config/samples/` a minimal, valid subset of that example. It only feeds the OLM `alm-examples`
+4. `docs/usage.md` has exactly one reference example with the same `metadata.name` as the OLM sample, plus as many per-use-case examples with their own names as you like. Keep `config/samples/` a minimal, valid subset of the reference. It only feeds the OLM `alm-examples`
    (the pre-filled "Create Migration" form); it is not documentation.
 
 ## Documentation
