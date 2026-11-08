@@ -24,7 +24,7 @@ Pass `model` explicitly when delegating (tier aliases):
 - One issue per change, and every PR closes one: features, fixes, chart and CI changes, and dependency work that isn't a routine bump.
 - **Exempt from the issue rule** (the single definition; other skills refer here):
   - PRs by `dependabot[bot]`;
-  - docs-only PRs: only `*.md`, `docs/` or `.claude/**` files, the same set CI treats as docs-only;
+  - docs-only PRs: only `*.md`, `docs/` or `.claude/**` files, the docs-only set in AGENTS.md (CI also skips chart files, but chart changes need an issue);
   - routine tooling and dependency bumps from `tooling-upgrade` or `security-sweep`;
   - the chart release PR from `operator-release`, which carries the `Closes #N` of any PR folded into it;
   - fork PRs from other contributors: the maintainer decides; agents only review.
