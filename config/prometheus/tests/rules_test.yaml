@@ -1,0 +1,163 @@
+# promtool reads plain rule groups; `make test-rules` extracts the PrometheusRule spec and runs these tests.
+rule_files:
+  - rules.yaml
+
+evaluation_interval: 1m
+
+tests:
+  # Failed fires after 1m, keeps firing while the series is missing (no leader serving the state series), and
+  # resolves once the condition clears.
+  - interval: 1m
+    input_series:
+      - series: 'flyway_operator_migration_status_condition{namespace="team-a",migration="m1",condition="Failed",status="true"}'
+        values: '0x4 1x10 _x7 1x3 0x20'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: FlywayMigrationFailed
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: FlywayMigrationFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              alert_audience: workload
+              namespace: team-a
+              migration: m1
+            exp_annotations:
+              summary: Migration team-a/m1 failed and is not retried.
+              description: >-
+                retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline,
+                else RetryLimitExceeded), or the cluster does not support image volumes (ImageVolumeUnsupported).
+                Check `kubectl -n team-a describe migration m1`
+                and `kubectl -n team-a logs job/m1 -c flyway`.
+                A spec change starts a new run.
+      # no sample from 15m to 22m; Prometheus' 5m lookback ends at 20m, so at 21m the series is gone and the
+      # alert fires only through keep_firing_for
+      - eval_time: 21m
+        alertname: FlywayMigrationFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              alert_audience: workload
+              namespace: team-a
+              migration: m1
+            exp_annotations:
+              summary: Migration team-a/m1 failed and is not retried.
+              description: >-
+                retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline,
+                else RetryLimitExceeded), or the cluster does not support image volumes (ImageVolumeUnsupported).
+                Check `kubectl -n team-a describe migration m1`
+                and `kubectl -n team-a logs job/m1 -c flyway`.
+                A spec change starts a new run.
+      # the series is back with 1 from 23m to 26m, then 0 from 27m: resolved after keep_firing_for
+      - eval_time: 40m
+        alertname: FlywayMigrationFailed
+        exp_alerts: []
+
+  # Stuck fires when Progressing has been true for over 1h, and not while paused.
+  - interval: 1m
+    input_series:
+      - series: 'flyway_operator_migration_status_condition{namespace="team-a",migration="m1",condition="Progressing",status="true"}'
+        values: '1x100'
+      - series: 'flyway_operator_migration_status_condition_last_transition_timestamp_seconds{namespace="team-a",migration="m1",condition="Progressing"}'
+        values: '0x100'
+      - series: 'flyway_operator_migration_status_condition{namespace="team-a",migration="m2",condition="Progressing",status="true"}'
+        values: '1x100'
+      - series: 'flyway_operator_migration_status_condition_last_transition_timestamp_seconds{namespace="team-a",migration="m2",condition="Progressing"}'
+        values: '0x100'
+      - series: 'flyway_operator_migration_paused{namespace="team-a",migration="m2"}'
+        values: '1x100'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: FlywayMigrationStuck
+        exp_alerts: []
+      - eval_time: 80m
+        alertname: FlywayMigrationStuck
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              alert_audience: workload
+              namespace: team-a
+              migration: m1
+            exp_annotations:
+              summary: Migration team-a/m1 has been progressing for more than 1h.
+              description: >-
+                The Job may be waiting on a database lock, an unreachable database or an unschedulable pod.
+                Check `kubectl -n team-a describe migration m1` and the Job's pods.
+
+  # Stuck does not fire when the Migration is Applied (Progressing false), or when Progressing turned true less
+  # than 1h ago.
+  - interval: 1m
+    input_series:
+      - series: 'flyway_operator_migration_status_condition{namespace="team-a",migration="applied",condition="Progressing",status="true"}'
+        values: '0x100'
+      - series: 'flyway_operator_migration_status_condition_last_transition_timestamp_seconds{namespace="team-a",migration="applied",condition="Progressing"}'
+        values: '0x100'
+      - series: 'flyway_operator_migration_status_condition{namespace="team-a",migration="applied",condition="Applied",status="true"}'
+        values: '1x100'
+      - series: 'flyway_operator_migration_status_condition{namespace="team-a",migration="recent",condition="Progressing",status="true"}'
+        values: '1x100'
+      # Progressing turned true at 4000s (66m40s); at 80m (4800s) it is 800s ago
+      - series: 'flyway_operator_migration_status_condition_last_transition_timestamp_seconds{namespace="team-a",migration="recent",condition="Progressing"}'
+        values: '4000x100'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: FlywayMigrationStuck
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'up{job="flyway-operator-controller-manager-metrics-service"}'
+        values: '1x5 0x30'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: FlywayOperatorMetricsAbsent
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: FlywayOperatorMetricsAbsent
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              alert_audience: platform
+            exp_annotations:
+              summary: No flyway-operator metrics target is up.
+              description: >-
+                Prometheus has no up flyway-operator scrape target for 10m, so no Migration alert can fire.
+                Check the operator pod and the ServiceMonitor, and that Prometheus is bound to the metrics-reader ClusterRole.
+
+  # 50% of reconciles fail: fires, with the namespace of the operator target.
+  - interval: 1m
+    input_series:
+      - series: 'controller_runtime_reconcile_total{namespace="flyway-operator-system",controller="migration",result="success"}'
+        values: '0+10x60'
+      - series: 'controller_runtime_reconcile_errors_total{namespace="flyway-operator-system",controller="migration"}'
+        values: '0+5x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: FlywayOperatorReconcileErrors
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              alert_audience: platform
+              namespace: flyway-operator-system
+            exp_annotations:
+              summary: More than 10% of Migration reconciles fail.
+              description: >-
+                50% of Migration reconciles failed over the last 15m.
+                Check the operator logs.
+
+  # 5% failures and exactly 10% failures do not fire.
+  - interval: 1m
+    input_series:
+      - series: 'controller_runtime_reconcile_total{namespace="flyway-operator-system",controller="migration",result="success"}'
+        values: '0+20x60'
+      - series: 'controller_runtime_reconcile_errors_total{namespace="flyway-operator-system",controller="migration"}'
+        values: '0+1x60'
+      - series: 'controller_runtime_reconcile_total{namespace="other",controller="migration",result="success"}'
+        values: '0+10x60'
+      - series: 'controller_runtime_reconcile_errors_total{namespace="other",controller="migration"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: FlywayOperatorReconcileErrors
+        exp_alerts: []

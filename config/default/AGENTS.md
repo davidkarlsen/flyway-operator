@@ -4,7 +4,7 @@
 **Generated:** 2026-05-09 · **Updated:** 2026-11-07
 
 ## Purpose
-The default kustomize overlay rendered by `make deploy`. Composes the CRD, manager Deployment, RBAC, `config/prometheus` (the `ServiceMonitor`), `config/grafana` (the dashboards ConfigMap) and metrics service into a single applyable bundle, applying the `IMG` substitution.
+The default kustomize overlay rendered by `make deploy`. Composes the CRD, manager Deployment, RBAC, `config/prometheus` (the `ServiceMonitor` and alert `PrometheusRule`), `config/grafana` (the dashboards ConfigMap) and metrics service into a single applyable bundle, applying the `IMG` substitution.
 
 ## Key Files
 
@@ -18,7 +18,7 @@ The default kustomize overlay rendered by `make deploy`. Composes the CRD, manag
 
 ### Working In This Directory
 - The `IMG` var passed to `make deploy` is applied by `kustomize edit set image` in `config/manager`, not in this overlay.
-- The `ServiceMonitor` is always applied, so the cluster needs the Prometheus Operator CRDs; see `docs/metrics.md`.
+- The `ServiceMonitor` and `PrometheusRule` are always applied, so the cluster needs the Prometheus Operator CRDs; see `docs/metrics.md`.
 - Adding a new manifest to the deployed bundle? Reference it from `kustomization.yaml`'s `resources:` list.
 
 ## Manual Notes

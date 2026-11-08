@@ -114,6 +114,17 @@ vet: ## Run go vet against code.
 test: manifests generate fmt vet envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /test/) -coverprofile cover.out
 
+# PROMTOOL_MODULE pins the promtool that `make test-rules` runs through `go run`.
+PROMTOOL_MODULE ?= github.com/prometheus/prometheus/cmd/promtool@v0.316.0
+
+.PHONY: test-rules
+test-rules: ## Check and unit-test the alert rules in config/prometheus with promtool (needs yq).
+	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && \
+	yq '.spec' config/prometheus/rules.yaml > "$$tmp/rules.yaml" && \
+	cp config/prometheus/tests/rules_test.yaml "$$tmp/" && \
+	go run $(PROMTOOL_MODULE) check rules "$$tmp/rules.yaml" && \
+	go run $(PROMTOOL_MODULE) test rules "$$tmp/rules_test.yaml"
+
 KIND ?= kind
 KIND_CLUSTER ?= flyway-operator-e2e
 E2E_KUBECONFIG ?= $(LOCALBIN)/e2e-kubeconfig
