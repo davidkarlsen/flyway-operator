@@ -23,6 +23,7 @@ spec:
             severity: warning
             alert_audience: platform
           annotations:
+            runbook_url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/runbook.md#flywayoperatormetricsabsent
             summary: No flyway-operator metrics target is up.
             description: >-
               Prometheus has no up flyway-operator scrape target for 10m, so no Migration alert can fire.
@@ -36,6 +37,7 @@ spec:
             severity: warning
             alert_audience: platform
           annotations:
+            runbook_url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/runbook.md#flywayoperatorreconcileerrors
             summary: More than 10% of Migration reconciles fail.
             description: >-
               {{ $value | humanizePercentage }} of Migration reconciles failed over the last 15m.
@@ -53,6 +55,7 @@ spec:
             severity: warning
             alert_audience: workload
           annotations:
+            runbook_url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/runbook.md#flywaymigrationfailed
             summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} failed and is not retried.
             description: >-
               retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline,
@@ -76,6 +79,7 @@ spec:
             severity: warning
             alert_audience: workload
           annotations:
+            runbook_url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/runbook.md#flywaymigrationstuck
             summary: Migration {{ $labels.namespace }}/{{ $labels.migration }} has been progressing for more than 1h.
             description: >-
               The Job may be waiting on a database lock, an unreachable database or an unschedulable pod.

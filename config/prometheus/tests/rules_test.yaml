@@ -24,6 +24,7 @@ tests:
               namespace: team-a
               migration: m1
             exp_annotations:
+              runbook_url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/runbook.md#flywaymigrationfailed
               summary: Migration team-a/m1 failed and is not retried.
               description: >-
                 retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline,
@@ -42,6 +43,7 @@ tests:
               namespace: team-a
               migration: m1
             exp_annotations:
+              runbook_url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/runbook.md#flywaymigrationfailed
               summary: Migration team-a/m1 failed and is not retried.
               description: >-
                 retryLimit is exhausted (condition reason TimedOut when the last attempt exceeded spec.activeDeadline,
@@ -80,6 +82,7 @@ tests:
               namespace: team-a
               migration: m1
             exp_annotations:
+              runbook_url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/runbook.md#flywaymigrationstuck
               summary: Migration team-a/m1 has been progressing for more than 1h.
               description: >-
                 The Job may be waiting on a database lock, an unreachable database or an unschedulable pod.
@@ -120,6 +123,7 @@ tests:
               severity: warning
               alert_audience: platform
             exp_annotations:
+              runbook_url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/runbook.md#flywayoperatormetricsabsent
               summary: No flyway-operator metrics target is up.
               description: >-
                 Prometheus has no up flyway-operator scrape target for 10m, so no Migration alert can fire.
@@ -141,6 +145,7 @@ tests:
               alert_audience: platform
               namespace: flyway-operator-system
             exp_annotations:
+              runbook_url: https://github.com/davidkarlsen/flyway-operator/blob/main/docs/runbook.md#flywayoperatorreconcileerrors
               summary: More than 10% of Migration reconciles fail.
               description: >-
                 50% of Migration reconciles failed over the last 15m.
