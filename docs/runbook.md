@@ -3,7 +3,7 @@
 One section per alert shipped in `config/prometheus/rules.yaml` (see [Shipped rules](metrics.md#shipped-rules)). Each
 alert's `runbook_url` points at its section. `<ns>` is the Migration's namespace, `<name>` its name, and `<op-ns>`
 the operator's namespace. The operator Deployment is `flyway-operator-controller-manager` (kustomize and OLM) or
-`<release>-flyway-operator` (Helm). On OpenShift use `oc` for `kubectl`.
+`<release-fullname>` (Helm). On OpenShift use `oc` for `kubectl`.
 
 ## FlywayOperatorMetricsAbsent
 
@@ -23,9 +23,9 @@ kubectl -n <op-ns> get svc,servicemonitor                # metrics Service and S
 ```
 
 In Prometheus, look at the Targets page for the `flyway-operator` target: `403` means the Prometheus ServiceAccount is
-not bound to the metrics-reader ClusterRole, a TLS error or `400` means metrics are served as plain HTTP (see
-[Verifying with curl](metrics.md#verifying-with-curl)), and no target at all means the `ServiceMonitor` is not picked
-up. If the `job` label of your target does not contain `flyway-operator`, the alert expression does not match it.
+not bound to the metrics-reader ClusterRole, and no target at all means the `ServiceMonitor` is not picked up. For
+other scrape errors (`401`, `400`, TLS errors) see the table in
+[Verifying with curl](metrics.md#verifying-with-curl). If the `job` label of your target does not contain `flyway-operator`, the alert expression does not match it.
 
 **Mitigation.**
 - Operator down: fix the cause shown in its logs or pod events, then check that it is `Ready`.
@@ -33,10 +33,8 @@ up. If the `job` label of your target does not contain `flyway-operator`, the al
   [Granting Prometheus access](metrics.md#granting-prometheus-access).
 - No target: check that the `ServiceMonitor` labels match your Prometheus `serviceMonitorSelector`, and for Helm that
   `metrics.enabled` and `metrics.serviceMonitor.enabled` are `true`.
-- OpenShift platform Prometheus: the operator namespace needs the label `openshift.io/cluster-monitoring=true` and a
-  `prometheus-k8s` RoleBinding for service discovery (`oc get ns <op-ns> --show-labels`,
-  `oc get rolebinding prometheus-k8s -n <op-ns>`). No metrics-reader binding is needed. Under user-workload monitoring
-  the namespace is enforced and the rule only sees its own namespace.
+- OpenShift: the operator namespace must be monitored by the platform Prometheus, see
+  [Shipped rules](metrics.md#shipped-rules).
 
 ## FlywayOperatorReconcileErrors
 
@@ -56,13 +54,14 @@ kubectl get events -A --field-selector reason=ProcessingError     # which Migrat
 kubectl -n <ns> describe migration <name>                # the ReconcileError condition message
 ```
 
-Typical causes: the API server rejects the Job (admission, quota, Pod Security), the operator lacks RBAC (for
-example `list` on pods or events, see [When the pod does not start](usage.md#when-the-pod-does-not-start)), or the API
-server is unavailable.
+Typical causes: the API server rejects the Job (admission, quota, Pod Security), the operator lacks RBAC that makes a
+call fail (`create` or `delete` on jobs, `update` on `migrations/status`), or the API server is unavailable. Missing
+RBAC for pods, events or `pods/log` only degrades the status messages and does not raise this alert.
 
 **Mitigation.** Fix the cause named in the error. For a rejected Job, correct the Migration spec (a spec change starts
-a new reconcile). For RBAC, check the operator's ClusterRole against the one in the release you installed; the Helm
-chart's ClusterRole can lag the operator image, so upgrade the chart. The alert resolves when the failing share drops
+a new reconcile). For RBAC, compare the operator's ClusterRole with the one in `config/rbac/role.yaml` of your release; a Helm
+chart's ClusterRole can lag the operator image, so upgrade to the chart release that adds the missing rules (after
+v0.7.0), or use kustomize or OLM. The alert resolves when the failing share drops
 under 10% for the 15-minute window.
 
 ## FlywayMigrationFailed
@@ -91,15 +90,13 @@ kubectl -n <ns> logs job/<name> -c flyway                # the Flyway error of t
 kubectl -n <ns> describe job <name>
 ```
 
-The message holds the Job's own failure reason, followed by `; flyway: ` and Flyway's own error text (the failing
-script and the database's error) when the Flyway log was readable. That needs `get` on `pods/log`: the kustomize and
-OLM installs grant it, Helm users get it with the next chart release, and without it the message has no Flyway error.
-The text can quote values from the failing statement; see [Status](usage.md#status). The Job of the last attempt is
-kept, so its logs are readable; the Jobs of earlier attempts were deleted for the retry.
+The message ends with Flyway's own error after `; flyway: ` when the log was readable (needs `pods/log` RBAC, which
+Helm users get with a later chart release), see [Status](usage.md#status). The Job of the last attempt is kept, so its
+logs are readable; the Jobs of earlier attempts were deleted for the retry.
 
-`status.schemaVersion` (the `SCHEMA VERSION` column of `kubectl get migration`) is the Flyway schema version the last
-succeeded Job reported. It does not move on a failed run, so it tells which version the database was at before the
-failure; on a database without transactional DDL a partly applied script is not reflected in it.
+`status.schemaVersion` (the `SCHEMA VERSION` column of `kubectl get migration`) is the version from before the failed
+run. Scripts of that run before the failing one may already be applied (Flyway commits each script separately by
+default): check the second `info` in the Flyway log.
 
 | Reason | Look at |
 | --- | --- |
@@ -144,19 +141,20 @@ that is still running also blocks the new one (`PreviousJobRunning`), so later s
 ```shell
 kubectl get migration <name> -n <ns> -o wide
 kubectl get migration <name> -n <ns> -o jsonpath='{.status.conditions[?(@.type=="Progressing")]}'   # reason and message
-kubectl -n <ns> get job,pods -l batch.kubernetes.io/job-name=<name>
+kubectl -n <ns> get job <name>
+kubectl -n <ns> get pods -l batch.kubernetes.io/job-name=<name>
 kubectl -n <ns> logs job/<name> -c flyway                # is Flyway running a long script or waiting on a lock?
 kubectl -n <ns> describe pod -l batch.kubernetes.io/job-name=<name>
 ```
 
 Read the reason:
 - `JobRunning` with a message after "is running;" (`pod not created`, `pod unschedulable`, `image pull failed`,
-  `container cannot start`): the pod does not start, see
+  `container cannot start`, `no pod created yet, see kubectl describe job`): the pod does not start, see
   [When the pod does not start](usage.md#when-the-pod-does-not-start).
 - `JobRunning` without such a detail: Flyway is running. Check the log for a long script, a database lock held by
   another session, or an unreachable database.
 - `Retrying`: an attempt failed and another follows; the message holds the failure and, when the log was readable,
-  Flyway's error after `; flyway: ` (needs `pods/log`, see [FlywayMigrationFailed](#flywaymigrationfailed)).
+  Flyway's error after `; flyway: ` (see [FlywayMigrationFailed](#flywaymigrationfailed)).
 - `PreviousJobRunning`: a Job of an older generation is still running and the new spec waits for it.
 
 **Mitigation.**
@@ -166,7 +164,8 @@ Read the reason:
   `activeDeadline`; set `lock_timeout` or `statement_timeout` through `jdbcProperties` so it fails cleanly.
 - A hung Job of an older generation (`PreviousJobRunning`), or one whose Flyway container started and hangs, for
   example behind an Istio sidecar: delete it with `kubectl delete job <name> -n <ns>` to start the new one at once.
-  Deleting a Job whose Flyway container is mid-migration can leave a partly applied script on databases without
-  transactional DDL; check the schema history table afterwards.
+  Deleting a hung Job of the current generation starts the next attempt and so uses up one retry. Deleting a Job
+  whose Flyway container is mid-migration can leave a partly applied script on databases without transactional DDL;
+  check the schema history table afterwards.
 - A migration that legitimately runs longer than the alert threshold: this is expected; raise `spec.activeDeadline`
   to cover it, and silence or tune the alert for that Migration.
