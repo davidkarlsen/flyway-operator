@@ -93,6 +93,7 @@ type MigrationStatus struct {
 	// The database's Flyway schema version as reported by the last Job that succeeded: the last info or migrate
 	// result in its JSON output. Kept when a later run fails, is in progress, or reports no version.
 	// +optional
+	// +kubebuilder:validation:MaxLength=64
 	SchemaVersion string `json:"schemaVersion,omitempty"`
 
 	// +patchMergeKey=type

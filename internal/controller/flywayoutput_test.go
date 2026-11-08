@@ -17,16 +17,25 @@ limitations under the License.
 package controller
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/rest"
 )
 
 // The fixtures in testdata/flyway are the merged stdout and stderr of docker.io/flyway/flyway:13 (13.12.1) run with
 // -outputType=json against SQLite (postgres-*.log: PostgreSQL 17; conn-error.log: an unreachable PostgreSQL), as a pod log holds them.
-// default-run-with-log-lines.log adds log lines, one of them JSON, around default-run.log; text-output.log is a
-// run without -outputType=json.
+// default-run-with-log-lines.log adds log lines around default-run.log, among them JSON lines with an operation, an
+// error or individualResults that are not Flyway results; *-v1-to-v2.log run on a database at version 1 with
+// version 2 pending; text-output.log is a run without -outputType=json.
 func readFixture(t *testing.T, name string) []byte {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("testdata", "flyway", name))
@@ -46,6 +55,9 @@ func TestParseFlywayOutput(t *testing.T) {
 		// info migrate info on an empty database: the composite's own schemaVersion (1) is not the database's
 		{fixture: "default-run.log", wantParsed: true, wantVersion: "2"},
 		{fixture: "default-run-with-log-lines.log", wantParsed: true, wantVersion: "2"},
+		// info migrate info and migrate on a database at 1 with 2 pending: the trailing info, and targetSchemaVersion
+		{fixture: "default-run-v1-to-v2.log", wantParsed: true, wantVersion: "2"},
+		{fixture: "migrate-v1-to-v2.log", wantParsed: true, wantVersion: "2"},
 		// migrate on an empty database: targetSchemaVersion
 		{fixture: "first-migrate.log", wantParsed: true, wantVersion: "2"},
 		// migrate with nothing pending: targetSchemaVersion is null, initialSchemaVersion holds the version
@@ -122,15 +134,95 @@ func TestParseFlywayOutputUsesLastResult(t *testing.T) {
 	}
 }
 
-func TestFlywaySchemaVersionIgnoresOverlongVersion(t *testing.T) {
-	long := strings.Repeat("9", maxSchemaVersion+1)
-	res, ok := parseFlywayOutput([]byte(`{"individualResults":[` +
-		`{"operation":"migrate","targetSchemaVersion":"3"},` +
-		`{"operation":"info","schemaVersion":"` + long + `"}],"schemaVersion":1}`))
-	if !ok {
-		t.Fatal("not parsed")
+func TestFlywaySchemaVersionLimits(t *testing.T) {
+	for name, tt := range map[string]struct{ info, want string }{
+		// multibyte: the limit counts characters, as the CRD's maxLength does
+		"64 characters": {info: strings.Repeat("é", maxSchemaVersion), want: strings.Repeat("é", maxSchemaVersion)},
+		"65 characters": {info: strings.Repeat("é", maxSchemaVersion+1), want: "3"},
+		"blank":         {info: "  ", want: "3"},
+		"padded":        {info: " 4 ", want: "4"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			res, ok := parseFlywayOutput([]byte(`{"individualResults":[` +
+				`{"operation":"migrate","flywayVersion":"13.12.1","targetSchemaVersion":"3"},` +
+				`{"operation":"info","flywayVersion":"13.12.1","schemaVersion":"` + tt.info + `"}],"schemaVersion":1}`))
+			if !ok {
+				t.Fatal("not parsed")
+			}
+			if v, _ := flywaySchemaVersion(res); v != tt.want {
+				t.Errorf("schema version = %q, want %q", v, tt.want)
+			}
+		})
 	}
-	if v, _ := flywaySchemaVersion(res); v != "3" {
-		t.Errorf("schema version = %q, want 3 (the overlong one ignored)", v)
+}
+
+func TestParseFlywayOutputRejectsOtherJSON(t *testing.T) {
+	for _, line := range []string{
+		`{"operation":"migrate","targetSchemaVersion":"3"}`, // no flywayVersion
+		`{"error":"x"}`,
+		`{"error":null}`,
+		`{"error":{"stackTrace":"x"}}`,
+		`{"individualResults":[]}`,
+		`{"individualResults":[{"operation":"info","flywayVersion":"13"},{"ts":1}]}`,
+	} {
+		if res, ok := parseFlywayOutput([]byte(line)); ok {
+			t.Errorf("%s parsed as a result: %+v", line, res)
+		}
+	}
+	for _, line := range []string{
+		`{"operation":"info","flywayVersion":"13","schemaVersion":"5"}`,
+		`{"error":{"errorCode":"DB_CONNECTION"}}`,
+		`{"error":{"message":"m"}}`,
+	} {
+		if _, ok := parseFlywayOutput([]byte(line)); !ok {
+			t.Errorf("%s not parsed as a result", line)
+		}
+	}
+}
+
+// Every line starting with '{' costs a decode that can scan the rest of the log, so the attempts are capped.
+func TestParseFlywayOutputCapsDecodeAttempts(t *testing.T) {
+	result := readFixture(t, "first-migrate.log")
+	junk := strings.Repeat("{\"ts\":1}\n", maxDecodeAttempts-1)
+	if _, ok := parseFlywayOutput(append([]byte(junk), result...)); !ok {
+		t.Errorf("result after %d other JSON lines not parsed", maxDecodeAttempts-1)
+	}
+	junk += "{\"ts\":1}\n"
+	if _, ok := parseFlywayOutput(append([]byte(junk), result...)); ok {
+		t.Errorf("result after %d other JSON lines parsed, want the attempts capped", maxDecodeAttempts)
+	}
+	// unterminated nested objects on every line: each decode scans to the end of the log
+	nested := []byte(strings.Repeat("{\"x\":[\n", 100000))
+	start := time.Now()
+	if _, ok := parseFlywayOutput(nested); ok {
+		t.Error("unterminated JSON parsed")
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("parsing %d bytes of nested JSON took %v", len(nested), d)
+	}
+}
+
+// PodsLogReader asks the API server for at most limitBytes and stops reading there even if more is sent.
+func TestPodsLogReaderLimitsTheRead(t *testing.T) {
+	var query url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/namespaces/ns/pods/p/log" {
+			http.NotFound(w, r)
+			return
+		}
+		query = r.URL.Query()
+		_, _ = w.Write([]byte(strings.Repeat("x", 100)))
+	}))
+	defer srv.Close()
+	pods, err := corev1client.NewForConfig(&rest.Config{Host: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := PodsLogReader{Pods: pods}.ReadLog(context.Background(), "ns", "p", flywayContainerName, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 10 || query.Get("limitBytes") != "10" || query.Get("container") != flywayContainerName {
+		t.Errorf("read %d bytes with query %v, want 10 bytes, limitBytes=10, container=%s", len(data), query, flywayContainerName)
 	}
 }

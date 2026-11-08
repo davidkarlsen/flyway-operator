@@ -44,6 +44,9 @@ const (
 	maxSchemaVersion = 64
 	// flywayErrorSeparator joins Flyway's error message to a condition message.
 	flywayErrorSeparator = "; flyway: "
+	// maxDecodeAttempts bounds the JSON decodes of one log. A decode can scan the rest of the log, so a log with many
+	// lines starting with '{' would otherwise cost quadratic time; Flyway prints one result.
+	maxDecodeAttempts = 32
 )
 
 // PodLogReader reads the log of a container. The controller-runtime client cannot read logs, and tests fake it.
@@ -71,6 +74,7 @@ func (p PodsLogReader) ReadLog(ctx context.Context, namespace, pod, container st
 // not the database's. Fields whose type differs between operations stay raw.
 type flywayResult struct {
 	Operation            string          `json:"operation"`
+	FlywayVersion        string          `json:"flywayVersion"`
 	SchemaVersion        json.RawMessage `json:"schemaVersion"`
 	TargetSchemaVersion  json.RawMessage `json:"targetSchemaVersion"`
 	InitialSchemaVersion json.RawMessage `json:"initialSchemaVersion"`
@@ -86,16 +90,45 @@ func (f *flywayResult) results() []flywayResult {
 	return []flywayResult{*f}
 }
 
+// isResult reports whether a decoded object is shaped like a Flyway result: a command's result (operation and
+// flywayVersion), an error result (an error object with a message or code), or several commands' results.
+func (f *flywayResult) isResult() bool {
+	if f.IndividualResults != nil {
+		if len(f.IndividualResults) == 0 {
+			return false
+		}
+		for i := range f.IndividualResults {
+			if f.IndividualResults[i].IndividualResults != nil || !f.IndividualResults[i].isResult() {
+				return false
+			}
+		}
+		return true
+	}
+	if f.Operation != "" && f.FlywayVersion != "" {
+		return true
+	}
+	var e struct {
+		Message   string `json:"message"`
+		ErrorCode string `json:"errorCode"`
+	}
+	return json.Unmarshal(f.Error, &e) == nil && (e.Message != "" || e.ErrorCode != "")
+}
+
 // parseFlywayOutput returns the last Flyway JSON result in a container log. JSON values are tried only where a line
-// starts with '{', so log lines (stderr is merged into the pod log) before, between or after them are skipped.
-// It returns false when the log holds no complete result, e.g. when it was cut or the output type was overridden.
+// starts with '{', at most maxDecodeAttempts times, so log lines (stderr is merged into the pod log) before, between
+// or after them are skipped. It returns false when the log holds no complete result, e.g. when it was cut or the
+// output type was overridden.
 func parseFlywayOutput(data []byte) (*flywayResult, bool) {
 	var last *flywayResult
+	attempts := 0
 	for off := 0; off < len(data); {
 		if data[off] == '{' {
+			if attempts++; attempts > maxDecodeAttempts {
+				break
+			}
 			dec := json.NewDecoder(bytes.NewReader(data[off:]))
 			res := &flywayResult{}
-			if err := dec.Decode(res); err == nil && (res.Operation != "" || res.IndividualResults != nil || len(res.Error) > 0) {
+			if err := dec.Decode(res); err == nil && res.isResult() {
 				last = res
 				off += int(dec.InputOffset())
 				continue

@@ -116,3 +116,7 @@ WARNING: some driver warning
 
 INFO: trailing stderr line
 {"level":"INFO","message":"a JSON log line after the result"}
+{"ts":1,"operation":"http"}
+{"level":"INFO","error":"x"}
+{"level":"WARN","error":null}
+{"individualResults":[{"ts":2}]}
