@@ -267,22 +267,17 @@ bundle-build: ## Build the bundle image.
 bundle-push: ## Push the bundle image.
 	$(MAKE) docker-push IMG=$(BUNDLE_IMG)
 
+OPM_VERSION ?= v1.74.0
+OPM ?= $(LOCALBIN)/opm
 .PHONY: opm
-OPM = ./bin/opm
-opm: ## Download opm locally if necessary.
-ifeq (,$(wildcard $(OPM)))
-ifeq (,$(shell which opm 2>/dev/null))
-	@{ \
+opm: ## Download the pinned opm locally if necessary. If another version is installed in ./bin, it will be overwritten.
+	@test -x $(OPM) && $(OPM) version 2>/dev/null | grep -q 'OpmVersion:"$(OPM_VERSION)"' || { \
 	set -e ;\
 	mkdir -p $(dir $(OPM)) ;\
-	OS=$(shell go env GOOS) && ARCH=$(shell go env GOARCH) && \
-	curl -sSLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/v1.74.0/$${OS}-$${ARCH}-opm ;\
+	OS=$$(go env GOOS) && ARCH=$$(go env GOARCH) && \
+	curl -sSLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/$(OPM_VERSION)/$${OS}-$${ARCH}-opm ;\
 	chmod +x $(OPM) ;\
 	}
-else
-OPM = $(shell which opm)
-endif
-endif
 
 
 # Adds to catalog-template.yaml, in the working tree only (nothing is committed):
@@ -315,6 +310,8 @@ update-catalog-template:
 # The image tag given to the resulting catalog image (e.g. make catalog-build CATALOG_IMG=example.com/operator-catalog:v0.2.0).
 CATALOG_IMG ?= $(IMAGE_TAG_BASE)-catalog:v$(VERSION)
 CATALOG_VERSIONLESS = ghcr.io/davidkarlsen/flyway-operator-catalog:alpha
+# The channel new subscriptions get when they name none; independent of DEFAULT_CHANNEL, which is for the bundle.
+CATALOG_DEFAULT_CHANNEL ?= stable-v0
 
 # Build a catalog image by adding bundle images to an empty catalog using the operator package manager tool, 'opm'.
 # This recipe invokes 'opm' in 'semver' bundle add mode. For more information on add modes, see:
@@ -324,6 +321,9 @@ catalog-build: opm
 	rm -rf catalog
 	mkdir catalog
 	$(OPM) alpha render-template semver -o yaml < catalog-template.yaml > catalog/catalog.yaml
+	@# The semver template's DefaultChannelTypePreference does not select stable-v0 for 0.x bundles in opm v1.74, so set it here.
+	@test "$$(grep -c '^defaultChannel: ' catalog/catalog.yaml)" = 1 || { echo "expected exactly one defaultChannel line in catalog/catalog.yaml" >&2; exit 1; }
+	sed 's/^defaultChannel: .*/defaultChannel: $(CATALOG_DEFAULT_CHANNEL)/' catalog/catalog.yaml > catalog/catalog.yaml.tmp && mv catalog/catalog.yaml.tmp catalog/catalog.yaml
 	$(OPM) validate catalog
 	docker build --platform=$(CATALOG_PLATFORM) -f Dockerfile.catalog -t $(CATALOG_IMG) .
 
