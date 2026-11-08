@@ -275,8 +275,9 @@ opm: ## Download the pinned opm locally if necessary. If another version is inst
 	set -e ;\
 	mkdir -p $(dir $(OPM)) ;\
 	OS=$$(go env GOOS) && ARCH=$$(go env GOARCH) && \
-	curl -sSLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/$(OPM_VERSION)/$${OS}-$${ARCH}-opm ;\
-	chmod +x $(OPM) ;\
+	curl -fsSLo $(OPM).tmp https://github.com/operator-framework/operator-registry/releases/download/$(OPM_VERSION)/$${OS}-$${ARCH}-opm ;\
+	chmod +x $(OPM).tmp ;\
+	mv $(OPM).tmp $(OPM) ;\
 	}
 
 

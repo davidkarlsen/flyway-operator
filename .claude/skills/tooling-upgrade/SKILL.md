@@ -11,7 +11,7 @@ description: Bring flyway-operator's toolchain up to date - Go, operator-sdk, co
 |---|---|
 | Go | `go.mod` `go` directive (CI reads it via `go-version-file`), `Dockerfile` builder image |
 | operator-sdk | `Makefile` `OPERATOR_SDK_VERSION`; `bundle.Dockerfile` + bundle metadata builder labels; `scorecard-test` image tags in `config/scorecard/` and `bundle/tests/scorecard/` |
-| opm | `Makefile` opm download URL |
+| opm | `OPM_VERSION` in `Makefile` |
 | controller-tools | `Makefile` `CONTROLLER_TOOLS_VERSION` (regenerate: `make manifests generate`) |
 | envtest | `Makefile` `ENVTEST_K8S_VERSION` (match the `k8s.io/*` minor in `go.mod`) |
 | kustomize | `Makefile` `KUSTOMIZE_VERSION` |
