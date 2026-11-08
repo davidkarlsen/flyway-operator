@@ -16,6 +16,7 @@ Helm templates for the operator workload, its RBAC, and the optional metrics (`S
 | `metrics-service.yaml` | `<fullname>-metrics` Service (`https` → metrics port), gated on `metrics.enabled` |
 | `metrics-auth-rbac.yaml` | Metrics authn/authz ClusterRole + binding and the `metrics-reader` ClusterRole, gated on `metrics.enabled` |
 | `servicemonitor.yaml` | Prometheus Operator `ServiceMonitor`, gated on `metrics.enabled` and `metrics.serviceMonitor.enabled` |
+| `prometheusrule.yaml` | Opt-in `PrometheusRule` (`prometheusRule.enabled`) rendering `files/rules.yaml`, guarded by `.Capabilities.APIVersions` |
 | `serviceaccount.yaml` | Manager ServiceAccount |
 | `role.yaml` / `role_binding.yaml` | Reconciler RBAC |
 | `leader_election_role.yaml` / `leader_election_role_binding.yaml` | Leader-election lease RBAC |

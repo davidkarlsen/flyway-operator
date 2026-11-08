@@ -12,7 +12,7 @@ Helm chart for installing the operator outside of OLM. Mirrors the deployment su
 |------|-------------|
 | `Chart.yaml` | Chart metadata (name, `version`, `appVersion`, `kubeVersion: ">=1.35.0-0"`) |
 | `Chart.lock` | Pinned dependency versions |
-| `values.yaml` | User-facing knobs (image, resources, replicas, security context, `metrics.*` including the opt-in `metrics.serviceMonitor`, and the opt-in `grafana.dashboards`) |
+| `values.yaml` | User-facing knobs (image, resources, replicas, security context, `metrics.*` including the opt-in `metrics.serviceMonitor`, the opt-in `grafana.dashboards`, and the opt-in `prometheusRule`) |
 | `README.md` | Chart-specific README rendered on Artifact Hub |
 
 ## Subdirectories
@@ -21,6 +21,7 @@ Helm chart for installing the operator outside of OLM. Mirrors the deployment su
 |-----------|---------|
 | `crds/` | CRD copy installed by Helm pre-install (see `crds/AGENTS.md`) |
 | `dashboards/` | Copy of `config/grafana/dashboards/*.json`, read by the dashboards templates. Never edit it by hand: run `make helm-dashboards` (chart CI fails on chart PRs if it is stale) |
+| `files/` | `rules.yaml`: the alert rule groups, rendered by `templates/prometheusrule.yaml` (kept identical to `config/prometheus/rules.yaml`) |
 | `templates/` | Deployment, RBAC, ServiceAccount, NOTES, helpers (see `templates/AGENTS.md`) |
 
 ## For AI Agents
