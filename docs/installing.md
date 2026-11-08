@@ -76,6 +76,21 @@ helm install flyway-operator flyway-operator/flyway-operator -n flyway-operator
 Configurable values (image, resources, node selector, tolerations, etc.) are in the chart's
 [`values.yaml`](../config/helm-chart/flyway-operator/values.yaml). The chart installs the CRD.
 
+### Upgrading the CRD
+
+Helm creates the CRD on install but never updates it on `helm upgrade`. An old CRD schema silently drops fields it does
+not know, for example `flywayConfiguration.resources` or `serviceAccountName`, and the migration then runs without
+them. After each upgrade that changes the API, apply the CRD of the release yourself. Use server-side apply, since the
+CRD is larger than the annotation client-side apply keeps:
+
+```shell
+kubectl apply --server-side --force-conflicts -f https://raw.githubusercontent.com/davidkarlsen/flyway-operator/<tag>/config/crd/bases/flyway.davidkarlsen.com_migrations.yaml
+```
+
+Replace `<tag>` with the release tag. The chart's own copy of the CRD
+(`config/helm-chart/flyway-operator/crds/`) is only updated by the chart release pull request after the tag, so at the
+tag itself it is still the previous release's. OLM updates the CRD with the operator.
+
 ## From source
 
 Mostly useful when developing the operator.

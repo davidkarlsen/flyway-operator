@@ -176,6 +176,7 @@ default scheduler and runs as the namespace's `default` service account.
 | `serviceAccountName` | the pod |
 
 ```yaml
+spec:
   flywayConfiguration:
     resources:
       requests: {cpu: 100m, memory: 256Mi}
@@ -188,18 +189,17 @@ default scheduler and runs as the namespace's `default` service account.
     priorityClassName: batch-low
 ```
 
+A complete, validated `Migration` with these fields is in [examples/resources-and-quota.md](examples/resources-and-quota.md).
+
 The operator sets no default `resources`. Flyway runs on the JVM, so the right size depends on your migrations; the
-numbers above are a starting point, not a measured recommendation.
+numbers above are a starting point, not a measured recommendation. `resources.claims` is rejected: the operator does
+not define the pod's `resourceClaims` that a claim would refer to.
 
 ### ResourceQuota
 
 A namespace with a `ResourceQuota` on `requests.*` or `limits.*` rejects pods that do not set them (unless a
-`LimitRange` supplies defaults). The Job then creates no pod, and the `Migration` stays `Progressing` until
-`activeDeadline`. `kubectl describe job <name>` shows the `FailedCreate` event ("must specify limits.cpu ..."). Set
-`resources` with every resource the quota covers. `serviceAccountName` must name an existing service account in the
-namespace, or the Job cannot create its pod either. A Job whose pod cannot be created is not marked failed: after
-fixing the field, delete the Job (`kubectl delete job <name>`) to start over at once instead of waiting for the
-`activeDeadline` of the stuck one.
+`LimitRange` supplies defaults). Set `resources` with every resource the quota covers. Without it the Job cannot create
+its pod; see [When the pod does not start](#when-the-pod-does-not-start).
 
 `serviceAccountName` lets a `Migration` author run the pod as any service account of the namespace, including its
 cloud identity. Grant `Migration` edit rights accordingly. Workload identity systems may also need a pod label or
@@ -207,8 +207,7 @@ annotation, set with `podMetadata` (for example `azure.workload.identity/use: "t
 
 A change to any of these fields creates a new Job, which runs the configured `commands` again.
 
-If you install with Helm, upgrade the CRD yourself (`kubectl apply --server-side -f` the CRD of the release): Helm does
-not update CRDs in `crds/`, and the old schema drops the new fields silently.
+Helm does not update the CRD of an existing install; see [Upgrading the CRD](installing.md#upgrading-the-crd).
 
 ## Security context
 
@@ -277,8 +276,20 @@ kubectl describe pod -l batch.kubernetes.io/job-name=my-app   # CreateContainerC
 - `CreateContainerConfigError` with `container has runAsNonRoot and image will run as root`: no UID was assigned
   (for example by `anyuid`) and the image has no non-root `USER`. Set `podSecurityContext.runAsUser`.
 
-Failed pod creations do not count against the Job's `backoffLimit`, so such a Job does not fail by itself;
-`spec.activeDeadline` bounds how long it runs. Fix the cause, then change the spec or delete the Job to start a new one.
+- `FailedCreate` with `exceeded quota` or `must specify limits.cpu`: the namespace has a `ResourceQuota` and the pod
+  sets no `resources`. Set `flywayConfiguration.resources` (see [ResourceQuota](#resourcequota)).
+- `FailedCreate` with `serviceaccount "..." not found` or `no PriorityClass with name ... was found`:
+  `serviceAccountName` or `priorityClassName` names something that does not exist. Creating the missing object is
+  enough, since the Job controller keeps retrying the pod creation. If you correct the `Migration` instead, delete
+  the Job (see below).
+- A pod that stays `Pending` with `FailedScheduling` (shown by `kubectl describe pod`, not on the Job): the
+  `nodeSelector`, `affinity` or `tolerations` match no node, or the requested `resources` fit on none.
+
+Failed pod creations do not count against the Job's `backoffLimit`, so such a Job does not fail by itself. The
+[deadline](#deadline) bounds it, once per attempt: with the defaults (`activeDeadline` 1h, `retryLimit` 2) a pod that
+can never be created takes 3 hours to report `TimedOut`, because each retry hits the same cause. Changing the spec does
+not help at once either: the corrected generation waits behind the stuck Job (`PreviousJobRunning`) until it ends.
+Fix the cause, then delete the Job (`kubectl delete job my-app`) to start the new one immediately.
 
 ## Status
 

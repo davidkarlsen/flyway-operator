@@ -1444,11 +1444,13 @@ spec:
                   priorityClassName:
                     description: PriorityClassName of the migration job's pod.
                     maxLength: 253
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
                     type: string
                   resources:
                     description: |-
                       Compute resources (requests and limits) of the migration job's flyway container. Unset by default.
                       Set it in namespaces with a ResourceQuota, which rejects pods without requests and limits.
+                      claims is not supported: the operator defines no pod resourceClaims for it to refer to.
                     properties:
                       claims:
                         description: |-
@@ -1506,6 +1508,10 @@ spec:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                    x-kubernetes-validations:
+                    - message: 'resources.claims is not supported: the operator does
+                        not define the pod''s resourceClaims'
+                      rule: '!has(self.claims)'
                   securityContext:
                     description: |-
                       Security context of the migration job's flyway container. Replaces the operator's restricted
@@ -1703,6 +1709,7 @@ spec:
                     description: ServiceAccountName the migration job's pod runs as.
                       Defaults to the namespace's default service account.
                     maxLength: 253
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
                     type: string
                   tolerations:
                     description: Tolerations of the migration job's pod.

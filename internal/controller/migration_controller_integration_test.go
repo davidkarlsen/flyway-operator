@@ -624,6 +624,15 @@ var _ = Describe("Migration controller (envtest)", func() {
 			Entry("negative retryLimit", func(spec map[string]any) {
 				spec["retryLimit"] = int64(-1)
 			}, "spec.retryLimit"),
+			Entry("serviceAccountName that is not a DNS name", func(spec map[string]any) {
+				spec["flywayConfiguration"] = map[string]any{"serviceAccountName": "My_SA"}
+			}, "spec.flywayConfiguration.serviceAccountName"),
+			Entry("priorityClassName that is not a DNS name", func(spec map[string]any) {
+				spec["flywayConfiguration"] = map[string]any{"priorityClassName": "-bad-"}
+			}, "spec.flywayConfiguration.priorityClassName"),
+			Entry("resources.claims", func(spec map[string]any) {
+				spec["flywayConfiguration"] = map[string]any{"resources": map[string]any{"claims": []any{map[string]any{"name": "gpu"}}}}
+			}, "spec.flywayConfiguration.resources", "resources.claims is not supported"),
 			Entry("reserved pod label job-name", func(spec map[string]any) {
 				spec["podMetadata"] = map[string]any{"labels": map[string]any{"job-name": "x"}}
 			}, "spec.podMetadata.labels", "must not contain a reserved key"),
