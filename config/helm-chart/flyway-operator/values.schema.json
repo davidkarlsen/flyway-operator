@@ -119,7 +119,7 @@
       "properties": {
         "digest": {
           "default": "",
-          "description": "Image digest, e.g. sha256:\u003chash\u003e. When set, it replaces the tag (image",
+          "description": "Image digest, e.g. sha256:\u003chash\u003e. When set, it replaces the tag in the image reference.",
           "title": "digest",
           "type": "string"
         },

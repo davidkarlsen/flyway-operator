@@ -22,7 +22,7 @@ image:
   # type: [string, number]
   # @schema
   tag: 0.7.0
-  # Image digest, e.g. sha256:<hash>. When set, it replaces the tag (image@digest).
+  # Image digest, e.g. sha256:<hash>. When set, it replaces the tag in the image reference.
   digest: ""
 
 # @schema
