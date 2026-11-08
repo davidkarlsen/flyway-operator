@@ -235,6 +235,49 @@ spec:
 			g.Expect(spec.Containers[0].Resources.Limits).To(HaveKeyWithValue("memory", "768Mi"))
 		}, jobTimeout, pollInterval).Should(Succeed())
 	})
+
+	It("names why the pod is not created and replaces the never-started Job when the spec is corrected", func() {
+		cmd := exec.Command("kubectl", "-n", namespace, "apply", "-f", "-")
+		cmd.Stdin = strings.NewReader(fmt.Sprintf(`apiVersion: flyway.davidkarlsen.com/v1alpha1
+kind: Migration
+metadata:
+  name: pod-wait
+spec:
+  database:
+    username: app
+    jdbcUrl: jdbc:postgresql://postgres:5432/app
+    credentials:
+      name: postgres
+      key: password
+  migrationSource:
+    imageRef: %s
+  flywayConfiguration:
+    defaultSchema: podwait
+    priorityClassName: e2e-missing-priority-class
+`, sqlImage("v1")))
+		mustRun(cmd)
+
+		Eventually(func(g Gomega) {
+			c := meta.FindStatusCondition(getMigration("pod-wait").Status.Conditions, flywayv1alpha1.ConditionProgressing)
+			g.Expect(c).NotTo(BeNil())
+			g.Expect(c.Reason).To(Equal(flywayv1alpha1.ReasonJobRunning))
+			g.Expect(c.Message).To(ContainSubstring("pod not created: "))
+			g.Expect(c.Message).To(ContainSubstring("no PriorityClass with name e2e-missing-priority-class was found"))
+		}, 2*time.Minute, pollInterval).Should(Succeed())
+		uid := strings.TrimSpace(mustRun(exec.Command("kubectl", "-n", namespace, "get", "job", "pod-wait", "-o", "jsonpath={.metadata.uid}")))
+
+		// drop the priority class: the generation 2 Job must replace the stuck one without a manual delete
+		applyMigration("pod-wait", "v1", "podwait", "postgres", "", nil)
+
+		m := waitForCondition("pod-wait", flywayv1alpha1.ConditionApplied, flywayv1alpha1.ReasonJobSucceeded, 2)
+		Expect(m.Status.ObservedGeneration).To(Equal(m.Generation))
+		Expect(mustRun(exec.Command("kubectl", "-n", namespace, "get", "job", "pod-wait", "-o", "jsonpath={.metadata.uid}"))).
+			NotTo(Equal(uid))
+		Expect(mustRun(exec.Command("kubectl", "-n", namespace, "get", "events",
+			"--field-selector", "involvedObject.name=pod-wait,reason=PreviousJobReplaced", "-o", "jsonpath={.items[*].message}"))).
+			To(ContainSubstring("none of its containers ever started"))
+		Expect(psql("SELECT to_regclass('podwait.person')")).To(Equal("podwait.person"))
+	})
 })
 
 // applyMigration creates or updates a Migration against the in-cluster postgres, migrating the given schema.

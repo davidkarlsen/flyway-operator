@@ -344,7 +344,27 @@ no UID, so an image without a non-root `USER` fails `runAsNonRoot` there unless 
 
 ### When the pod does not start
 
-The `Migration` then stays `Progressing` with reason `JobCreated` or `JobRunning`. Look at the events:
+The `Migration` stays `Progressing` with reason `JobRunning`, but while no container of the current Job's pod has
+started, the operator puts the cause into the `Progressing` message and looks again every 15 seconds:
+
+```shell
+kubectl get migration my-app -o jsonpath='{.status.conditions[?(@.type=="Progressing")].message}'
+# Job my-app attempt 1 of 3 is running; pod not created: pods "my-app-" is forbidden: exceeded quota: ...
+```
+
+| Message after "is running;" | Source | Cause |
+| --- | --- | --- |
+| `pod not created: ...` | the newest `FailedCreate` event of the Job | quota, missing `ServiceAccount` or `PriorityClass`, Pod Security or SCC admission |
+| `no pod created after ..., see kubectl describe job` | Job age, when no `FailedCreate` event can be read | as above; the operator has no RBAC for events (see below) or the event expired |
+| `pod unschedulable: ...` | the pod's `PodScheduled` condition (`FailedScheduling`) | `nodeSelector`, `affinity`, `tolerations` or `resources` fit no node |
+| `image pull failed: ...` | `ImagePullBackOff`, `ErrImagePull` or `InvalidImageName` of a container | wrong image or registry credentials |
+| `container cannot start: ...` | `CreateContainerConfigError` or `CreateContainerError` | for example a missing Secret or a `runAsNonRoot` conflict |
+
+Messages are cut at 300 characters, so `kubectl describe` still has the full text. The operator reads pods and the
+Job's events from the API server (`pods` and `events` need the `list` verb). Without that RBAC, for example on a chart
+older than the operator, the message is the plain `is running` text or the age-based one; nothing else changes. A failure
+to pull the *migration source* image volume is not named: the pod shows `ContainerCreating` and the reason is in
+`kubectl describe pod`. Look at the details by hand:
 
 ```shell
 kubectl describe job my-app     # FailedCreate: the pod was not admitted
@@ -369,16 +389,22 @@ kubectl describe pod -l batch.kubernetes.io/job-name=my-app   # CreateContainerC
   sets no `resources`. Set `flywayConfiguration.resources` (see [ResourceQuota](#resourcequota)).
 - `FailedCreate` with `serviceaccount "..." not found` or `no PriorityClass with name ... was found`:
   `serviceAccountName` or `priorityClassName` names something that does not exist. Creating the missing object is
-  enough, since the Job controller keeps retrying the pod creation. If you correct the `Migration` instead, delete
-  the Job (see below).
+  enough, since the Job controller keeps retrying the pod creation. Correcting the `Migration` works too (see below).
 - A pod that stays `Pending` with `FailedScheduling` (shown by `kubectl describe pod`, not on the Job): the
   `nodeSelector`, `affinity` or `tolerations` match no node, or the requested `resources` fit on none.
 
 Failed pod creations do not count against the Job's `backoffLimit`, so such a Job does not fail by itself. The
 [deadline](#deadline) bounds it, once per attempt: with the defaults (`activeDeadline` 1h, `retryLimit` 2) a pod that
-can never be created takes 3 hours to report `TimedOut`, because each retry hits the same cause. Changing the spec does
-not help at once either: the corrected generation waits behind the stuck Job (`PreviousJobRunning`) until it ends.
-Fix the cause, then delete the Job (`kubectl delete job my-app`) to start the new one immediately.
+can never be created takes 3 hours to report `TimedOut`, because each retry hits the same cause.
+
+Correcting the spec does not need a manual delete. When the `Migration` changes while an older generation's Job exists
+and **no Flyway container of it ever started** (it has no pod, or only `Pending` pods, and its status shows no pod that
+ran or ended), the operator deletes that Job with foreground propagation and creates the new generation's Job once the
+old pods are gone (condition reason `PreviousJobReplaced`, a `PreviousJobReplaced` event; it counts no run in the
+metrics, since nothing ran). A Job whose Flyway container started, or whose pods cannot be listed, is still waited for
+(`PreviousJobRunning`), so two migrations never run against the database at once. In that case, and for a Job that is
+hung while running, fix the cause and delete the Job by hand (`kubectl delete job my-app`) to start the new one
+immediately.
 
 ## Status
 
@@ -394,7 +420,7 @@ that generation) are also set.
 
 All three share one reason: `JobCreated`, `JobRunning`, `JobSucceeded`, `Retrying`, `RetryLimitExceeded`, `TimedOut`
 (the last attempt exceeded `spec.activeDeadline`), `PreviousJobRunning` (a Job for an older generation is still
-running), `PreviousJobReplaced` or `ImageVolumeUnsupported` (the cluster dropped the image volume). On failure the message
+running), `PreviousJobReplaced` (also for an older Job that never started a container) or `ImageVolumeUnsupported` (the cluster dropped the image volume). On failure the message
 holds the Job's own failure reason and message.
 
 A reconcile that fails (for example the API server rejects the Job) also sets a `ReconcileError` condition with the error

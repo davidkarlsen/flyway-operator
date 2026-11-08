@@ -10,7 +10,14 @@ rules:
   - events
   verbs:
   - create
+  - list
   - patch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - list
 - apiGroups:
   - batch
   resources:

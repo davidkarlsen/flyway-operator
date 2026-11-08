@@ -276,7 +276,7 @@ func createJobSpec(migration *flywayv1alpha1.Migration, attempt int32) *batchv1.
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:            "flyway",
+							Name:            flywayContainerName,
 							Image:           getFlywayImage(migration),
 							ImagePullPolicy: corev1.PullAlways,
 							Args:            getFlywayArgs(migration),

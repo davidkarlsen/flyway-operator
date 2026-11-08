@@ -85,6 +85,7 @@ var _ = BeforeSuite(func() {
 		Client:    k8sManager.GetClient(),
 		Scheme:    k8sManager.GetScheme(),
 		OpenShift: openShift,
+		APIReader: k8sManager.GetAPIReader(),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 

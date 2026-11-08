@@ -65,5 +65,6 @@ func TestGithubactionRunnerController(t *testing.T) {
 
 	res, err := r.Reconcile(ctx, req)
 	testhelper.AssertNoErr(t, err)
-	testhelper.AssertEquals(t, true, res.IsZero())
+	// the new Job may never get a pod, so the reconcile is repeated until a container has started
+	testhelper.AssertEquals(t, podWaitRequeue, res.RequeueAfter)
 }

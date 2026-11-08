@@ -179,6 +179,58 @@ func expectRunningAttempt(ctx context.Context, key types.NamespacedName, attempt
 	}, envtestTimeout, envtestInterval).Should(Succeed())
 }
 
+// runningPod is the status of a pod whose Flyway container runs.
+func runningPod(p *corev1.Pod) {
+	p.Status.Phase = corev1.PodRunning
+	p.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: flywayContainerName, Started: ptr.To(true),
+		State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{StartedAt: metav1.Now()}}}}
+}
+
+// createJobPod creates a pod as the Job controller would (envtest runs none) and sets its status.
+func createJobPod(ctx context.Context, job *batchv1.Job, name string, status func(*corev1.Pod)) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: job.Namespace, Name: job.Name + "-" + name,
+			Labels:          map[string]string{jobNameLabel: job.Name},
+			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(job, batchv1.SchemeGroupVersion.WithKind("Job"))},
+		},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: flywayContainerName, Image: "docker.io/flyway/flyway:13"}}},
+	}
+	Expect(k8sClient.Create(ctx, pod)).To(Succeed())
+	pod.Status.Phase = corev1.PodPending
+	status(pod)
+	Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+	touchJob(ctx, client.ObjectKeyFromObject(job), name)
+}
+
+// touchJob changes the Job so that the operator reconciles now: the Job controller would have written its status.
+func touchJob(ctx context.Context, key types.NamespacedName, value string) {
+	updateJob(ctx, key, func(j *batchv1.Job) {
+		if j.Annotations == nil {
+			j.Annotations = map[string]string{}
+		}
+		j.Annotations["test/touched"] = value
+	})
+}
+
+// waitingPod is the status of a pod whose Flyway container waits for the given reason.
+func waitingPod(reason, message string) func(*corev1.Pod) {
+	return func(p *corev1.Pod) {
+		p.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: flywayContainerName,
+			State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: reason, Message: message}}}}
+	}
+}
+
+// expectProgressingMessage waits until the Progressing message contains sub.
+func expectProgressingMessage(ctx context.Context, key types.NamespacedName, sub string) {
+	Eventually(func(g Gomega) {
+		c := meta.FindStatusCondition(getMigration(ctx, g, key).Status.Conditions, flywayv1alpha1.ConditionProgressing)
+		g.Expect(c).NotTo(BeNil())
+		g.Expect(c.Reason).To(Equal(flywayv1alpha1.ReasonJobRunning))
+		g.Expect(c.Message).To(ContainSubstring(sub))
+	}, envtestTimeout, envtestInterval).Should(Succeed())
+}
+
 // holdJob adds testFinalizer to the Job so its deletion stays pending, and registers a cleanup that
 // releases it in case the spec fails before releasing it itself.
 func holdJob(ctx context.Context, key types.NamespacedName) {
@@ -485,6 +537,8 @@ var _ = Describe("Migration controller (envtest)", func() {
 		It("waits for the previous generation's running Job, then replaces it with a Job for the new generation", func(ctx SpecContext) {
 			Expect(k8sClient.Create(ctx, newMigration(ns, key.Name))).To(Succeed())
 			first := waitForJob(ctx, key, "")
+			// Flyway runs: a Job that started is waited for
+			createJobPod(ctx, first, "running", runningPod)
 			// Hold the old Job so the transient PreviousJobReplaced status stays observable.
 			holdJob(ctx, key)
 
@@ -509,6 +563,65 @@ var _ = Describe("Migration controller (envtest)", func() {
 			Expect(second.Annotations).To(HaveKeyWithValue(flywayv1alpha1.Generation, "2"))
 			Expect(second.Annotations).To(HaveKeyWithValue(flywayv1alpha1.Attempt, "1"))
 			Expect(second.Spec.Template.Spec.Volumes[0].Image.Reference).To(Equal("ghcr.io/davidkarlsen/testmigration:v2"))
+		})
+	})
+
+	Context("when the pod does not start", func() {
+		It("names an image pull failure in the Progressing message", func(ctx SpecContext) {
+			Expect(k8sClient.Create(ctx, newMigration(ns, key.Name))).To(Succeed())
+			job := waitForJob(ctx, key, "")
+			createJobPod(ctx, job, "pull", waitingPod("ErrImagePull", "manifest unknown"))
+			expectProgressingMessage(ctx, key, "image pull failed: flyway: manifest unknown")
+		})
+
+		It("names the FailedCreate event of a Job without pod", func(ctx SpecContext) {
+			Expect(k8sClient.Create(ctx, newMigration(ns, key.Name))).To(Succeed())
+			job := waitForJob(ctx, key, "")
+			Expect(k8sClient.Create(ctx, &corev1.Event{
+				ObjectMeta:     metav1.ObjectMeta{GenerateName: "failedcreate-", Namespace: ns},
+				InvolvedObject: corev1.ObjectReference{Kind: "Job", APIVersion: "batch/v1", Namespace: ns, Name: job.Name, UID: job.UID},
+				Reason:         "FailedCreate", Type: corev1.EventTypeWarning, Message: "Error creating: pods is forbidden: exceeded quota: q",
+			})).To(Succeed())
+			touchJob(ctx, key, "event")
+			expectProgressingMessage(ctx, key, "pod not created: Error creating: pods is forbidden: exceeded quota: q")
+		})
+
+		It("replaces an older Job whose pod never started, once the spec is corrected", func(ctx SpecContext) {
+			Expect(k8sClient.Create(ctx, newMigration(ns, key.Name))).To(Succeed())
+			first := waitForJob(ctx, key, "")
+			createJobPod(ctx, first, "pull", waitingPod("ImagePullBackOff", ""))
+			// the foreground deletion keeps the Job until its pods are gone; envtest has no garbage collector
+			holdJob(ctx, key)
+
+			updateMigration(ctx, key, func(m *flywayv1alpha1.Migration) {
+				m.Spec.MigrationSource.ImageRef = "ghcr.io/davidkarlsen/testmigration:v2"
+			})
+
+			expectCondition(ctx, key, flywayv1alpha1.ConditionProgressing, metav1.ConditionTrue, flywayv1alpha1.ReasonPreviousJobReplaced)
+			Eventually(func(g Gomega) {
+				g.Expect(getJob(ctx, g, key).DeletionTimestamp).NotTo(BeNil())
+			}, envtestTimeout, envtestInterval).Should(Succeed())
+			Expect(releaseJob(ctx, key)).To(Succeed())
+			// the garbage collector, absent in envtest, removes foregroundDeletion once the pods are gone
+			updateJob(ctx, key, func(j *batchv1.Job) { j.Finalizers = nil })
+
+			second := waitForJob(ctx, key, first.UID)
+			Expect(second.Annotations).To(HaveKeyWithValue(flywayv1alpha1.Generation, "2"))
+		})
+
+		It("keeps waiting for an older Job whose container started", func(ctx SpecContext) {
+			Expect(k8sClient.Create(ctx, newMigration(ns, key.Name))).To(Succeed())
+			first := waitForJob(ctx, key, "")
+			createJobPod(ctx, first, "run", runningPod)
+			updateMigration(ctx, key, func(m *flywayv1alpha1.Migration) {
+				m.Spec.MigrationSource.ImageRef = "ghcr.io/davidkarlsen/testmigration:v2"
+			})
+			expectCondition(ctx, key, flywayv1alpha1.ConditionProgressing, metav1.ConditionTrue, flywayv1alpha1.ReasonPreviousJobRunning)
+			Consistently(func(g Gomega) {
+				job := getJob(ctx, g, key)
+				g.Expect(job.UID).To(Equal(first.UID))
+				g.Expect(job.DeletionTimestamp).To(BeNil())
+			}, consistentlyFor, envtestInterval).Should(Succeed())
 		})
 	})
 
