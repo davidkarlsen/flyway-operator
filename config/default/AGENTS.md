@@ -10,7 +10,7 @@ The default kustomize overlay rendered by `make deploy`. Composes the CRD, manag
 
 | File | Description |
 |------|-------------|
-| `kustomization.yaml` | Top-level overlay — sets the namespace (`flyway-operator-system`), name prefix, image override, and resources list (`../crd`, `../rbac`, `../manager`, `../prometheus`, `metrics_service.yaml`) |
+| `kustomization.yaml` | Top-level overlay — sets the namespace (`flyway-operator-system`), name prefix, image override, and resources list (`../crd`, `../rbac`, `../manager`, `../prometheus`, `../grafana`, `metrics_service.yaml`) |
 | `manager_metrics_patch.yaml` | JSON6902 patch adding `--metrics-bind-address=:8443` to the manager args |
 | `metrics_service.yaml` | `Service` exposing the controller's metrics port |
 

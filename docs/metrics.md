@@ -30,7 +30,8 @@ Manager flags (`cmd/main.go`):
 
 - the `flyway-operator-controller-manager-metrics-service` Service (port `https`, 8443);
 - the metrics RBAC;
-- a `ServiceMonitor` from `config/prometheus`.
+- a `ServiceMonitor` from `config/prometheus`;
+- the `flyway-operator-dashboards` ConfigMap from `config/grafana`, see [Grafana dashboards](dashboards.md).
 
 The `ServiceMonitor` is always applied, so the cluster needs the Prometheus Operator CRDs
 (`monitoring.coreos.com/v1`). Without them the apply fails with `no matches for kind "ServiceMonitor"`. On such
@@ -39,7 +40,7 @@ clusters, remove `- ../prometheus` from `config/default/kustomization.yaml` firs
 ### OLM
 
 The bundle is generated from `config/`. It ships the same Deployment args, the metrics Service, the metrics
-RBAC and the `ServiceMonitor`. An OLM install on a cluster without the `ServiceMonitor` CRD has not been
+RBAC, the `ServiceMonitor` and the dashboards ConfigMap. An OLM install on a cluster without the `ServiceMonitor` CRD has not been
 tested.
 
 ### Helm
@@ -152,7 +153,8 @@ Create `$TOKEN` with `kubectl create token <serviceaccount> -n <namespace>`.
 - When the operator cannot list Migrations from its cache during a scrape, it logs the error and serves no
   state series for that scrape, so open alerts on them can resolve and fire again.
 
-See [Alerting](#alerting) for rules built on these metrics.
+See [Alerting](#alerting) for rules built on these metrics, and [Grafana dashboards](dashboards.md) for
+dashboards that mirror them.
 
 ### Standard metrics
 
