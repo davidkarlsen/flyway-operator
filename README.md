@@ -1,43 +1,90 @@
-# flyway-operator
-[Kubernetes-operator](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/) to apply [Flyway migrations](https://flywaydb.org/).
+# Flyway operator
 
+**Database schema migrations as a Kubernetes resource.** Describe the migration your application needs, and the
+operator runs it with [Flyway](https://flywaydb.org/), reports the result, and runs it again only when something changes.
 
-## Badges
-![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/davidkarlsen/flyway-operator)
 [![build](https://github.com/davidkarlsen/flyway-operator/actions/workflows/build.yaml/badge.svg?branch=main)](https://github.com/davidkarlsen/flyway-operator/actions/workflows/build.yaml)
-[![CodeQL](https://github.com/davidkarlsen/flyway-operator/actions/workflows/codeql.yaml/badge.svg?branch=main)](https://github.com/davidkarlsen/flyway-operator/actions/workflows/codeql.yaml)
-[![codecov](https://codecov.io/gh/davidkarlsen/flyway-operator/branch/main/graph/badge.svg)](https://codecov.io/gh/davidkarlsen/flyway-operator)
-![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/davidkarlsen/flyway-operator?sort=semver)
+[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/davidkarlsen/flyway-operator?sort=semver&filter=v*)](https://github.com/davidkarlsen/flyway-operator/releases)
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/flyway-operator)](https://artifacthub.io/packages/search?repo=flyway-operator)
-[![CRD Docs](https://img.shields.io/badge/CRD-Docs-brightgreen)](https://doc.crds.dev/github.com/davidkarlsen/flyway-operator)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/davidkarlsen/flyway-operator/badge)](https://scorecard.dev/viewer/?uri=github.com/davidkarlsen/flyway-operator)
-[![License](https://img.shields.io/github/license/davidkarlsen/flyway-operator)](https://github.com/davidkarlsen/flyway-operator/blob/main/LICENSE)
+[![License](https://img.shields.io/github/license/davidkarlsen/flyway-operator)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/davidkarlsen/flyway-operator?style=social)](https://github.com/davidkarlsen/flyway-operator)
 
+## Why
 
-## Description
-The operator will spawn [Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/job/) using the
-[flyway-docker image](https://hub.docker.com/r/flyway/flyway).
+Running database migrations from your application's startup, from CI scripts or by hand is easy to get wrong:
+two replicas race, a deploy goes out before the schema is ready, or nobody can tell which version was applied.
+With the Flyway operator the migration is part of your deployment, like any other Kubernetes resource:
 
-See the [documentation](docs/README.md) for features, installation and examples.
+- **Declarative.** A `Migration` says which database to migrate and which SQL to apply. Commit it next to your
+  application and let GitOps roll it out.
+- **Runs once per change.** A new SQL image or a changed setting runs Flyway again; an unchanged `Migration` does not.
+- **Clear status.** `Applied`, `Progressing` and `Failed` conditions show the outcome, including which SQL image was
+  applied last, in `kubectl`, Argo CD or your dashboards.
+- **Safe defaults.** Failed attempts are retried a limited number of times, each attempt has a time limit, and the
+  migration runs in a locked-down pod that passes Pod Security "restricted" and the OpenShift restricted SCC.
+- **Your SQL, your image.** Ship your SQL files in a small container image, versioned and released with your
+  application. Flyway reads them straight from the image.
+- **Observable.** Prometheus metrics, copy-paste alert rules and Grafana dashboards, split between the platform team that
+  runs the operator and the teams that own the migrations.
+- **Fits your delivery.** Argo CD can wait for the migration before it rolls out your application.
 
-It is still an early project and I want to further develop some day-2 elements as described in the [backlog](https://github.com/davidkarlsen/flyway-operator/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement).
+## How it looks
 
-## Argo CD
-To make Argo CD wait for a `Migration` to apply before it syncs your application, see [docs/argocd.md](docs/argocd.md).
+```yaml
+apiVersion: flyway.davidkarlsen.com/v1alpha1
+kind: Migration
+metadata:
+  name: my-app
+  namespace: my-app
+spec:
+  database:
+    jdbcUrl: "jdbc:postgresql://my-db:5432/my_app"
+    username: myuser
+    credentials:
+      name: my-app-db       # Secret holding the password
+      key: password
+  migrationSource:
+    imageRef: registry.example.com/my-app-sql:1.4.0   # your SQL files, under /sql
+```
 
-## Getting Started
-You’ll need a Kubernetes 1.35 or later cluster to run against (see [requirements](docs/installing.md#requirements)). You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
-**Note:** Your controller will automatically use the current context in your kubeconfig file (i.e. whatever cluster `kubectl cluster-info` shows).
+```shell
+$ kubectl wait migration/my-app --for=condition=Applied
+migration.flyway.davidkarlsen.com/my-app condition met
+```
 
-### Running on the cluster
+Every option is described in the [usage guide](docs/usage.md).
 
-See [docs/installing.md](docs/installing.md)
+## Get started
 
+1. **Install** the operator with OLM on OpenShift, with Helm, or with kustomize: [installing](docs/installing.md).
+   It needs Kubernetes 1.35 or later (OpenShift 4.22 or later).
+2. **Package your SQL** in a container image and **create a `Migration`**: [usage](docs/usage.md).
+3. **Watch it**: [metrics and alerts](docs/metrics.md), [Grafana dashboards](docs/dashboards.md), and
+   [Argo CD](docs/argocd.md) to gate your rollout on the migration.
 
-## Contributing
+Releases are signed and come with build provenance: [verifying releases](docs/verifying.md).
 
-See the [contribution guide](CONTRIBUTING.md)
+## Documentation
+
+| | |
+|---|---|
+| [Installing](docs/installing.md) | OLM, Helm and kustomize, requirements, upgrade notes |
+| [Usage](docs/usage.md) | The `Migration` resource, status, retries, time limits, security context, labels |
+| [Metrics and alerts](docs/metrics.md) | Prometheus metrics and copy-paste alert rules |
+| [Dashboards](docs/dashboards.md) | Grafana dashboards for the operator and for migrations |
+| [Argo CD](docs/argocd.md) | Make Argo CD wait for a migration |
+| [Verifying releases](docs/verifying.md) | Check signatures and provenance |
+| [API reference](https://doc.crds.dev/github.com/davidkarlsen/flyway-operator) | Generated CRD documentation |
+
+## Support and contributing
+
+Questions, bugs and ideas are welcome as [issues](https://github.com/davidkarlsen/flyway-operator/issues); planned
+work is in the [backlog](https://github.com/davidkarlsen/flyway-operator/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement).
+Report security issues privately, see the [security policy](SECURITY.md). To build, test or change the operator,
+see the [contribution guide](CONTRIBUTING.md).
+
+Licensed under the [Apache License 2.0](LICENSE).
 
 ## Star history
 
