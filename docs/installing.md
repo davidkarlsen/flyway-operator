@@ -57,6 +57,8 @@ update it. A location that does not exist fails the Job (`FLYWAY_FAIL_ON_MISSING
 
    `stable-v0` follows every 0.x release. To stay on one minor version, subscribe to `stable-v0.<minor>`
    (e.g. `stable-v0.5`) instead, and switch channels to upgrade.
+   From v0.7.0, `stable-v0` is the package's default channel. A subscription without `channel`
+   follows it; one with an explicit `channel` keeps it.
 
 3. Check that the install succeeded:
 
