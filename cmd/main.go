@@ -22,7 +22,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/redhat-cop/operator-utils/pkg/util"
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -173,10 +172,10 @@ func main() {
 	}
 	setupLog.Info("detected platform", "openShift", openShift)
 	if err = (&controller.MigrationReconciler{
-		ReconcilerBase: util.NewFromManager(mgr, mgr.GetEventRecorderFor("Migration")), //nolint:staticcheck // SA1019 - GetEventRecorderFor is deprecated
-		Client:         mgr.GetClient(),
-		Scheme:         mgr.GetScheme(),
-		OpenShift:      openShift,
+		Recorder:  mgr.GetEventRecorderFor("Migration"), //nolint:staticcheck // SA1019 - GetEventRecorderFor is deprecated
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		OpenShift: openShift,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Migration")
 		os.Exit(1)

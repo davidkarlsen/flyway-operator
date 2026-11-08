@@ -97,14 +97,6 @@ type MigrationStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
-func (m *Migration) GetConditions() []metav1.Condition {
-	return m.Status.Conditions
-}
-
-func (m *Migration) SetConditions(conditions []metav1.Condition) {
-	m.Status.Conditions = conditions
-}
-
 func (m *Migration) IsPaused() bool {
 	filtered := lo.PickBy(m.Annotations, func(key, value string) bool {
 		return key == paused && value == strconv.FormatBool(true)

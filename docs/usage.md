@@ -395,7 +395,10 @@ that generation) are also set.
 All three share one reason: `JobCreated`, `JobRunning`, `JobSucceeded`, `Retrying`, `RetryLimitExceeded`, `TimedOut`
 (the last attempt exceeded `spec.activeDeadline`), `PreviousJobRunning` (a Job for an older generation is still
 running), `PreviousJobReplaced` or `ImageVolumeUnsupported` (the cluster dropped the image volume). On failure the message
-holds the Job's own failure reason and message. `ReconcileSuccess` only means the reconcile loop ran.
+holds the Job's own failure reason and message.
+
+A reconcile that fails (for example the API server rejects the Job) also sets a `ReconcileError` condition with the error
+as its message, and emits a `ProcessingError` Warning event. The next reconcile that succeeds removes the condition.
 
 `status.lastAppliedImageRef` holds the `migrationSource.imageRef` of the last Job that succeeded, taken from that Job, and
 `status.lastAppliedGeneration` the generation it ran for. Both keep their value while a later run is in progress or after
