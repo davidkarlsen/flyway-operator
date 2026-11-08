@@ -96,7 +96,9 @@ notes say so; for `helm template` or GitOps rendering without a cluster pass
 
 Use one import path per Grafana. With the sidecar, set `grafana.dashboards.grafanaDashboard.enabled=false` so
 only the ConfigMap is created. If you use grafana-operator in a cluster that also runs a sidecar watching the
-release namespace, set `grafana.dashboards.labels: {}` so the sidecar does not import the ConfigMap a second time.
+release namespace, remove the label with `grafana.dashboards.labels.grafana_dashboard: null` (or
+`--set grafana.dashboards.labels.grafana_dashboard=null`) so the sidecar does not import the ConfigMap a second
+time. `labels: {}` does not work: Helm merges your values into the default `grafana_dashboard: "1"`.
 The dashboard uids are fixed, so two releases, or two clusters, feeding the same Grafana overwrite each other's
 dashboards: install the dashboards once per Grafana. The chart's copy of the JSON is kept in sync with `config/grafana/dashboards/` by
 `make helm-dashboards`.
