@@ -79,7 +79,7 @@ All commands are driven through the `Makefile`.
 
 A `Migration` carries three required sub-specs plus optional top-level fields:
 
-- `Database`: `username` + `credentials` (Kubernetes `SecretKeySelector`) + `jdbcUrl` (validated by regex `^jdbc:.*`).
+- `Database`: optional `username` + optional `credentials` (Kubernetes `SecretKeySelector`, a pointer; unset means no `FLYWAY_PASSWORD`, for passwordless logins) + `jdbcUrl` (validated by regex `^jdbc:.*`).
 - `FlywayConfiguration`: Flyway-specific knobs (`flywayImage`, which defaults to the operator's `FLYWAY_IMAGE` env var and then to `docker.io/flyway/flyway:13`; `commands`, default `info migrate info`; baseline, default schema, `envVars`, `jdbcProperties`, `volumes`/`volumeMounts`, and `podSecurityContext`/`securityContext` overrides) propagated to the Job.
 - `MigrationSource`: an `imageRef` mounted read-only into the Flyway container as an image volume (`volumes[].image`, Kubernetes 1.35+), so the image needs no shell and can be `FROM scratch`; Flyway reads it through `FLYWAY_LOCATIONS=filesystem:/flyway/migration-source/<path>` (user `envVars` can override it). If the API server drops the image volume (ImageVolume gate off), the Job is deleted and the Migration reports `Failed` / `ImageVolumeUnsupported`. Also `path` (default `/sql`, must not contain `..`), `encoding` (default `UTF-8`), `placeholders` and `ImagePullSecret`.
 - `retryLimit` (default 2) and `activeDeadline` (default 1h, CEL-validated between 1s and 8760h; becomes the Job's `activeDeadlineSeconds`).

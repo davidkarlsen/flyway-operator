@@ -233,13 +233,16 @@ func (o *ObjectMetadata) GetAnnotations() map[string]string {
 
 // Database defines the database-settings
 type Database struct {
-	// username for connecting to database
-	// +kubebuilder:validation:Required
-	Username string `json:"username"`
+	// username for connecting to database. Passed as FLYWAY_USER; unset leaves it out, for authentication that
+	// needs no user name (for example ActiveDirectoryDefault).
+	// +kubebuilder:validation:Optional
+	Username string `json:"username,omitempty"`
 
-	// reference to a secret containing the password for connecting to database
-	// +kubebuilder:validation:Required
-	Credentials v1.SecretKeySelector `json:"credentials"`
+	// reference to a secret containing the password for connecting to database. Passed as FLYWAY_PASSWORD.
+	// Leave it unset for passwordless login, where the JDBC driver authenticates through jdbcUrl and
+	// jdbcProperties and the pod's workload identity (see spec.flywayConfiguration.serviceAccountName).
+	// +kubebuilder:validation:Optional
+	Credentials *v1.SecretKeySelector `json:"credentials,omitempty"`
 
 	// the jdbcUrl to connect to database
 	// +kubebuilder:validation:Required
@@ -247,7 +250,11 @@ type Database struct {
 	JdbcUrl string `json:"jdbcUrl"`
 }
 
+// GetCredentials returns the reference to the password secret, or the zero reference when credentials is unset.
 func (r *Migration) GetCredentials() v1.SecretReference {
+	if r.Spec.Database.Credentials == nil {
+		return v1.SecretReference{}
+	}
 	return v1.SecretReference{
 		Name:      r.Spec.Database.Credentials.Name,
 		Namespace: r.Namespace,

@@ -26,8 +26,8 @@ metadata:
   namespace: my-app
 spec:
   database:
-    username: myuser                 # passed as FLYWAY_USER
-    credentials:                     # Secret key passed as FLYWAY_PASSWORD
+    username: myuser                 # optional, passed as FLYWAY_USER
+    credentials:                     # optional, Secret key passed as FLYWAY_PASSWORD; omit for passwordless login
       name: my-app-db
       key: password
     jdbcUrl: "jdbc:postgresql://my-db:5432/my_app"  # must start with jdbc:
@@ -208,6 +208,95 @@ annotation, set with `podMetadata` (for example `azure.workload.identity/use: "t
 A change to any of these fields creates a new Job, which runs the configured `commands` again.
 
 Helm does not update the CRD of an existing install; see [Upgrading the CRD](installing.md#upgrading-the-crd).
+
+## Passwordless authentication
+
+`database.credentials` is optional. When it is unset the operator does not set `FLYWAY_PASSWORD`, and the JDBC driver
+authenticates by other means: the `jdbcUrl` and `flywayConfiguration.jdbcProperties` select the mode, and the pod's
+workload identity supplies the credential. `database.username` is optional too and, when unset, `FLYWAY_USER` is left
+out. Pair this with `flywayConfiguration.serviceAccountName`, and with `podMetadata` where your identity system needs a
+pod label or annotation. The snippets below show only the fields that matter; combine them with the rest of the
+`Migration` above.
+
+What was checked against `docker.io/flyway/flyway:13` (Flyway 13.12.1) by listing its files, not by logging in:
+
+- It bundles the Microsoft JDBC driver `mssql-jdbc-12.10.2` and, in `/flyway/lib/aad`, `azure-identity-1.18.5` and
+  `msal4j-1.23.1`, the libraries the driver's Entra ID modes load.
+- It bundles the PostgreSQL driver `postgresql-42.7.14`. It does not contain the AWS SDK or the AWS Advanced JDBC
+  Wrapper, so the stock image cannot authenticate to RDS with IAM.
+
+No authentication against Azure or AWS was run for this documentation. Everything below is "should work, verify in your
+setup".
+
+### Azure SQL with Entra ID
+
+With [Azure Workload Identity](https://azure.github.io/azure-workload-identity/docs/): a service account annotated with
+the identity's client ID, and the pod label that makes the webhook inject the token. `ActiveDirectoryDefault` makes the
+driver use `DefaultAzureCredential`, which includes workload identity.
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flyway
+  annotations:
+    azure.workload.identity/client-id: "00000000-0000-0000-0000-000000000000"
+```
+
+```yaml
+spec:
+  database:
+    jdbcUrl: "jdbc:sqlserver://myserver.database.windows.net:1433;database=mydb;encrypt=true;authentication=ActiveDirectoryDefault"
+  podMetadata:
+    labels:
+      azure.workload.identity/use: "true"
+  flywayConfiguration:
+    serviceAccountName: flyway
+```
+
+A complete `Migration` is in [examples/azure-sql-workload-identity.md](examples/azure-sql-workload-identity.md).
+
+If the service account lacks the `azure.workload.identity/client-id` annotation or the pod lacks the label, no token is
+injected and the Job fails with an Azure identity error from the driver in its logs (`kubectl logs job/my-app`).
+
+On Azure Red Hat OpenShift the Azure Workload Identity webhook is not part of the platform (to verify for your
+cluster): install it, or project the service account token yourself, and create a federated credential for the
+identity against the cluster's service account issuer.
+
+`authentication=ActiveDirectoryManagedIdentity` (add `msiClientId=<client id>` for a user-assigned identity) uses the
+node's managed identity through IMDS and needs no service account. Every pod on that node can then reach the database
+with that identity, so prefer workload identity. On AKS, with several identities on the node pool, `msiClientId` is
+effectively required.
+
+With either mode the identity needs a database user, created by an Entra admin of the database, and the same rights a
+password user would have. Flyway must read and write `flyway_schema_history` and run your DDL; `db_owner` is often what
+it takes:
+
+```sql
+CREATE USER [my-identity] FROM EXTERNAL PROVIDER;
+ALTER ROLE db_datareader ADD MEMBER [my-identity];
+ALTER ROLE db_datawriter ADD MEMBER [my-identity];
+ALTER ROLE db_ddladmin ADD MEMBER [my-identity];
+```
+
+### AWS RDS with IAM
+
+RDS IAM authentication needs the [AWS Advanced JDBC Wrapper](https://github.com/aws/aws-advanced-jdbc-wrapper) and its
+dependencies in `/flyway/drivers` of a custom image (`flywayConfiguration.flywayImage`). The service account is bound to
+an IAM role (IRSA or EKS Pod Identity) that allows `rds-db:connect`. `username` is the database user, created with
+`GRANT rds_iam TO` on PostgreSQL. With IRSA the wrapper's IAM plugin also needs `software.amazon.awssdk:sts` on the
+classpath (to verify).
+
+```yaml
+spec:
+  database:
+    username: flyway_iam
+    jdbcUrl: "jdbc:aws-wrapper:postgresql://mydb.abc123.eu-west-1.rds.amazonaws.com:5432/mydb?wrapperPlugins=iam"
+  flywayConfiguration:
+    serviceAccountName: flyway
+```
+
+Whether Flyway accepts the `jdbc:aws-wrapper:` URL with the wrapper jar on the driver path has not been checked.
 
 ## Security context
 

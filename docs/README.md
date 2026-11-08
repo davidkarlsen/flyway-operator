@@ -7,7 +7,7 @@ For each `Migration` it runs a Kubernetes [Job](https://kubernetes.io/docs/conce
 that applies your SQL with the [Flyway](https://documentation.red-gate.com/fd) container image:
 
 - SQL scripts ship as a container image, mounted read-only into the Flyway container as an image volume (Kubernetes 1.35 or later).
-- Database credentials come from a Kubernetes `Secret`.
+- Database credentials come from a Kubernetes `Secret`, or are left out for passwordless logins through the pod's workload identity.
 - Changing the `Migration` spec starts a new Job. The result is reported as conditions on the `Migration` status.
 - Deleting a `Migration` also deletes its Job.
 - Reconciliation can be paused with an annotation.
@@ -30,3 +30,4 @@ startup, or hold DDL privileges. The SQL is versioned and promoted as an immutab
   - [DB2 with username and password](examples/db2-password.md)
   - [Azure SQL with a service principal and certificate](examples/mssql-sp-cert.md)
   - [Resources, scheduling and service account (ResourceQuota)](examples/resources-and-quota.md)
+  - [Azure SQL with Entra ID workload identity (passwordless)](examples/azure-sql-workload-identity.md)

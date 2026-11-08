@@ -55,7 +55,7 @@ func newStatusHarness(t *testing.T, retryLimit *int32, extra ...interceptor.Func
 		Spec: flywayv1alpha1.MigrationSpec{
 			Database: flywayv1alpha1.Database{
 				Username:    "someUser",
-				Credentials: corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "pw"}, Key: "password"},
+				Credentials: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "pw"}, Key: "password"},
 				JdbcUrl:     "jdbc:db2://somehost:50000/somedb",
 			},
 			MigrationSource: flywayv1alpha1.MigrationSource{ImageRef: "somereg.io/someimage:1"},

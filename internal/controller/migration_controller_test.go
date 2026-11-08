@@ -33,7 +33,7 @@ func TestGithubactionRunnerController(t *testing.T) {
 			},
 			Database: flywayv1alpha1.Database{
 				Username:    "someUser",
-				Credentials: corev1.SecretKeySelector{},
+				Credentials: &corev1.SecretKeySelector{},
 				JdbcUrl:     "jdbc://db2:somehost:50000/somedb",
 			},
 			MigrationSource: flywayv1alpha1.MigrationSource{
