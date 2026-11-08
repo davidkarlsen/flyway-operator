@@ -279,7 +279,6 @@ ALTER ROLE db_datawriter ADD MEMBER [my-identity];
 ALTER ROLE db_ddladmin ADD MEMBER [my-identity];
 ```
 
-
 ### AWS RDS with IAM
 
 RDS IAM authentication needs the [AWS Advanced JDBC Wrapper](https://github.com/aws/aws-advanced-jdbc-wrapper) and its
