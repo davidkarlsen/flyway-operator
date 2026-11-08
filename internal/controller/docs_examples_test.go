@@ -43,7 +43,7 @@ var (
 )
 
 // documentedMigrations returns every YAML document of kind Migration found in fenced
-// ```yaml/```yml blocks of the given markdown files, keyed by "file#index".
+// ```yaml/```yml blocks of the given markdown files, keyed by "<path>#<block>.<doc>".
 func documentedMigrations(files ...string) map[string]*unstructured.Unstructured {
 	out := map[string]*unstructured.Unstructured{}
 	for _, f := range files {
@@ -140,18 +140,19 @@ var _ = Describe("Documented examples", func() {
 		sample := loadSample()
 		tmp := filepath.Join(GinkgoT().TempDir(), "usage.md")
 		md := "```yaml\napiVersion: flyway.davidkarlsen.com/v1alpha1\nkind: Migration\nmetadata:\n  name: " + sample.GetName() + "\n```\n" +
-			"```yaml\napiVersion: flyway.davidkarlsen.com/v1alpha1\nkind: Migration\nmetadata:\n  name: other-use-case\n```\n"
+			"```yaml\napiVersion: flyway.davidkarlsen.com/v1alpha1\nkind: Migration\nmetadata:\n  name: other-use-case\n---\napiVersion: flyway.davidkarlsen.com/v1alpha1\nkind: Migration\nmetadata:\n  name: same-block-use-case\n```\n"
 		Expect(os.WriteFile(tmp, []byte(md), 0o600)).To(Succeed())
 		docs := documentedMigrations(tmp)
-		Expect(docs).To(HaveLen(2))
+		Expect(docs).To(HaveLen(3))
 		ref, err := referenceMigration(docs, sample.GetName())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ref.GetName()).To(Equal(sample.GetName()))
 		_, err = referenceMigration(docs, "missing")
 		Expect(err).To(MatchError(ContainSubstring("exactly one Migration named")))
-		docs["dup"] = ref
-		_, err = referenceMigration(docs, sample.GetName())
-		Expect(err).To(HaveOccurred())
+		md += "```yaml\napiVersion: flyway.davidkarlsen.com/v1alpha1\nkind: Migration\nmetadata:\n  name: " + sample.GetName() + "\n```\n"
+		Expect(os.WriteFile(tmp, []byte(md), 0o600)).To(Succeed())
+		_, err = referenceMigration(documentedMigrations(tmp), sample.GetName())
+		Expect(err).To(MatchError(ContainSubstring("found 2")))
 	})
 
 	It("keeps the OLM sample a subset of the docs/usage.md example", func() {
