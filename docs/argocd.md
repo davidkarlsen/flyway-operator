@@ -1,13 +1,12 @@
 # Argo CD
 
-Argo CD has no built-in health check for `Migration`, and it does not fall back to reading conditions on custom
-resources it doesn't know. Without a check, a `Migration` has no health, so Argo CD cannot wait for it. Add the
-check below to your Argo CD instance to make it wait.
+Argo CD has no built-in health check for `Migration` and does not read conditions of custom resources it doesn't know,
+so a `Migration` has no health and Argo CD cannot wait for it. Add the check below to make it wait.
 
 ## The health check
 
-It reads the `Applied` and `Failed` conditions ([status](usage.md#status)), and only those whose
-`observedGeneration` matches the current spec:
+It reads the `Applied` and `Failed` conditions ([status](usage.md#status)) whose `observedGeneration` matches the
+current spec:
 
 | `Migration` | Argo CD health |
 | --- | --- |
@@ -49,8 +48,7 @@ data:
     return hs
 ```
 
-With the Argo CD operator (OpenShift GitOps), `argocd-cm` is managed for you, so set it in the `ArgoCD`
-resource instead:
+With the Argo CD operator (OpenShift GitOps), which manages `argocd-cm`, set it in the `ArgoCD` resource instead:
 
 ```yaml
 spec:
@@ -88,9 +86,9 @@ spec:
 
 ## Apply the schema before the application
 
-Put the `Migration` in an earlier [sync wave](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/)
-than the application. Argo CD starts a later wave only when everything in the earlier one is Healthy, so the
-application never starts on an older schema, and a failed migration stops the rollout:
+Put the `Migration` in an earlier [sync wave](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/) than
+the application. Argo CD starts a later wave only when the earlier one is Healthy, so the application never starts on an
+older schema and a failed migration stops the rollout:
 
 ```yaml
 metadata:
@@ -100,8 +98,8 @@ metadata:
 
 ## Things to know
 
-- Argo CD reads health checks only from its own configuration and from the scripts built into it (its
-  `resource_customizations` directory). It does not discover them from ConfigMaps, labels or annotations.
-- A check in the instance configuration overrides Argo CD's built-in checks, including those for Deployments
-  and Pods. Wildcards are matched as globs where `*` also crosses `/`, so never write a wildcard such as `*/*`.
-  Keep it to the exact `flyway.davidkarlsen.com/Migration`.
+- Argo CD reads health checks only from its own configuration and its built-in scripts (the `resource_customizations`
+  directory), not from ConfigMaps, labels or annotations.
+- A check in the instance configuration overrides Argo CD's built-in checks, including those for Deployments and Pods.
+  Wildcards are globs where `*` also crosses `/`, so never write one such as `*/*`. Keep it to the exact
+  `flyway.davidkarlsen.com/Migration`.

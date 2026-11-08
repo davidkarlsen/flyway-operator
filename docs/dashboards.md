@@ -1,8 +1,7 @@
 # Grafana dashboards
 
 The operator ships two Grafana dashboards built on its [metrics](metrics.md). Both need a Prometheus that scrapes
-the operator with the `namespace` label of the Migration series kept (see
-[Labels as scraped](metrics.md#labels-as-scraped)).
+the operator with the Migration series' `namespace` label kept ([Labels as scraped](metrics.md#labels-as-scraped)).
 
 | Dashboard | uid | For | Shows |
 |-----------|-----|-----|-------|
@@ -10,21 +9,19 @@ the operator with the `namespace` label of the Migration series kept (see
 | Flyway migrations | `flyway-migrations` | Teams owning Migrations (`alert_audience: workload`) | Per-Migration status, runs by result, last run duration, how long Migrations have been progressing, paused Migrations. |
 
 The JSON files under [`config/grafana/dashboards/`](../config/grafana/dashboards) are the source of truth. Every
-query uses a `datasource` variable of type Prometheus, so no datasource UID is hard-coded: pick the Prometheus
-datasource from the dropdown at the top of the dashboard.
+query uses a Prometheus `datasource` variable, so no datasource UID is hard-coded: pick it from the dropdown at the top.
 
 ## Flyway operator
 
 - **Scrape targets up**: operator targets with `up == 1`, matched by the `job` variable (default
-  `.*flyway-operator.*`). `0` is what `FlywayOperatorMetricsAbsent` fires on; change the variable if your scrape
-  job is named differently.
-- **Reconcile error ratio (15m)**: the `FlywayOperatorReconcileErrors` expression, with its 10% threshold. With no
-  reconciles in the last 15m the ratio has no value, shown as "no reconciles".
+  `.*flyway-operator.*`; change it if your scrape job is named differently). `0` is what `FlywayOperatorMetricsAbsent`
+  fires on.
+- **Reconcile error ratio (15m)**: the `FlywayOperatorReconcileErrors` expression with its 10% threshold. With no
+  reconciles in the last 15m it shows "no reconciles".
 - **Reconcile rate** by result, with reconcile errors, and **reconcile latency** (p50, p90, p99), from
   `controller_runtime_reconcile_*{controller="migration"}`.
 - **Work queue depth**: `workqueue_depth{controller="migration"}`.
-- **Migrations by condition**: how many Migrations have `Applied`, `Progressing` or `Failed` set to True, and how
-  many are paused.
+- **Migrations by condition**: how many Migrations have `Applied`, `Progressing` or `Failed` True, and how many are paused.
 
 ## Flyway migrations
 
@@ -33,22 +30,22 @@ namespaces).
 
 - **Counters** at the top: Failed (`FlywayMigrationFailed`) and Stuck over 1h (`FlywayMigrationStuck`) mirror the
   shipped workload alerts; Retrying in the last 30m and Slow over 15m have no shipped alert. Further counts are the
-  number of Migrations and of paused ones. They show the alert expression now;
-  an alert with a `for:` duration fires only after the expression has held that long.
+  number of Migrations and of paused ones. They show the alert expression now; an alert with a `for:` duration fires
+  only after the expression has held that long.
 - **Migration status**: one row per Migration with its `Applied`, `Progressing` and `Failed` conditions (True,
   False, or Unknown when not yet set), whether it is paused, the time since its most recent condition change, and
   the duration of its last successful run.
 - **Runs by result**: finished Job attempts per interval, by `result` (`succeeded`, `retrying`, `failed`).
-- **Last run duration**: per Migration and result. It is held in the operator's memory, so it is missing after an
-  operator restart until the next run finishes.
+- **Last run duration**: per Migration and result.
 - **Progressing for**: time since `Progressing` turned True, for Migrations progressing now. `FlywayMigrationStuck`
   fires above 1h.
 - **Paused Migrations**: Migrations with the `flyway-operator.davidkarlsen.com/paused` annotation set to `true`.
 
-Runs by result and Last run duration come from series the operator holds in memory. They start over after an
-operator restart or a leader change: the run counters restart at zero, so attempts that finished on the previous
-leader or while the operator was down are not shown, and durations are missing until the next run of each Migration
-finishes. The condition and paused panels are read from the Migrations themselves and are back right away.
+Runs by result and Last run duration come from series the operator holds in memory ([metrics](metrics.md#migration-metrics)).
+They start over after an operator restart or a leader change: the run counters restart at zero, so attempts that
+finished on the previous leader or while the operator was down are not shown, and durations are missing until the next
+run of each Migration finishes. The condition and paused panels are read from the Migrations themselves and are back
+right away.
 
 ## The ConfigMap
 
@@ -58,14 +55,13 @@ dashboard, `flyway-operator.json` and `flyway-migrations.json`, and the label `g
 
 The Helm chart does not ship the dashboards yet.
 
-The ConfigMap is about 70 KB. `make deploy` applies with client-side `kubectl apply`, which stores a copy of each
-object in the `kubectl.kubernetes.io/last-applied-configuration` annotation; annotations of an object are capped at
-256 KiB in total, so the dashboards fit with room to grow. Server-side apply (`kubectl apply --server-side`) and OLM
-do not use that annotation.
+The ConfigMap is about 70 KB. `make deploy` applies with client-side `kubectl apply`, which stores a copy of each object
+in the `kubectl.kubernetes.io/last-applied-configuration` annotation, capped at 256 KiB in total with the object's other
+annotations, so the dashboards fit with room to grow. Server-side apply (`kubectl apply --server-side`) and OLM do not
+use that annotation.
 
-Use one import path per Grafana: the grafana-operator, the sidecar, or a manual import. The dashboard uids
-(`flyway-operator`, `flyway-migrations`) are fixed, so a second path imports the same uids and the two overwrite
-each other.
+Use one import path per Grafana: the grafana-operator, the sidecar, or a manual import. The dashboard uids are fixed,
+so a second path imports the same uids and the two overwrite each other.
 
 ## grafana-operator v5
 

@@ -5,9 +5,9 @@ The operator watches all namespaces. Choose one of the methods below, then conti
 ## Requirements
 
 **Breaking (v0.6.0):** requires Kubernetes 1.35 or later and containerd 2.1 or later / CRI-O 1.31 or later.
-v0.5.x is the last release for older clusters.
-The SQL files are now mounted at `/flyway/migration-source`, not `/flyway/sql`: if you set `FLYWAY_LOCATIONS` yourself,
-update it. A location that does not exist fails the Job (`FLYWAY_FAIL_ON_MISSING_LOCATIONS=true`).
+v0.5.x is the last release for older clusters. The SQL files are mounted at `/flyway/migration-source`, not
+`/flyway/sql`: update a `FLYWAY_LOCATIONS` you set yourself. A location that does not exist fails the Job
+(`FLYWAY_FAIL_ON_MISSING_LOCATIONS=true`).
 
 - Kubernetes 1.35 or later; on OpenShift, 4.22 or later. Migration Jobs mount the SQL image as an
   [image volume](https://kubernetes.io/docs/tasks/configure-pod-container/image-volumes/); the `ImageVolume`
@@ -37,9 +37,9 @@ update it. A location that does not exist fails the Job (`FLYWAY_FAIL_ON_MISSING
          interval: 45m
    ```
 
-2. Install the operator, either from **Operators → OperatorHub** in the console, or with a `Subscription`.
-   The operator only supports the `AllNamespaces` install mode, so subscribe in `openshift-operators`,
-   which already has a global `OperatorGroup`:
+2. Install the operator from **Operators → OperatorHub** in the console, or with a `Subscription`.
+   Only the `AllNamespaces` install mode is supported, so subscribe in `openshift-operators`, which already has a
+   global `OperatorGroup`:
 
    ```yaml
    apiVersion: operators.coreos.com/v1alpha1
@@ -57,8 +57,6 @@ update it. A location that does not exist fails the Job (`FLYWAY_FAIL_ON_MISSING
 
    `stable-v0` follows every 0.x release. To stay on one minor version, subscribe to `stable-v0.<minor>`
    (e.g. `stable-v0.5`) instead, and switch channels to upgrade.
-   From v0.7.0, `stable-v0` is the package's default channel. A subscription without `channel`
-   follows it; one with an explicit `channel` keeps it.
 
 3. Check that the install succeeded:
 
@@ -75,24 +73,23 @@ kubectl create namespace flyway-operator
 helm install flyway-operator flyway-operator/flyway-operator -n flyway-operator
 ```
 
-Configurable values (image, resources, node selector, tolerations, etc.) are in the chart's
-[`values.yaml`](../config/helm-chart/flyway-operator/values.yaml). The chart installs the CRD.
+The chart installs the CRD. Configurable values (image, resources, node selector, tolerations, etc.) are in
+[`values.yaml`](../config/helm-chart/flyway-operator/values.yaml).
 
 ### Upgrading the CRD
 
 Helm creates the CRD on install but never updates it on `helm upgrade`. An old CRD schema silently drops fields it does
-not know, for example `flywayConfiguration.resources` or `serviceAccountName`, and the migration then runs without
-them. After each upgrade that changes the API, apply the CRD of the release yourself. Use server-side apply, which
-keeps the CRD out of the 256 KiB last-applied annotation as it grows:
+not know, for example `flywayConfiguration.resources` or `serviceAccountName`, and the migration runs without them.
+After each upgrade that changes the API, apply the CRD of the release yourself. Server-side apply keeps the CRD out of
+the 256 KiB last-applied annotation as it grows:
 
 ```shell
 kubectl apply --server-side --force-conflicts -f https://raw.githubusercontent.com/davidkarlsen/flyway-operator/<tag>/config/crd/bases/flyway.davidkarlsen.com_migrations.yaml
 ```
 
 Replace `<tag>` with the operator version prefixed with `v` (the chart's `appVersion`), for example `v0.6.0`. The
-chart's own copy of the CRD
-(`config/helm-chart/flyway-operator/crds/`) is only updated by the chart release pull request after the tag, so at the
-tag itself it is still the previous release's. OLM updates the CRD with the operator.
+chart's own copy of the CRD (`config/helm-chart/flyway-operator/crds/`) is only updated by the chart release pull
+request after the tag, so at the tag itself it is still the previous release's. OLM updates the CRD with the operator.
 
 ## From source
 
@@ -108,8 +105,8 @@ Remove it again with `make undeploy` (controller) and `make uninstall` (CRDs).
 ## Upgrading to 0.7.0
 
 - The `ReconcileSuccess` condition is gone. It was rewritten with a new timestamp on every reconcile and only meant that
-  the reconcile loop ran; the operator removes it from an existing Migration at its next successful reconcile. Read `Applied`, `Progressing` and `Failed`
-  instead (the [Argo CD health check](argocd.md) already does).
+  the reconcile loop ran; the operator removes it from an existing Migration at its next successful reconcile. Read
+  `Applied`, `Progressing` and `Failed` instead (the [Argo CD health check](argocd.md) already does).
 - `ReconcileError` is now removed again by the next successful reconcile; before, it stayed forever once set. Its
   `lastTransitionTime` only moves when the condition appears. Failures still emit a `ProcessingError` Warning event.
 - The operator writes a Migration's status only when it changed, so idle Migrations no longer see a status update on
@@ -127,7 +124,8 @@ Remove it again with `make undeploy` (controller) and `make uninstall` (CRDs).
 - **Alerts.** A `PrometheusRule` with four alerts is now installed by default with OLM and kustomize (it needs the
   Prometheus Operator CRDs), and is opt-in in Helm with the same chart release. To turn it off, see
   [Shipped rules](metrics.md#shipped-rules); the alerts are explained in the [runbook](runbook.md).
-- **OLM channel.** The catalog's default channel is now `stable-v0`. A subscription without `channel` follows it from v0.7.0; one with an explicit `channel` keeps it.
+- **OLM channel.** `stable-v0` is now the package's default channel. A subscription without `channel` follows it; one
+  with an explicit `channel` keeps it.
 
 ### New in 0.7.0
 

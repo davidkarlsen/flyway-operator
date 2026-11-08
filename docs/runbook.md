@@ -129,9 +129,9 @@ If the Job never started a container, the cause shows in the `Progressing` messa
 held for 5 minutes (`for: 5m`); the alert keeps firing for 5 minutes after the series goes missing
 (`keep_firing_for: 5m`). It does not fire for a paused Migration. Severity `warning`, audience `workload`.
 
-`Progressing` stays `True` across retries, and each attempt is bounded by `spec.activeDeadline` (default `1h`), so a run
-ends on its own within `activeDeadline x (retryLimit + 1)`. With the defaults this alert can fire before the Migration
-times out.
+`Progressing` stays `True` across retries and each attempt is bounded by `spec.activeDeadline`, so a run ends on its own
+within `activeDeadline x (retryLimit + 1)` ([Deadline](usage.md#deadline)). With the defaults this alert can fire before
+the Migration times out.
 
 **Impact.** The migration has not finished, so the schema is not at the expected version. A Job of an older generation
 that is still running also blocks the new one (`PreviousJobRunning`), so later spec changes wait.
@@ -162,10 +162,10 @@ Read the reason:
   the Migration spec replaces it (`PreviousJobReplaced`).
 - Waiting on a lock or the database: release the lock or restore connectivity. The attempt ends at
   `activeDeadline`; set `lock_timeout` or `statement_timeout` through `jdbcProperties` so it fails cleanly.
-- A hung Job of an older generation (`PreviousJobRunning`), or one whose Flyway container started and hangs, for
-  example behind an Istio sidecar: delete it with `kubectl delete job <name> -n <ns>` to start the new one at once.
-  Deleting a hung Job of the current generation starts the next attempt and so uses up one retry. Deleting a Job
-  whose Flyway container is mid-migration can leave a partly applied script on databases without transactional DDL;
-  check the schema history table afterwards.
+- A hung Job of an older generation (`PreviousJobRunning`), or one whose Flyway container started and hangs: delete it
+  with `kubectl delete job <name> -n <ns>` to start the new one at once, see [Hung Jobs](usage.md#hung-jobs). Deleting a
+  hung Job of the current generation starts the next attempt and so uses up one retry. Deleting a Job whose Flyway
+  container is mid-migration can leave a partly applied script on databases without transactional DDL; check the schema
+  history table afterwards.
 - A migration that legitimately runs longer than the alert threshold: this is expected; raise `spec.activeDeadline`
   to cover it, and silence or tune the alert for that Migration.
