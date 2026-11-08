@@ -127,7 +127,7 @@ Remove it again with `make undeploy` (controller) and `make uninstall` (CRDs).
 - **Alerts.** A `PrometheusRule` with four alerts is now installed by default with OLM and kustomize (it needs the
   Prometheus Operator CRDs), and is opt-in in Helm with the same chart release. To turn it off, see
   [Shipped rules](metrics.md#shipped-rules); the alerts are explained in the [runbook](runbook.md).
-- **OLM channel.** The catalog's default channel is now `stable-v0`. Existing subscriptions keep their channel.
+- **OLM channel.** The catalog's default channel is now `stable-v0`. A subscription without `channel` follows it from v0.7.0; one with an explicit `channel` keeps it.
 
 ### New in 0.7.0
 
