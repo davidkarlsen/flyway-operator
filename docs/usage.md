@@ -166,7 +166,7 @@ A complete, validated `Migration` with `resources`, `serviceAccountName`, `nodeS
 `priorityClassName` is in [examples/resources-and-quota.md](examples/resources-and-quota.md).
 
 The operator sets no default `resources`. Flyway runs on the JVM, so the right size depends on your migrations; the
-numbers above are a starting point, not a measured recommendation. `resources.claims` is rejected: the operator does
+numbers in [examples/resources-and-quota.md](examples/resources-and-quota.md) are a starting point, not a measured recommendation. `resources.claims` is rejected: the operator does
 not define the pod's `resourceClaims` that a claim would refer to.
 
 ### ResourceQuota

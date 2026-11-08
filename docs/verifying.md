@@ -17,8 +17,7 @@ signing identity is the `build.yaml` workflow running on the release tag.
 attestation. Releases made before signing was added are not signed.
 
 Requires [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) v3 or later (releases are signed
-with cosign v3) and the
-[GitHub CLI](https://cli.github.com/).
+with cosign v3) and the [GitHub CLI](https://cli.github.com/).
 
 ## Container images
 
