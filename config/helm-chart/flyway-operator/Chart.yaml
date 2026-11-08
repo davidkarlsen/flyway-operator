@@ -59,7 +59,7 @@ annotations:
       url: https://github.com/davidkarlsen/flyway-operator
   artifacthub.io/license: Apache-2.0
   artifacthub.io/operator: "true"
-  artifacthub.io/operatorCapabilities: Basic Install
+  artifacthub.io/operatorCapabilities: Seamless Upgrades
   artifacthub.io/changes: |
     - kind: changed
       description: "Operator 0.7.0. Apply the 0.7.0 CRD before helm upgrade: Helm does not update crds/"
