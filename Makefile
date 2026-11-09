@@ -401,4 +401,5 @@ catalog-retag:
 
 .PHONY: community-release
 community-release: ## Open the OpenShift Community Operators PR for the release VERSION (X.Y.Z). DRY_RUN=1 stops before pushing.
+	@test -n "$(filter command line,$(origin VERSION))" || { echo "pass VERSION=X.Y.Z explicitly" >&2; exit 1; }
 	hack/community-release.sh v$(VERSION)

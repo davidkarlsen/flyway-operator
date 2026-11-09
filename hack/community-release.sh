@@ -6,11 +6,15 @@
 #
 # Usage: hack/community-release.sh vX.Y.Z
 # Environment:
-#   DRY_RUN=1            stop before anything is pushed or any fork/PR call is made; needs no token
+#   DRY_RUN=1            work from upstream main and stop before the fork is synced or anything is pushed; needs no community token
 #   GH_TOKEN             read access to the flyway-operator release (gh release download)
 #   COMMUNITY_TOKEN      token with push rights on the fork and PR rights upstream; required unless DRY_RUN=1
 #   WORKDIR              scratch directory, must not exist or be empty (default: a new mktemp dir)
 #   RELEASE_REPO / COMMUNITY_UPSTREAM / COMMUNITY_FORK   repositories (defaults below)
+#   UPSTREAM_URL / FORK_URL   clone URLs (default https://github.com/<repo>.git; for tests)
+#
+# Re-running is safe: it stops when upstream has the version or a PR exists for the branch, and it opens the
+# missing PR when the branch was pushed but the PR step failed.
 set -euo pipefail
 
 TAG="${1:?usage: $0 vX.Y.Z}"
@@ -20,6 +24,8 @@ VERSION="${TAG#v}"
 RELEASE_REPO="${RELEASE_REPO:-davidkarlsen/flyway-operator}"
 UPSTREAM="${COMMUNITY_UPSTREAM:-redhat-openshift-ecosystem/community-operators-prod}"
 FORK="${COMMUNITY_FORK:-davidkarlsen/community-operators-prod}"
+UPSTREAM_URL="${UPSTREAM_URL:-https://github.com/${UPSTREAM}.git}"
+FORK_URL="${FORK_URL:-https://github.com/${FORK}.git}"
 FORK_OWNER="${FORK%%/*}"
 OPERATOR=flyway-operator
 OPDIR="operators/${OPERATOR}"
@@ -42,37 +48,76 @@ git_fork() {
   local auth
   auth="$(printf 'x-access-token:%s' "${COMMUNITY_TOKEN}" | base64 | tr -d '\n')"
   GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
-    GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${auth}" git -C "${REPO}" "$@"
+    GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${auth}" git "$@"
 }
 gh_community() { GH_TOKEN="${COMMUNITY_TOKEN}" gh "$@"; }
 sha256_check() { if command -v sha256sum >/dev/null; then sha256sum -c -; else shasum -a 256 -c -; fi; }
 
-# 1. bundle tarball, verified against the release's checksums.txt
+# 1. bundle tarball: checksums.txt is signed by this repo's release workflow for this tag, the tarball matches it
 tarball="flyway-operator-bundle-${TAG}.tar.gz"
-gh release download "${TAG}" -R "${RELEASE_REPO}" -D "${DL}" -p "${tarball}" -p checksums.txt
+gh release download "${TAG}" -R "${RELEASE_REPO}" -D "${DL}" -p "${tarball}" -p checksums.txt -p checksums.txt.sigstore.json
+identity="^https://github\\.com/${RELEASE_REPO//./\\.}/\\.github/workflows/build\\.yaml@refs/tags/${TAG//./\\.}\$"
+cosign verify-blob "${DL}/checksums.txt" --bundle "${DL}/checksums.txt.sigstore.json" \
+  --certificate-identity-regexp "${identity}" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
 (cd "${DL}" && grep -F " ${tarball}" checksums.txt | sha256_check)
 tar -xzf "${DL}/${tarball}" -C "${BUNDLE}" bundle/manifests bundle/metadata bundle/tests
 for d in manifests metadata tests; do [ -d "${BUNDLE}/bundle/${d}" ] || { echo "bundle/${d} missing from ${tarball}" >&2; exit 1; }; done
 
-# 2. upstream main (shallow, only this operator's directory)
-git clone -q --depth 1 --filter=blob:none --sparse --branch main "https://github.com/${UPSTREAM}.git" "${REPO}"
-git -C "${REPO}" sparse-checkout set "${OPDIR}"
-
-# 7. idempotency: version already upstream, a PR for it, or its branch on the fork
-if [ -d "${REPO}/${OPDIR}/${VERSION}" ]; then
+# 2. upstream state: the first submission must be merged, and the version must not be there yet
+upstream_has() { gh api -X GET "repos/${UPSTREAM}/contents/$1" -f ref=main --silent 2>/dev/null; }
+if ! upstream_has "${OPDIR}/ci.yaml"; then
+  if [ "${DRY_RUN}" = 1 ]; then
+    echo "warning: ${UPSTREAM} has no ${OPDIR}/ci.yaml (first submission not merged); a real run would stop here" >&2
+  else
+    echo "error: ${UPSTREAM} has no ${OPDIR}/ci.yaml: the first submission is not merged yet; submit ${TAG} by hand or re-run after it merges" >&2
+    exit 1
+  fi
+fi
+if upstream_has "${OPDIR}/${VERSION}"; then
   echo "skip: ${OPDIR}/${VERSION} already exists upstream"; exit 0
 fi
+
+# 3. working clone: the fork after syncing its main (so the base commit exists on the push target); upstream when dry
+if [ "${DRY_RUN}" = 1 ]; then
+  git clone -q --depth 1 --filter=blob:none --sparse --branch main "${UPSTREAM_URL}" "${REPO}"
+else
+  gh_community repo sync "${FORK}" --branch main
+  git_fork clone -q --depth 1 --filter=blob:none --sparse --branch main "${FORK_URL}" "${REPO}"
+fi
+git -C "${REPO}" sparse-checkout set "${OPDIR}"
+
+# only exit status 2 of ls-remote means "no such branch"; anything else is an error
+branch_on_fork=0
 if [ "${DRY_RUN}" != 1 ]; then
-  prs="$(gh_community pr list --repo "${UPSTREAM}" --head "${FORK_OWNER}:${BRANCH}" --state all --json url --jq '.[].url')"
-  if [ -n "${prs}" ]; then echo "skip: PR already exists: ${prs}"; exit 0; fi
-  if git ls-remote --exit-code --heads "https://github.com/${FORK}.git" "${BRANCH}" >/dev/null 2>&1; then
-    echo "skip: branch ${BRANCH} already exists on ${FORK}"; exit 0
-  fi
-  # keep the fork's main level with upstream main; the PR branch is based on upstream main either way
-  gh_community repo sync "${FORK}" --branch main || echo "warning: could not sync ${FORK} main" >&2
+  rc=0; git_fork -C "${REPO}" ls-remote --exit-code --heads origin "${BRANCH}" >/dev/null || rc=$?
+  case "${rc}" in 0) branch_on_fork=1 ;; 2) ;; *) echo "error: git ls-remote failed (${rc})" >&2; exit 1 ;; esac
 fi
 
-# 3-4. branch, version directory (manifests, metadata, tests unchanged) and release-config.yaml
+pr_body="Release ${TAG} of ${OPERATOR}: https://github.com/${RELEASE_REPO}/releases/tag/${TAG}
+
+Adds \`${OPDIR}/${VERSION}/\` (bundle manifests, metadata and tests unchanged from the release's bundle tarball, checksum-verified) and its \`release-config.yaml\` for auto-release into the \`semver.yaml\` template, channel Stable."
+create_pr() {
+  gh_community pr create --repo "${UPSTREAM}" --head "${FORK_OWNER}:${BRANCH}" --base main --title "${SUBJECT}" --body "${pr_body}"
+}
+
+if [ "${DRY_RUN}" != 1 ]; then
+  # the head filter takes the branch name only; keep PRs from this fork (any state, so a merged one also counts)
+  prs="$(gh_community pr list --repo "${UPSTREAM}" --head "${BRANCH}" --state all --json url,headRepositoryOwner \
+    --jq ".[]|select(.headRepositoryOwner.login==\"${FORK_OWNER}\")|.url")"
+  if [ -n "${prs}" ]; then echo "skip: PR already exists: ${prs}"; exit 0; fi
+  if [ "${branch_on_fork}" = 1 ]; then
+    # an earlier run pushed the branch but did not open the PR
+    git_fork -C "${REPO}" fetch -q --depth 1 origin "${BRANCH}"
+    git -C "${REPO}" cat-file -e "FETCH_HEAD:${OPDIR}/${VERSION}/release-config.yaml" \
+      || { echo "error: branch ${BRANCH} on ${FORK} lacks ${OPDIR}/${VERSION}; delete it and re-run" >&2; exit 1; }
+    echo "branch ${BRANCH} exists on ${FORK} without a PR: opening it"
+    create_pr
+    exit 0
+  fi
+fi
+
+# 4. branch, version directory (manifests, metadata, tests unchanged) and release-config.yaml
 git -C "${REPO}" checkout -q -b "${BRANCH}"
 dest="${REPO}/${OPDIR}/${VERSION}"
 mkdir -p "${dest}"
@@ -98,11 +143,6 @@ if [ "${DRY_RUN}" = 1 ]; then
   echo "DRY_RUN=1: not pushing; repository left at ${REPO}"; exit 0
 fi
 
-# 6. push to the fork and open the PR upstream
-git_fork remote add fork "https://github.com/${FORK}.git"
-git_fork push fork "${BRANCH}"
-gh_community pr create --repo "${UPSTREAM}" --head "${FORK_OWNER}:${BRANCH}" --base main \
-  --title "${SUBJECT}" \
-  --body "Release ${TAG} of ${OPERATOR}: https://github.com/${RELEASE_REPO}/releases/tag/${TAG}
-
-Adds \`${OPDIR}/${VERSION}/\` (bundle manifests, metadata and tests unchanged from the release's bundle tarball, checksum-verified) and its \`release-config.yaml\` for auto-release into the \`semver.yaml\` template, channel Stable."
+# 6. push to the fork, then open the PR upstream
+git_fork -C "${REPO}" push origin "${BRANCH}"
+create_pr
