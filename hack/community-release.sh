@@ -87,12 +87,17 @@ else
 fi
 git -C "${REPO}" sparse-checkout set "${OPDIR}"
 
+# Read-only lookups (also in a dry run, with the default gh login and an unauthenticated ls-remote):
+# a PR from this fork for the branch, in any state so a merged one also counts, and the branch on the fork.
+# The head filter takes the branch name only, hence the owner filter.
+lookup() { if [ "${DRY_RUN}" = 1 ]; then gh "$@"; else gh_community "$@"; fi; }
+prs="$(lookup pr list --repo "${UPSTREAM}" --head "${BRANCH}" --state all --json url,headRepositoryOwner \
+  --jq ".[]|select(.headRepositoryOwner.login==\"${FORK_OWNER}\")|.url")"
 # only exit status 2 of ls-remote means "no such branch"; anything else is an error
-branch_on_fork=0
-if [ "${DRY_RUN}" != 1 ]; then
-  rc=0; git_fork -C "${REPO}" ls-remote --exit-code --heads origin "${BRANCH}" >/dev/null || rc=$?
-  case "${rc}" in 0) branch_on_fork=1 ;; 2) ;; *) echo "error: git ls-remote failed (${rc})" >&2; exit 1 ;; esac
-fi
+rc=0
+if [ "${DRY_RUN}" = 1 ]; then git ls-remote --exit-code --heads "${FORK_URL}" "${BRANCH}" >/dev/null || rc=$?
+else git_fork -C "${REPO}" ls-remote --exit-code --heads origin "${BRANCH}" >/dev/null || rc=$?; fi
+case "${rc}" in 0) branch_on_fork=1 ;; 2) branch_on_fork=0 ;; *) echo "error: git ls-remote failed (${rc})" >&2; exit 1 ;; esac
 
 pr_body="Release ${TAG} of ${OPERATOR}: https://github.com/${RELEASE_REPO}/releases/tag/${TAG}
 
@@ -101,20 +106,18 @@ create_pr() {
   gh_community pr create --repo "${UPSTREAM}" --head "${FORK_OWNER}:${BRANCH}" --base main --title "${SUBJECT}" --body "${pr_body}"
 }
 
-if [ "${DRY_RUN}" != 1 ]; then
-  # the head filter takes the branch name only; keep PRs from this fork (any state, so a merged one also counts)
-  prs="$(gh_community pr list --repo "${UPSTREAM}" --head "${BRANCH}" --state all --json url,headRepositoryOwner \
-    --jq ".[]|select(.headRepositoryOwner.login==\"${FORK_OWNER}\")|.url")"
-  if [ -n "${prs}" ]; then echo "skip: PR already exists: ${prs}"; exit 0; fi
-  if [ "${branch_on_fork}" = 1 ]; then
-    # an earlier run pushed the branch but did not open the PR
-    git_fork -C "${REPO}" fetch -q --depth 1 origin "${BRANCH}"
-    git -C "${REPO}" cat-file -e "FETCH_HEAD:${OPDIR}/${VERSION}/release-config.yaml" \
-      || { echo "error: branch ${BRANCH} on ${FORK} lacks ${OPDIR}/${VERSION}; delete it and re-run" >&2; exit 1; }
-    echo "branch ${BRANCH} exists on ${FORK} without a PR: opening it"
-    create_pr
-    exit 0
+if [ -n "${prs}" ]; then echo "skip: PR already exists: ${prs}"; exit 0; fi
+if [ "${branch_on_fork}" = 1 ]; then
+  # an earlier run pushed the branch but did not open the PR
+  if [ "${DRY_RUN}" = 1 ]; then
+    echo "DRY_RUN=1: branch ${BRANCH} exists on ${FORK} without a PR; a real run would open it"; exit 0
   fi
+  git_fork -C "${REPO}" fetch -q --depth 1 origin "${BRANCH}"
+  git -C "${REPO}" cat-file -e "FETCH_HEAD:${OPDIR}/${VERSION}/release-config.yaml" \
+    || { echo "error: branch ${BRANCH} on ${FORK} lacks ${OPDIR}/${VERSION}; delete it and re-run" >&2; exit 1; }
+  echo "branch ${BRANCH} exists on ${FORK} without a PR: opening it"
+  create_pr
+  exit 0
 fi
 
 # 4. branch, version directory (manifests, metadata, tests unchanged) and release-config.yaml
