@@ -6,14 +6,15 @@
 VERSION ?= 0.0.1
 
 # CHANNELS define the bundle channels used in the bundle.
+# The catalogs (ours and community-operators-prod, which uses FBC with an olm.semver template) take the channels
+# from the template (Stable with GenerateMajorChannels/GenerateMinorChannels gives stable-v0 and stable-v0.<minor>),
+# not from this annotation, which is only metadata; it is set to the major channel so the two agree.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
 # To re-generate a bundle for other specific channels without changing the standard setup, you can:
 # - use the CHANNELS as arg of the bundle target (e.g make bundle CHANNELS=candidate,fast,stable)
 # - use environment variables to overwrite this value (e.g export CHANNELS="candidate,fast,stable")
 CHANNELS ?= stable-v0
-ifneq ($(origin CHANNELS), undefined)
 BUNDLE_CHANNELS := --channels=$(CHANNELS)
-endif
 
 # DEFAULT_CHANNEL defines the default channel used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g DEFAULT_CHANNEL = "stable")
@@ -21,9 +22,7 @@ endif
 # - use the DEFAULT_CHANNEL as arg of the bundle target (e.g make bundle DEFAULT_CHANNEL=stable)
 # - use environment variables to overwrite this value (e.g export DEFAULT_CHANNEL="stable")
 DEFAULT_CHANNEL ?= stable-v0
-ifneq ($(origin DEFAULT_CHANNEL), undefined)
 BUNDLE_DEFAULT_CHANNEL := --default-channel=$(DEFAULT_CHANNEL)
-endif
 BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
 # IMAGE_TAG_BASE defines the docker.io namespace and part of the image name for remote images.
@@ -290,6 +289,10 @@ bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metada
 	yq -i '.annotations["com.redhat.openshift.versions"] = "$(OPENSHIFT_VERSIONS)"' bundle/metadata/annotations.yaml
 	awk '{print} /^LABEL operators.operatorframework.io.bundle.channels.v1=/{print "LABEL com.redhat.openshift.versions=$(OPENSHIFT_VERSIONS)"}' bundle.Dockerfile > bundle.Dockerfile.tmp && mv bundle.Dockerfile.tmp bundle.Dockerfile
 	sed 's|^\( *containerImage: \).*|\1$(IMG)|' bundle/manifests/flyway-operator.clusterserviceversion.yaml > bundle/manifests/csv.tmp && mv bundle/manifests/csv.tmp bundle/manifests/flyway-operator.clusterserviceversion.yaml
+	@# Fail if a post-step did not take effect, so a bundle missing what community-operators-prod requires is never published.
+	@grep -q '^LABEL com.redhat.openshift.versions=' bundle.Dockerfile || { echo "bundle.Dockerfile lacks the com.redhat.openshift.versions label" >&2; exit 1; }
+	@yq -e '.annotations["com.redhat.openshift.versions"] == "$(OPENSHIFT_VERSIONS)"' bundle/metadata/annotations.yaml >/dev/null || { echo "annotations.yaml lacks com.redhat.openshift.versions=$(OPENSHIFT_VERSIONS)" >&2; exit 1; }
+	@test "$$(yq '.metadata.annotations.containerImage' bundle/manifests/flyway-operator.clusterserviceversion.yaml)" = "$(IMG)" || { echo "CSV containerImage is not $(IMG)" >&2; exit 1; }
 	$(OPERATOR_SDK) bundle validate ./bundle --select-optional suite=operatorframework
 	$(OPERATOR_SDK) bundle validate ./bundle --select-optional name=good-practices
 	$(OPERATOR_SDK) bundle validate ./bundle --select-optional name=alpha-deprecated-apis
