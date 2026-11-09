@@ -15,6 +15,10 @@ Metrics are on by default in every install path; see [Metrics](metrics.md) for s
 
 ## OpenShift (OLM)
 
+Each release is also submitted to OpenShift's Community Operators catalog
+([community-operators-prod#11910](https://github.com/redhat-openshift-ecosystem/community-operators-prod/pull/11910)
+is the first submission); once it is merged and released, the operator is listed in OperatorHub without the catalog source below.
+
 1. Add the catalog source:
 
    ```yaml

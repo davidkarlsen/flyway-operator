@@ -29,6 +29,14 @@ opm render ghcr.io/davidkarlsen/flyway-operator-catalog:v<version> | grep -c 'fl
 
 `:alpha` must have moved to the new catalog only if this is the highest release tag.
 
+### Community Operators submission
+
+For a stable tag (no `-` suffix) the `community-pr` job runs after `release`: `hack/community-release.sh` downloads the release's bundle tarball, checks it against `checksums.txt`, and opens a PR on `redhat-openshift-ecosystem/community-operators-prod` from the fork `davidkarlsen/community-operators-prod` (secret `COMMUNITY_OPERATORS_TOKEN`) with branch `flyway-operator-<version>`, commit `operator flyway-operator (<version>)`, adding only `operators/flyway-operator/<version>/` (manifests, metadata, tests unchanged, plus a `release-config.yaml` for the `semver.yaml` template, channel Stable). It skips when the version directory, the branch or a PR already exists, so it can be re-run.
+
+Dry run without pushing (needs `gh` login, no community token): `DRY_RUN=1 make community-release VERSION=<version>`.
+
+After a release: check the job's log for the PR URL, then the PR's pipeline checks (static checks, operator-sdk validate, preflight). After upstream merge the release pipeline opens the catalog PR itself; confirm that one merges too. Issue #28 closes only when the listing is live. The very first submission (ci.yaml, Makefile, `catalog-templates/semver.yaml`) is manual, and later PRs assume it is merged.
+
 ## 3. Helm chart release PR
 
 A separate PR, merged after the tag build succeeded (merging any `config/helm-chart/` change publishes the chart immediately):

@@ -294,6 +294,29 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" dist/* -R "${GITHUB_REPOSITORY}" --title "${GITHUB_REF_NAME}" "${notes[@]}" --verify-tag \
             || gh release upload "${GITHUB_REF_NAME}" dist/* -R "${GITHUB_REPOSITORY}" --clobber
 
+  # Submits the release to the OpenShift Community Operators catalog: opens a PR from the owner's fork with the
+  # bundle of the release just created (hack/community-release.sh). The upstream pipeline does the rest.
+  # Skips pre-releases; idempotent, so "Re-run failed jobs" is safe. COMMUNITY_OPERATORS_TOKEN only reaches the
+  # script step; this job's GITHUB_TOKEN can read the release only.
+  community-pr:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: open community-operators-prod PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMUNITY_TOKEN: ${{ secrets.COMMUNITY_OPERATORS_TOKEN }}
+        run: |
+          set -euo pipefail
+          hack/community-release.sh "${GITHUB_REF_NAME}"
+
   # Runs real Flyway Jobs against Postgres on kind (test/e2e). Runs in parallel with build.
   e2e:
     needs: changes

@@ -396,3 +396,9 @@ catalog-push: ## Push a catalog image.
 catalog-retag:
 	docker tag $(CATALOG_IMG) $(CATALOG_VERSIONLESS)
 	docker push $(CATALOG_VERSIONLESS)
+
+##@ Community catalog
+
+.PHONY: community-release
+community-release: ## Open the OpenShift Community Operators PR for the release VERSION (X.Y.Z). DRY_RUN=1 stops before pushing.
+	hack/community-release.sh v$(VERSION)
