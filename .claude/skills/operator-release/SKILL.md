@@ -29,6 +29,17 @@ opm render ghcr.io/davidkarlsen/flyway-operator-catalog:v<version> | grep -c 'fl
 
 `:alpha` must have moved to the new catalog only if this is the highest release tag.
 
+### Community Operators submission
+
+For a stable tag (no `-` suffix) the `community-pr` job runs after `release`: `hack/community-release.sh` downloads the release's bundle tarball, verifies `checksums.txt` with `cosign verify-blob` (identity pinned to this repo's `build.yaml` at the tag) and the tarball against it, syncs the fork `davidkarlsen/community-operators-prod` (secret `COMMUNITY_OPERATORS_TOKEN`), and opens a PR on `redhat-openshift-ecosystem/community-operators-prod` from branch `flyway-operator-<version>`, commit `operator flyway-operator (<version>)`, adding only `operators/flyway-operator/<version>/` (manifests, metadata, tests unchanged, plus a `release-config.yaml` for the `semver.yaml` template, channel Stable).
+
+- It fails unless upstream already has `operators/flyway-operator/ci.yaml` (the manual first submission, #11910, must be merged); until then submit by hand.
+- It stops (green) when upstream already has the version or a PR exists for the branch. If an earlier run pushed the branch but failed to open the PR, re-running ("Re-run failed jobs") opens it.
+- Token scopes: a classic token with `public_repo` and `workflow`, or a fine-grained token with Contents and Workflows write on the fork plus Pull requests write. `workflow` is needed because syncing the fork pulls in upstream's `.github/workflows` changes.
+- Dry run without pushing (needs `gh` login, no community token): `DRY_RUN=1 make community-release VERSION=<version>` (`VERSION` must be passed).
+
+After a release: check the job's log for the PR URL, then the PR's pipeline checks (static checks, operator-sdk validate, preflight). After upstream merge the release pipeline opens the catalog PR itself; confirm that one merges too. Issue #28 closes only when the listing is live.
+
 ## 3. Helm chart release PR
 
 A separate PR, merged after the tag build succeeded (merging any `config/helm-chart/` change publishes the chart immediately):
