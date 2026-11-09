@@ -66,6 +66,7 @@ All commands are driven through the `Makefile`.
 - Conditions are the canonical status mechanism; update them with `meta.SetStatusCondition` rather than mutating the slice in place.
 - The Job runs under the Pod Security Standard "restricted": any new container or volume in the Job spec must keep it compliant (see `internal/controller/AGENTS.md`).
 - The migration source needs Kubernetes 1.35 or later (image volumes): `config/manifests/bases/flyway-operator.clusterserviceversion.yaml` sets `minKubeVersion: 1.35.0` and the Helm chart `kubeVersion: ">=1.35.0-0"`. Raise both together.
+- `make bundle` post-processes what `operator-sdk generate bundle` writes: bundle channels `stable-v0` (`CHANNELS` / `DEFAULT_CHANNEL`), `com.redhat.openshift.versions` (`OPENSHIFT_VERSIONS`, open-ended `v4.22`, required by community-operators-prod because the CSV sets `minKubeVersion`) in `bundle/metadata/annotations.yaml` and `bundle.Dockerfile`, and the CSV `containerImage`.
 - Docs-only (`*.md`, `docs/`, `.claude/`) and Helm chart changes skip the `build`/`e2e` jobs; the `ci-success` check is the only required one.
 
 ### Testing Requirements

@@ -10,6 +10,7 @@ VERSION ?= 0.0.1
 # To re-generate a bundle for other specific channels without changing the standard setup, you can:
 # - use the CHANNELS as arg of the bundle target (e.g make bundle CHANNELS=candidate,fast,stable)
 # - use environment variables to overwrite this value (e.g export CHANNELS="candidate,fast,stable")
+CHANNELS ?= stable-v0
 ifneq ($(origin CHANNELS), undefined)
 BUNDLE_CHANNELS := --channels=$(CHANNELS)
 endif
@@ -19,6 +20,7 @@ endif
 # To re-generate a bundle for any other default channel without changing the default setup, you can:
 # - use the DEFAULT_CHANNEL as arg of the bundle target (e.g make bundle DEFAULT_CHANNEL=stable)
 # - use environment variables to overwrite this value (e.g export DEFAULT_CHANNEL="stable")
+DEFAULT_CHANNEL ?= stable-v0
 ifneq ($(origin DEFAULT_CHANNEL), undefined)
 BUNDLE_DEFAULT_CHANNEL := --default-channel=$(DEFAULT_CHANNEL)
 endif
@@ -37,6 +39,10 @@ BUNDLE_IMG ?= $(IMAGE_TAG_BASE)-bundle:v$(VERSION)
 
 # BUNDLE_GEN_FLAGS are the flags passed to the operator-sdk generate bundle command
 BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
+
+# OPENSHIFT_VERSIONS is the OpenShift range written to the bundle as com.redhat.openshift.versions. The open-ended
+# form means "this version and later"; community-operators-prod requires it because the CSV sets minKubeVersion.
+OPENSHIFT_VERSIONS ?= v4.22
 
 # USE_IMAGE_DIGESTS defines if images are resolved via tags or digests
 # You can enable this value if you would like to use SHA Based Digests
@@ -280,6 +286,10 @@ bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metada
 	$(OPERATOR_SDK) generate kustomize manifests -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
+	@# operator-sdk regenerates annotations.yaml and bundle.Dockerfile without extra keys, and containerImage must equal the deployed image.
+	yq -i '.annotations["com.redhat.openshift.versions"] = "$(OPENSHIFT_VERSIONS)"' bundle/metadata/annotations.yaml
+	awk '{print} /^LABEL operators.operatorframework.io.bundle.channels.v1=/{print "LABEL com.redhat.openshift.versions=$(OPENSHIFT_VERSIONS)"}' bundle.Dockerfile > bundle.Dockerfile.tmp && mv bundle.Dockerfile.tmp bundle.Dockerfile
+	sed 's|^\( *containerImage: \).*|\1$(IMG)|' bundle/manifests/flyway-operator.clusterserviceversion.yaml > bundle/manifests/csv.tmp && mv bundle/manifests/csv.tmp bundle/manifests/flyway-operator.clusterserviceversion.yaml
 	$(OPERATOR_SDK) bundle validate ./bundle --select-optional suite=operatorframework
 	$(OPERATOR_SDK) bundle validate ./bundle --select-optional name=good-practices
 	$(OPERATOR_SDK) bundle validate ./bundle --select-optional name=alpha-deprecated-apis
