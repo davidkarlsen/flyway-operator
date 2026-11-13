@@ -29,6 +29,7 @@ operator runs it with [Flyway](https://flywaydb.org/), reports the result, and r
 [![SLSA provenance](https://img.shields.io/badge/SLSA-provenance-green?logo=github)](docs/verifying.md)
 [![Flyway 13](https://img.shields.io/badge/Flyway-13-CC0200?logo=flyway&logoColor=white)](docs/usage.md)
 [![License](https://img.shields.io/github/license/davidkarlsen/flyway-operator)](LICENSE)
+[![Context7](https://img.shields.io/badge/Context7-docs-blue)](https://context7.com/davidkarlsen/flyway-operator)
 
 **Integrations**
 [![Prometheus metrics](https://img.shields.io/badge/Prometheus-metrics-E6522C?logo=prometheus&logoColor=white)](docs/metrics.md)
