@@ -1,0 +1,12 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "Flyway Operator",
+  "description": "Kubernetes operator that runs Flyway database migrations declaratively through a Migration resource",
+  "folders": ["docs"],
+  "excludeFolders": ["test", "bundle"],
+  "rules": [
+    "The SQL ships as an OCI image mounted read-only at the migration path (default /sql) through a Kubernetes image volume, which needs Kubernetes 1.35 or later.",
+    "Credentials come from a Secret key passed to Flyway as FLYWAY_PASSWORD; omit database.credentials for passwordless login.",
+    "database.jdbcUrl must start with jdbc:."
+  ]
+}
